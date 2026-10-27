@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SmartMaint.Api/SmartMaint.Api.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SmartMaint.UnitTests/SmartMaint.UnitTests.csproj" />
+  </Folder>
+</Solution>

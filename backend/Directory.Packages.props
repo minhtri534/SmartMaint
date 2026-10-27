@@ -1,0 +1,33 @@
+<Project>
+  <!--
+    Central Package Management: every NuGet version is pinned here, once.
+    .csproj files reference packages WITHOUT a Version attribute.
+    Adding a new package = add a line here + ask the Leader first (CLAUDE.md).
+  -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <ItemGroup Label="ASP.NET Core">
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.13" />
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.13" />
+    <PackageVersion Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.3.0" />
+  </ItemGroup>
+  <ItemGroup Label="Data access">
+    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.13" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.13" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.13" />
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <PackageVersion Include="EFCore.NamingConventions" Version="10.0.1" />
+  </ItemGroup>
+  <ItemGroup Label="Application">
+    <PackageVersion Include="FluentValidation" Version="12.2.0" />
+    <PackageVersion Include="FluentValidation.DependencyInjectionExtensions" Version="12.2.0" />
+  </ItemGroup>
+  <ItemGroup Label="Testing">
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <PackageVersion Include="coverlet.collector" Version="6.0.4" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.13" />
+  </ItemGroup>
+</Project>

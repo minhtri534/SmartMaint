@@ -1,0 +1,38 @@
+@import 'tailwindcss';
+
+/*
+ * Design tokens (mini design system from Figma "SmartMaint - Web Wireframes").
+ * Use the token classes (bg-surface, text-muted, border-line, bg-primary...) — never raw hex in components.
+ */
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+
+  --color-canvas: #fafafa;
+  --color-surface: #ffffff;
+  --color-line: #e5e7eb;
+  --color-ink: #111827;
+  --color-muted: #6b7280;
+
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-primary-soft: #eff6ff;
+
+  --color-danger: #dc2626;
+  --color-danger-soft: #fef2f2;
+  --color-success: #16a34a;
+  --color-success-soft: #f0fdf4;
+  --color-warning: #d97706;
+  --color-warning-soft: #fffbeb;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-canvas text-ink font-sans antialiased;
+  }
+}

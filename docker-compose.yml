@@ -1,0 +1,25 @@
+# Local development services. Start: `docker compose up -d`   Stop: `docker compose down`
+# Wipe the local DB (re-run migrations + seed on next API start): `docker compose down -v`
+# Values come from the repo-root .env (copy .env.example). Production DB is Supabase, not this.
+services:
+  db:
+    image: postgres:17-alpine # same major version as the Supabase project
+    container_name: smartmaint-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-smartmaint}
+      POSTGRES_USER: ${POSTGRES_USER:-smartmaint}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-smartmaint}
+      TZ: UTC
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - smartmaint-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  smartmaint-db-data:

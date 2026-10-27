@@ -1,0 +1,12 @@
+// Shared UI kit. Import from '@/shared/ui', never from the individual files.
+export { Alert } from './Alert'
+export { Badge, type BadgeTone } from './Badge'
+export { Button, LinkButton } from './Button'
+export { Card } from './Card'
+export { ConfirmDialog, Dialog, DialogActions } from './Dialog'
+export { PageHeader } from './PageHeader'
+export { Select } from './Select'
+export { FullPageSpinner, Spinner } from './Spinner'
+export { Tabs, type TabItem } from './Tabs'
+export { TextArea } from './TextArea'
+export { TextField } from './TextField'

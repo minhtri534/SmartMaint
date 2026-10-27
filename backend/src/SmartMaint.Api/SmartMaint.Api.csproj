@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <!--
+    The whole backend is this one project, split by folder:
+      Controllers/  HTTP endpoints (thin)        Modules/  business logic per module (service, DTOs, validators)
+      Entities/     tables as C# classes         Data/     DbContext, table mapping, migrations, seed
+      Common/       shared: errors, security, validation, paging, startup wiring
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <!-- Pinned so Npgsql and EF Design resolve the same Relational version. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="EFCore.NamingConventions" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
+    <PackageReference Include="FluentValidation" />
+    <PackageReference Include="FluentValidation.DependencyInjectionExtensions" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Seed data, run by DatabaseInitializer in local dev. Source of truth: /database/Data.sql -->
+    <None Include="..\..\..\database\Data.sql" Link="Data.sql" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="SmartMaint.UnitTests" />
+  </ItemGroup>
+</Project>

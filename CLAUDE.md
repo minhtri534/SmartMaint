@@ -22,7 +22,7 @@ Trao đổi với Leader bằng **tiếng Việt có dấu**. Code, tên biến,
 | AI | Replicate (LLM chat, **bất đồng bộ**: tạo prediction → poll/webhook) | `backend` module AI | Trí |
 | Deploy | Railway (backend) + Vercel (web) | — | Trí |
 
-Phiên bản cụ thể (.NET, Node, Flutter) chốt khi dựng skeleton và ghi vào `docs/` — đừng tự đoán.
+Phiên bản đã chốt 19/10 (.NET 10 LTS, Node ≥ 24, Postgres 17…): xem `docs/architecture/CONVENTIONS.md` mục 1. Flutter chốt khi Tùng dựng `mobile/`.
 
 ## Nghiệp vụ cốt lõi (đọc trước khi code bất cứ gì)
 
@@ -48,8 +48,10 @@ Gặp mâu thuẫn thì **dừng lại hỏi Leader**, không tự chọn.
 
 ## Quy ước code
 
-- Chia theo **domain / luồng**, không chia theo loại file. Backend: mỗi module có controller / service / DTO / validator riêng; RBAC bằng policy / attribute dùng chung, không check role bằng tay rải rác. Pattern backend (layered hay CQRS) **chưa chốt** — hỏi Leader trước khi dựng module đầu tiên; sau đó mọi module theo đúng **module mẫu**.
-- Web: `frontend/src/features/<feature>`, dùng chung `shared/`, `lib/` (API client). Mọi trang theo **trang mẫu**.
+- **Quy ước chi tiết: `docs/architecture/CONVENTIONS.md`** — đọc trước khi thêm module / trang.
+- Chia theo **domain / luồng**, không chia theo loại file. Backend **1 project `SmartMaint.Api` chia thư mục** (chốt 27/10, thay 4 project của 19/10): `Controllers → Modules → Data / Entities`, dùng chung ở `Common/`. Mỗi module có controller / service / DTO / validator riêng; RBAC bằng `[AuthorizeRoles]`, không check role bằng tay. **Module mẫu = Auth** (`Modules/Auth`, `Controllers/AuthController.cs`).
+- Web: `frontend/src/features/<feature>` (mỗi feature: `types.ts`, `api.ts`, `hooks.ts`, `schemas.ts`, `pages/`, `components/`), dùng chung `shared/`, `lib/` (API client). **Trang mẫu = `features/auth/pages/LoginPage.tsx`; feature mẫu đầy đủ = `features/cases` (F3, đang chạy dữ liệu giả `mock.ts`)**.
+- DB dev: Postgres Docker (`docker compose up -d`); `database/Schema.sql` sinh từ migration (`scripts/db-schema.ps1`), `database/Data.sql` là seed duy nhất.
 - Unit test: mỗi API ≥ 1 case Normal + 1 Abnormal + 1 Boundary (yêu cầu Report 5).
 - Mọi biến môi trường liệt kê trong `.env.example`.
 - Không thêm thư viện lớn hoặc dịch vụ ngoài mới mà không hỏi.
@@ -58,6 +60,7 @@ Gặp mâu thuẫn thì **dừng lại hỏi Leader**, không tự chọn.
 
 | File | Khi nào đọc |
 |---|---|
+| `architecture/CONVENTIONS.md` | Cấu trúc thư mục, quy tắc backend / web / DB / test, cách tạo module & trang |
 | `00_PROJECT_CONTEXT.md` | Bối cảnh tổng, quyết định, lịch sử (dài) |
 | `flows/Danh_Sach_Luong_Chot.md` | Bảng số luồng F1–F6 + đối chiếu số cũ |
 | `flows/F2_Bao_Tri_Dinh_Ky.md`, `flows/F3_Su_Co_Thong_Thuong.md`, `flows/Doi_Chieu_Tuan4_F1_F4_F5_F6.md` | Trước khi code luồng tương ứng (có OPEN chưa chốt) |
