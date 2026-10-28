@@ -2,15 +2,17 @@ import type { ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
 import { paths, resubmitPath } from '@/app/paths'
 import type { Role } from '@/shared/types/role'
-import { Alert, Card, LinkButton, Spinner } from '@/shared/ui'
+import { Alert, Button, Card, CardHeader, Icon, LinkButton, PageHeader } from '@/shared/ui'
 import { formatDateTime } from '@/shared/utils/format'
 import { CaseActions } from '../components/CaseActions'
-import { StatusBadge, UrgencyBadge } from '../components/CaseBadges'
+import { UrgencyNote } from '../components/CaseBadges'
 import { AssignmentList, PhotoGallery, StatusTimeline } from '../components/CaseHistory'
 import { MockDataBanner } from '../components/MockDataBanner'
+import { SlaPanel } from '../components/SlaTrack'
+import { StarsView } from '../components/Stars'
+import { StatusPath } from '../components/StatusPath'
 import { useActor, useCase } from '../hooks'
-import { isOverdue } from '../state-machine'
-import { COST_BEARER_LABELS, type CaseDetail } from '../types'
+import { COST_BEARER_LABELS, URGENCY_LABELS } from '../types'
 
 const BACK: Partial<Record<Role, { to: string; label: string }>> = {
   customer: { to: paths.myRequests, label: 'My requests' },
@@ -21,53 +23,62 @@ const BACK: Partial<Record<Role, { to: string; label: string }>> = {
 
 /**
  * COM-08 Case detail for every role; for the technician it is also TEC-03 (work order).
- * What each role can press comes from the state machine (CaseActions).
+ * Question: "Where is this case, who has it, and is it on time?" — the road through F3 on top, the
+ * deadline as the largest figure on the right. What each role can press comes from the state machine.
  */
 export function CaseDetailPage() {
   const id = Number(useParams().id)
   const actor = useActor()
   const query = useCase(id)
+  const back = actor ? BACK[actor.role] : undefined
 
-  if (query.isPending) {
+  const above = back && (
+    <Link to={back.to} className="hover:text-ink inline-flex items-center gap-1">
+      <Icon name="back" className="size-3.5" />
+      {back.label}
+    </Link>
+  )
+
+  if (query.isPending) return <DetailSkeleton above={above} />
+  if (query.error) {
     return (
-      <div className="text-muted flex justify-center py-16">
-        <Spinner className="size-8" />
+      <div className="flex flex-col gap-5">
+        <PageHeader above={above} title="Case" />
+        <div className="border-border rounded-card flex items-center justify-between gap-3 border px-4 py-3 text-sm">
+          <span>{query.error.message}</span>
+          <Button variant="ghost" onClick={() => void query.refetch()}>
+            Retry
+          </Button>
+        </div>
       </div>
     )
   }
-  if (query.error) return <Alert>{query.error.message}</Alert>
 
   const c = query.data
-  const back = actor ? BACK[actor.role] : undefined
   const seesAssignments = actor?.role === 'officer' || actor?.role === 'manager'
   const lastChange = c.history.at(-1)
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-5">
       <MockDataBanner />
-      {back && (
-        <Link to={back.to} className="text-muted hover:text-ink text-sm">
-          ← {back.label}
-        </Link>
-      )}
+      <PageHeader
+        above={above}
+        title={c.title}
+        description={
+          <>
+            <span className="font-mono">{c.code}</span> · {c.serviceTypeName}
+          </>
+        }
+        actions={actor && <CaseActions caseDetail={c} actor={actor} />}
+      />
 
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex flex-col gap-2">
-          <div className="text-muted text-sm">
-            {c.code} · {c.serviceTypeName}
-          </div>
-          <h1 className="text-2xl font-semibold">{c.title}</h1>
-          <div className="flex flex-wrap gap-2">
-            <StatusBadge status={c.status} />
-            <UrgencyBadge urgency={c.urgency} />
-          </div>
-        </div>
-        {actor && <CaseActions caseDetail={c} actor={actor} />}
+      <div className="border-border border-y py-4">
+        <StatusPath c={c} />
       </div>
 
       {c.isEmergencyFlow && (
         <Alert>
-          Emergency case — handled by the emergency flow (F4). F3 actions are not available here.
+          Emergency case: handled by the emergency flow (F4), so F3 actions are off here.
         </Alert>
       )}
       {c.status === 'rejected' && lastChange?.reason && (
@@ -77,7 +88,7 @@ export function CaseDetailPage() {
               Rejected by {lastChange.by.fullName}: {lastChange.reason}
             </span>
             {actor?.role === 'customer' && (
-              <LinkButton to={resubmitPath(c.id)} variant="secondary" className="h-8">
+              <LinkButton to={resubmitPath(c.id)} variant="primary">
                 Submit again
               </LinkButton>
             )}
@@ -90,110 +101,141 @@ export function CaseDetailPage() {
         </Alert>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="flex flex-col gap-4 lg:col-span-2">
-          <Section title="Problem">
-            <p className="text-sm whitespace-pre-line">{c.description}</p>
-            <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="flex min-w-0 flex-col gap-6">
+          <Card>
+            <CardHeader title="Problem" aside={`Reported ${formatDateTime(c.submittedAt)}`} />
+            <p className="max-w-[68ch] text-sm leading-6 whitespace-pre-line">{c.description}</p>
+            <dl className="border-rule mt-5 grid gap-4 border-t pt-4 text-sm sm:grid-cols-2">
               <Field label="Location">
                 {c.location.roomName}
                 <div className="text-muted text-xs">
                   {c.location.buildingName} · {c.location.floorName}
                 </div>
               </Field>
-              <Field label="Asset">{c.asset?.name ?? 'Not specified'}</Field>
+              <Field label="Asset">
+                {c.asset?.name ?? <span className="text-muted">Not specified</span>}
+              </Field>
             </dl>
-            <div className="mt-4">
+            <div className="mt-5">
               <PhotoGallery photos={c.photos} />
             </div>
-          </Section>
+          </Card>
 
           {c.repairReport && (
-            <Section title="Repair record">
-              <dl className="grid gap-3 text-sm sm:grid-cols-2">
-                <Field label="Work done" wide>
-                  {c.repairReport.workDone}
-                </Field>
+            <Card>
+              <CardHeader
+                title="Repair record"
+                aside={c.technician ? `by ${c.technician.fullName}` : undefined}
+              />
+              <p className="max-w-[68ch] text-sm leading-6">{c.repairReport.workDone}</p>
+              <dl className="border-rule mt-5 grid gap-4 border-t pt-4 text-sm sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_96px]">
                 <Field label="Cause">{c.repairReport.rootCause}</Field>
-                <Field label="Hours worked">{c.repairReport.laborHours} h</Field>
-                <Field label="Parts used" wide>
-                  {c.repairReport.partsUsed || 'None'}
+                <Field label="Parts used">
+                  {c.repairReport.partsUsed || <span className="text-muted">—</span>}
+                </Field>
+                <Field label="Hours worked">
+                  <span className="tabular-nums">{c.repairReport.laborHours} h</span>
                 </Field>
               </dl>
-            </Section>
+            </Card>
           )}
 
           {c.rating && (
-            <Section title="Customer rating">
-              <div className="text-warning text-lg">
-                {'★'.repeat(c.rating.stars)}
-                <span className="text-line">{'★'.repeat(5 - c.rating.stars)}</span>
+            <Card>
+              <CardHeader title="Customer rating" aside={formatDateTime(c.rating.ratedAt)} />
+              <div className="flex items-center gap-3">
+                <StarsView stars={c.rating.stars} />
+                <span className="text-muted text-sm tabular-nums">{c.rating.stars} / 5</span>
               </div>
-              {c.rating.comment && <p className="mt-1 text-sm">“{c.rating.comment}”</p>}
-            </Section>
+              {c.rating.comment && <p className="mt-2 text-sm">“{c.rating.comment}”</p>}
+            </Card>
           )}
         </div>
 
-        <div className="flex flex-col gap-4">
-          <Section title="Details">
+        <div className="flex flex-col gap-6">
+          <SlaPanel c={c} />
+
+          <Card>
+            <CardHeader title="People" />
             <dl className="flex flex-col gap-3 text-sm">
-              <Field label="Reported by">{c.requester.fullName}</Field>
-              <Field label="Officer in charge">{c.officer?.fullName ?? '—'}</Field>
-              <Field label="Technician">{c.technician?.fullName ?? 'Not assigned'}</Field>
-              <Field label="Who pays">{COST_BEARER_LABELS[c.costBearer]}</Field>
-              <Field label="Submitted">{formatDateTime(c.submittedAt)}</Field>
-              <Field label="Due">
-                <DueText c={c} />
+              <Field label="Reported by" inline>
+                {c.requester.fullName}
               </Field>
-              {c.completedAt && <Field label="Completed">{formatDateTime(c.completedAt)}</Field>}
+              <Field label="Officer in charge" inline>
+                {c.officer?.fullName ?? '—'}
+              </Field>
+              <Field label="Technician" inline>
+                {c.technician?.fullName ?? <span className="text-muted">Not assigned</span>}
+              </Field>
+              <Field label="Urgency" inline>
+                <span className="flex flex-col items-end">
+                  {URGENCY_LABELS[c.urgency]}
+                  <UrgencyNote urgency={c.urgency} />
+                </span>
+              </Field>
+              <Field label="Who pays" inline>
+                {COST_BEARER_LABELS[c.costBearer]}
+              </Field>
             </dl>
-          </Section>
+          </Card>
 
           {seesAssignments && (
-            <Section title="Assignments">
+            <Card>
+              <CardHeader title="Assignments" aside={`${c.assignments.length} in total`} />
               <AssignmentList assignments={c.assignments} />
-            </Section>
+            </Card>
           )}
 
-          <Section title="History">
+          <Card>
+            <CardHeader title="History" />
             <StatusTimeline history={c.history} />
-          </Section>
+          </Card>
         </div>
       </div>
     </div>
   )
 }
 
-function DueText({ c }: { c: CaseDetail }) {
-  if (!c.dueAt) return <span className="text-muted">Starts when the case is approved</span>
-  const extended = c.slaDueAt !== null && c.slaDueAt !== c.dueAt
+function Field({
+  label,
+  inline,
+  children,
+}: {
+  label: string
+  inline?: boolean
+  children: ReactNode
+}) {
+  if (inline) {
+    return (
+      <div className="flex items-baseline justify-between gap-3">
+        <dt className="text-muted">{label}</dt>
+        <dd className="text-right">{children}</dd>
+      </div>
+    )
+  }
   return (
-    <>
-      <span className={isOverdue(c) ? 'text-danger font-medium' : undefined}>
-        {formatDateTime(c.dueAt)}
-        {isOverdue(c) && ' · overdue'}
-      </span>
-      {extended && (
-        <div className="text-muted text-xs">SLA deadline was {formatDateTime(c.slaDueAt)}</div>
-      )}
-    </>
-  )
-}
-
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <Card className="p-4">
-      <h2 className="mb-3 text-sm font-semibold">{title}</h2>
-      {children}
-    </Card>
-  )
-}
-
-function Field({ label, wide, children }: { label: string; wide?: boolean; children: ReactNode }) {
-  return (
-    <div className={wide ? 'sm:col-span-2' : undefined}>
-      <dt className="text-muted text-xs">{label}</dt>
+    <div>
+      <dt className="text-muted mb-0.5 text-xs">{label}</dt>
       <dd>{children}</dd>
+    </div>
+  )
+}
+
+/** Loading: the final layout with grey bars at their real sizes. */
+function DetailSkeleton({ above }: { above: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-5" aria-busy="true" aria-label="Loading case">
+      <div>
+        {above && <div className="text-muted mb-1 text-sm">{above}</div>}
+        <div className="bg-raised h-7 w-80 rounded" />
+        <div className="bg-raised mt-2 h-4 w-56 rounded" />
+      </div>
+      <div className="border-border h-[78px] border-y" />
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="border-border rounded-card h-72 border" />
+        <div className="border-border rounded-card h-48 border" />
+      </div>
     </div>
   )
 }

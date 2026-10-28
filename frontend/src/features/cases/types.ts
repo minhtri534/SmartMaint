@@ -159,6 +159,10 @@ export interface CaseSummary {
   submittedAt: string
   /** Effective deadline = the later of the SLA deadline and the officer's extension (N16). ERD: Cases.DueTime */
   dueAt: string | null
+  /** When the SLA clock started: approval, or the last reopen. Derived from CaseStatusHistory (not a column). */
+  slaStartedAt: string | null
+  /** When the technician reported the work done. ERD: Cases.TimeCompleted */
+  completedAt: string | null
   /** Case was sent to the emergency flow F4 at creation (N26). Derived from the service type. */
   isEmergencyFlow: boolean
 }
@@ -219,8 +223,6 @@ export interface CaseDetail extends CaseSummary {
   costBearer: CostBearer
   /** SLA deadline before any extension (N16). NOT IN ERD v5 (only one DueTime column). */
   slaDueAt: string | null
-  /** ERD: Cases.TimeCompleted */
-  completedAt: string | null
   photos: CasePhoto[]
   history: StatusChange[]
   assignments: Assignment[]

@@ -12,10 +12,10 @@ interface TabsProps<T extends string> {
   onChange: (value: T) => void
 }
 
-/** Horizontal tab bar for filtering a list (not for routing). */
+/** Underline tabs on a full-width 1px rule; the selected one gets a 2px ink line. For filtering a list. */
 export function Tabs<T extends string>({ items, value, onChange }: TabsProps<T>) {
   return (
-    <div role="tablist" className="border-line flex gap-1 overflow-x-auto border-b">
+    <div role="tablist" className="border-border flex gap-6 overflow-x-auto border-b">
       {items.map((item) => {
         const active = item.value === value
         return (
@@ -26,23 +26,15 @@ export function Tabs<T extends string>({ items, value, onChange }: TabsProps<T>)
             aria-selected={active}
             onClick={() => onChange(item.value)}
             className={cn(
-              '-mb-px flex items-center gap-2 border-b-2 px-3 py-2 text-sm whitespace-nowrap',
-              active
-                ? 'border-primary text-primary font-medium'
-                : 'text-muted hover:text-ink border-transparent',
+              'relative flex items-center gap-1.5 py-2.5 text-sm whitespace-nowrap transition-colors',
+              active ? 'text-ink font-medium' : 'text-muted hover:text-ink',
             )}
           >
             {item.label}
             {item.count !== undefined && (
-              <span
-                className={cn(
-                  'rounded-full px-1.5 text-xs',
-                  active ? 'bg-primary-soft' : 'bg-canvas',
-                )}
-              >
-                {item.count}
-              </span>
+              <span className="text-muted tabular-nums">{item.count}</span>
             )}
+            {active && <span className="bg-ink absolute inset-x-0 -bottom-px h-0.5" />}
           </button>
         )
       })}

@@ -60,7 +60,7 @@ function ReasonForm({
       />
       {mutation.error && <Alert>{mutation.error.message}</Alert>}
       <DialogActions>
-        <Button variant="secondary" onClick={onDone}>
+        <Button variant="ghost" onClick={onDone}>
           Back
         </Button>
         <Button type="submit" variant={danger ? 'danger' : 'primary'} loading={mutation.isPending}>

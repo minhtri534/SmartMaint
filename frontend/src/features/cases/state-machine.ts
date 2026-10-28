@@ -1,5 +1,5 @@
 import type { Role } from '@/shared/types/role'
-import { FINAL_STATUSES, type CaseStatus, type CaseSummary } from './types'
+import type { CaseStatus, CaseSummary } from './types'
 
 /*
  * F3 state machine (docs/flows/F3_Su_Co_Thong_Thuong/F3_Trang5.png), written as a table.
@@ -100,14 +100,4 @@ export function availableActions(
   return TRANSITIONS.filter((t) => t.role === actor.role && t.from.includes(c.status))
     .map((t) => t.action)
     .filter((action) => action !== 'rate' || !c.rating)
-}
-
-/** Overdue = past the effective deadline and nobody has reported it done yet (N16). */
-export function isOverdue(c: CaseSummary, now = Date.now()): boolean {
-  return (
-    c.dueAt !== null &&
-    new Date(c.dueAt).getTime() < now &&
-    c.status !== 'completed' &&
-    !FINAL_STATUSES.includes(c.status)
-  )
 }

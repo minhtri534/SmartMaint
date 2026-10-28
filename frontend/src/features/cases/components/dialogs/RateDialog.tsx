@@ -1,10 +1,11 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Controller, useForm } from 'react-hook-form'
 import { Alert, Button, Dialog, DialogActions, TextArea } from '@/shared/ui'
-import { cn } from '@/shared/utils/cn'
+
 import { casesApi } from '../../api'
 import { useCaseMutation } from '../../hooks'
 import { rateSchema, type RateFormValues } from '../../schemas'
+import { StarsInput } from '../Stars'
 
 interface Props {
   caseId: number
@@ -48,37 +49,20 @@ function RateForm({ caseId, onDone }: { caseId: number; onDone: () => void }) {
         control={control}
         name="stars"
         render={({ field }) => (
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-2">
             <span className="text-sm font-medium">Your rating</span>
-            <div className="flex gap-1" role="radiogroup" aria-label="Stars">
-              {[1, 2, 3, 4, 5].map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  role="radio"
-                  aria-checked={field.value === n}
-                  aria-label={`${n} star${n > 1 ? 's' : ''}`}
-                  onClick={() => field.onChange(n)}
-                  className={cn(
-                    'text-2xl leading-none',
-                    n <= field.value ? 'text-warning' : 'text-line',
-                  )}
-                >
-                  ★
-                </button>
-              ))}
-            </div>
-            {errors.stars && <p className="text-danger text-xs">{errors.stars.message}</p>}
+            <StarsInput value={field.value} onChange={field.onChange} />
+            {errors.stars && <p className="text-negative text-xs">{errors.stars.message}</p>}
           </div>
         )}
       />
       <TextArea label="Comment" rows={3} {...register('comment')} />
       {rate.error && <Alert>{rate.error.message}</Alert>}
       <DialogActions>
-        <Button variant="secondary" onClick={onDone}>
+        <Button variant="ghost" onClick={onDone}>
           Back
         </Button>
-        <Button type="submit" loading={rate.isPending}>
+        <Button type="submit" variant="primary" loading={rate.isPending}>
           Send rating
         </Button>
       </DialogActions>

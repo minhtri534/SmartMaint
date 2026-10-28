@@ -7,6 +7,7 @@ import {
   Alert,
   Button,
   Card,
+  CardHeader,
   LinkButton,
   PageHeader,
   Select,
@@ -136,192 +137,153 @@ export function NewRequestPage() {
   })
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-5">
       <MockDataBanner />
       <PageHeader
         title={fromId ? 'Submit again' : 'New request'}
         description={
           fromId
-            ? `Filled in from ${source.data?.code ?? 'your rejected request'}. Fix what was missing and send it again.`
-            : 'Tell the building management what is wrong. Requests are handled during office hours.'
-        }
-        actions={
-          <LinkButton to={paths.myRequests} variant="secondary">
-            Back to my requests
-          </LinkButton>
+            ? `Filled in from ${source.data?.code ?? 'your rejected request'}. Add what was missing and send it again.`
+            : "Your building's facility officer reviews it during office hours."
         }
       />
 
-      <form onSubmit={onSubmit} noValidate className="grid gap-4 lg:grid-cols-3">
-        <Card className="flex flex-col gap-4 lg:col-span-2">
-          <h2 className="text-sm font-semibold">What is wrong?</h2>
-          <TextField
-            label="Short title"
-            placeholder="e.g. Air conditioner blows warm air"
-            error={errors.title?.message}
-            {...register('title')}
-          />
-          <TextArea
-            label="Description"
-            rows={5}
-            placeholder="What happens, exactly where, and since when?"
-            error={errors.description?.message}
-            {...register('description')}
-          />
-
-          <div className="border-primary/20 bg-primary-soft flex flex-col gap-2 rounded-md border p-3 text-sm">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-primary font-medium">AI assistant (suggestion only)</span>
-              <Button
-                variant="secondary"
-                className="h-8"
-                loading={suggestion.isPending}
-                onClick={() => suggestion.mutate(getValues('description'))}
+      <form
+        onSubmit={onSubmit}
+        noValidate
+        className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]"
+      >
+        <Card padding="none" className="flex flex-col">
+          <section className="flex flex-col gap-4 p-5 sm:p-6">
+            <h2 className="text-section font-semibold">What is wrong?</h2>
+            <TextField
+              label="Short title"
+              placeholder="e.g. Air conditioner blows warm air"
+              error={errors.title?.message}
+              {...register('title')}
+            />
+            <TextArea
+              label="Description"
+              rows={5}
+              placeholder="What happens, exactly where, and since when?"
+              error={errors.description?.message}
+              {...register('description')}
+            />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Select
+                label="Group"
+                placeholder="Choose…"
+                error={errors.serviceGroup?.message}
+                {...register('serviceGroup', { onChange: () => setValue('serviceTypeId', '') })}
               >
-                Suggest type from description
-              </Button>
-            </div>
-            {suggestion.data && (
-              <>
-                {suggested ? (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span>
-                      Looks like{' '}
-                      <strong>
-                        {suggested.groupName} · {suggested.name}
-                      </strong>{' '}
-                      ({URGENCY_LABELS[suggested.defaultUrgency]}).
-                    </span>
-                    {String(suggested.id) !== serviceTypeId && (
-                      <Button variant="ghost" className="h-7 px-2" onClick={applySuggestion}>
-                        Use this
-                      </Button>
-                    )}
-                  </div>
-                ) : (
-                  <span>No suggestion — please pick the type yourself.</span>
-                )}
-                {suggestion.data.tips.map((tip) => (
-                  <span key={tip} className="text-muted">
-                    • {tip}
-                  </span>
-                ))}
-              </>
-            )}
-            {suggestion.error && <span className="text-muted">AI is not available right now.</span>}
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Select
-              label="Group"
-              placeholder="Choose…"
-              error={errors.serviceGroup?.message}
-              {...register('serviceGroup', { onChange: () => setValue('serviceTypeId', '') })}
-            >
-              {groups.map((g) => (
-                <option key={g} value={g}>
-                  {g}
-                </option>
-              ))}
-            </Select>
-            <Select
-              label="Type"
-              placeholder={group ? 'Choose…' : 'Choose a group first'}
-              disabled={!group}
-              error={errors.serviceTypeId?.message}
-              {...register('serviceTypeId')}
-              value={serviceTypeId}
-            >
-              {serviceTypes.data
-                .filter((s) => s.groupName === group)
-                .map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
+                {groups.map((g) => (
+                  <option key={g} value={g}>
+                    {g}
                   </option>
                 ))}
-            </Select>
-          </div>
-          {service?.isEmergency && (
-            <Alert>
-              <strong>Emergency.</strong> This type goes straight to the emergency team (F4), not
-              the normal queue. If anyone is in danger, also call the building hotline now.
-            </Alert>
-          )}
-
-          <Controller
-            control={control}
-            name="photos"
-            render={({ field }) => (
-              <PhotoPicker
-                label={service?.photoRequired ? 'Photos *' : 'Photos'}
-                value={field.value}
-                onChange={field.onChange}
-                error={errors.photos?.message}
-                hint={service?.photoRequired ? 'This type needs at least one photo.' : 'Optional.'}
-              />
+              </Select>
+              <Select
+                label="Type"
+                placeholder={group ? 'Choose…' : 'Choose a group first'}
+                disabled={!group}
+                error={errors.serviceTypeId?.message}
+                {...register('serviceTypeId')}
+                value={serviceTypeId}
+              >
+                {serviceTypes.data
+                  .filter((s) => s.groupName === group)
+                  .map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+              </Select>
+            </div>
+            {service?.isEmergency && (
+              <Alert>
+                Emergency type: it goes straight to the emergency team (F4), not the normal queue.
+                If anyone is in danger, also call the building hotline now.
+              </Alert>
             )}
-          />
-        </Card>
+            <Controller
+              control={control}
+              name="photos"
+              render={({ field }) => (
+                <PhotoPicker
+                  label={service?.photoRequired ? 'Photos *' : 'Photos'}
+                  value={field.value}
+                  onChange={field.onChange}
+                  error={errors.photos?.message}
+                  hint={
+                    service?.photoRequired
+                      ? `"${service.name}" needs at least one photo.`
+                      : 'Optional, up to 5.'
+                  }
+                />
+              )}
+            />
+          </section>
 
-        <div className="flex flex-col gap-4">
-          <Card className="flex flex-col gap-4">
-            <h2 className="text-sm font-semibold">Where?</h2>
+          <section className="border-border flex flex-col gap-4 border-t p-5 sm:p-6">
+            <h2 className="text-section font-semibold">Where is it?</h2>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Select
+                label="Building"
+                placeholder="Choose…"
+                error={errors.buildingId?.message}
+                {...register('buildingId', {
+                  onChange: () => {
+                    setValue('floorId', '')
+                    setValue('roomId', '')
+                    setValue('assetId', '')
+                  },
+                })}
+              >
+                {buildings.data.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </Select>
+              <Select
+                label="Floor"
+                placeholder="Choose…"
+                disabled={!building}
+                error={errors.floorId?.message}
+                {...register('floorId', {
+                  onChange: () => {
+                    setValue('roomId', '')
+                    setValue('assetId', '')
+                  },
+                })}
+                value={floorId}
+              >
+                {building?.floors.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+              </Select>
+              <Select
+                label="Room or area"
+                placeholder="Choose…"
+                disabled={!floor}
+                error={errors.roomId?.message}
+                {...register('roomId', { onChange: () => setValue('assetId', '') })}
+                value={roomId}
+              >
+                {floor?.rooms.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
             <Select
-              label="Building"
-              placeholder="Choose…"
-              error={errors.buildingId?.message}
-              {...register('buildingId', {
-                onChange: () => {
-                  setValue('floorId', '')
-                  setValue('roomId', '')
-                  setValue('assetId', '')
-                },
-              })}
-            >
-              {buildings.data.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </Select>
-            <Select
-              label="Floor"
-              placeholder="Choose…"
-              disabled={!building}
-              error={errors.floorId?.message}
-              {...register('floorId', {
-                onChange: () => {
-                  setValue('roomId', '')
-                  setValue('assetId', '')
-                },
-              })}
-              value={floorId}
-            >
-              {building?.floors.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.name}
-                </option>
-              ))}
-            </Select>
-            <Select
-              label="Room or area"
-              placeholder="Choose…"
-              disabled={!floor}
-              error={errors.roomId?.message}
-              {...register('roomId', { onChange: () => setValue('assetId', '') })}
-              value={roomId}
-            >
-              {floor?.rooms.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                </option>
-              ))}
-            </Select>
-            <Select
-              label="Asset (if you know it)"
+              label="Asset, if you know it"
               placeholder="Not sure"
               disabled={!roomId || !assets.data?.length}
-              hint="Scanning the QR label on the asset fills this in (AST-07, later)."
+              hint="Scanning the QR label on the asset will fill this in (AST-07, later)."
               {...register('assetId')}
               value={assetId}
             >
@@ -331,19 +293,114 @@ export function NewRequestPage() {
                 </option>
               ))}
             </Select>
+          </section>
+
+          <div className="border-border flex flex-col gap-3 border-t px-5 py-4 sm:flex-row sm:items-center sm:justify-end sm:px-6">
+            {create.error && Object.keys(create.error.fieldErrors).length === 0 && (
+              <div className="sm:mr-auto">
+                <Alert>{create.error.message}</Alert>
+              </div>
+            )}
+            <LinkButton to={paths.myRequests} variant="ghost">
+              Cancel
+            </LinkButton>
+            <Button type="submit" variant="primary" loading={create.isPending}>
+              Send request
+            </Button>
+          </div>
+        </Card>
+
+        <div className="flex flex-col gap-6">
+          <Card>
+            <CardHeader title="Suggested type" aside="AI, suggestion only" />
+            <p className="text-muted text-sm">
+              Reads your description and proposes a type. You decide; nothing is sent.
+            </p>
+            <Button
+              className="mt-3"
+              loading={suggestion.isPending}
+              onClick={() => suggestion.mutate(getValues('description'))}
+            >
+              Suggest from description
+            </Button>
+            {suggestion.data && (
+              <div className="border-rule mt-4 flex flex-col gap-2 border-t pt-4 text-sm">
+                {suggested ? (
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span>
+                      <span className="font-medium">
+                        {suggested.groupName} · {suggested.name}
+                      </span>
+                      <span className="text-muted">
+                        {' '}
+                        · {URGENCY_LABELS[suggested.defaultUrgency]}
+                      </span>
+                    </span>
+                    {String(suggested.id) !== serviceTypeId ? (
+                      <Button variant="ghost" className="-mr-3" onClick={applySuggestion}>
+                        Use this
+                      </Button>
+                    ) : (
+                      <span className="text-positive text-xs">Selected</span>
+                    )}
+                  </div>
+                ) : (
+                  <span className="text-muted">No match. Please choose the type yourself.</span>
+                )}
+                {suggestion.data.tips.map((tip) => (
+                  <p key={tip} className="text-muted">
+                    {tip}
+                  </p>
+                ))}
+              </div>
+            )}
+            {suggestion.error && (
+              <p className="text-muted mt-3 text-sm">The assistant is not available right now.</p>
+            )}
           </Card>
 
-          {create.error && Object.keys(create.error.fieldErrors).length === 0 && (
-            <Alert>{create.error.message}</Alert>
-          )}
-          <Button type="submit" loading={create.isPending}>
-            Send request
-          </Button>
+          <Card>
+            <CardHeader title="What happens next" />
+            <ol className="flex flex-col">
+              {NEXT_STEPS.map((step, i) => (
+                <li key={step.title} className="relative pb-4 pl-5 last:pb-0">
+                  {i < NEXT_STEPS.length - 1 && (
+                    <span
+                      className="bg-rule absolute top-3 bottom-0 left-[3px] w-0.5"
+                      aria-hidden="true"
+                    />
+                  )}
+                  <span
+                    className="bg-control absolute top-1.5 left-0 size-2 rounded-full"
+                    aria-hidden="true"
+                  />
+                  <div className="text-sm font-medium">{step.title}</div>
+                  <p className="text-muted text-sm">{step.text}</p>
+                </li>
+              ))}
+            </ol>
+          </Card>
         </div>
       </form>
     </div>
   )
 }
+
+/** F3 steps ② to ⑫ as the customer sees them. */
+const NEXT_STEPS = [
+  {
+    title: 'The facility officer reviews it',
+    text: 'Approved, or sent back with the reason (e.g. a photo is missing).',
+  },
+  {
+    title: 'A technician is assigned',
+    text: 'The deadline starts on approval and depends on the urgency.',
+  },
+  {
+    title: 'The work is checked, then closed',
+    text: 'You can rate it, or report "not fixed" within 7 days.',
+  },
+] as const
 
 function findRoom(buildings: Building[], roomId: number) {
   for (const b of buildings) {

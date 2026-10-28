@@ -55,8 +55,8 @@ const BUILDINGS: Building[] = [
         id: 15,
         name: 'Floor 5',
         rooms: [
-          { id: 150, name: 'Room 501 — An Phat Co.' },
-          { id: 151, name: 'Room 502 — Lumen Studio' },
+          { id: 150, name: 'Room 501 · An Phat Co.' },
+          { id: 151, name: 'Room 502 · Lumen Studio' },
           { id: 152, name: 'Corridor 5' },
         ],
       },
@@ -64,7 +64,7 @@ const BUILDINGS: Building[] = [
         id: 22,
         name: 'Floor 12',
         rooms: [
-          { id: 220, name: 'Room 1201 — Vista Law' },
+          { id: 220, name: 'Room 1201 · Vista Law' },
           { id: 221, name: 'Meeting room 12' },
         ],
       },
@@ -78,7 +78,7 @@ const BUILDINGS: Building[] = [
         id: 33,
         name: 'Floor 3',
         rooms: [
-          { id: 330, name: 'Room 301 — Minh Long JSC' },
+          { id: 330, name: 'Room 301 · Minh Long JSC' },
           { id: 331, name: 'Room 302' },
         ],
       },
@@ -274,6 +274,7 @@ function seed(input: SeedInput): CaseDetail {
     submittedAt,
     dueAt: null,
     slaDueAt: null,
+    slaStartedAt: null,
     completedAt: null,
     costBearer: service.defaultCostBearer,
     isEmergencyFlow: false,
@@ -287,7 +288,10 @@ function seed(input: SeedInput): CaseDetail {
     const at = ago(hoursAgo)
     c.history.push({ at, from: c.status, to, by, reason: reason ?? null })
     c.status = to
-    if (to === 'approved' && !c.slaDueAt) c.slaDueAt = c.dueAt = slaDue(at, urgency)
+    if (to === 'approved' && !c.slaDueAt) {
+      c.slaStartedAt = at
+      c.slaDueAt = c.dueAt = slaDue(at, urgency)
+    }
     if (to === 'completed') c.completedAt = at
   }
   if (input.technician) c.technician = input.technician
@@ -325,9 +329,9 @@ function seedCases(): CaseDetail[] {
       roomId: 101,
       requester: P.bao,
       urgency: 'high',
-      hoursAgo: 20,
+      hoursAgo: 7,
       photo: placeholderPhoto('Leak under washbasin', '#0e7490'),
-      steps: [['approved', P.officer, 19]],
+      steps: [['approved', P.officer, 5]],
     }),
     seed({
       id: 95,
@@ -336,11 +340,11 @@ function seedCases(): CaseDetail[] {
       serviceTypeId: 3,
       roomId: 220,
       requester: P.customer,
-      hoursAgo: 26,
+      hoursAgo: 9,
       technician: P.technician,
       steps: [
-        ['approved', P.officer, 25],
-        ['assigned', P.officer, 24],
+        ['approved', P.officer, 8],
+        ['assigned', P.officer, 7],
       ],
     }),
     seed({
@@ -351,14 +355,14 @@ function seedCases(): CaseDetail[] {
       roomId: 151,
       assetId: 502,
       requester: P.customer,
-      hoursAgo: 30,
+      hoursAgo: 22,
       technician: P.technician,
       photo: placeholderPhoto('Water on desk', '#475569'),
       steps: [
-        ['approved', P.officer, 29],
-        ['assigned', P.officer, 28],
-        ['accepted', P.technician, 27],
-        ['in_progress', P.technician, 3],
+        ['approved', P.officer, 21],
+        ['assigned', P.officer, 20],
+        ['accepted', P.technician, 19],
+        ['in_progress', P.technician, 2],
       ],
     }),
     seed({
@@ -387,13 +391,13 @@ function seedCases(): CaseDetail[] {
       roomId: 220,
       assetId: 504,
       requester: P.customer,
-      hoursAgo: 70,
+      hoursAgo: 30,
       technician: P.duc,
       steps: [
-        ['approved', P.officer, 69],
-        ['assigned', P.officer, 68],
-        ['accepted', P.duc, 67],
-        ['in_progress', P.duc, 30],
+        ['approved', P.officer, 26],
+        ['assigned', P.officer, 25],
+        ['accepted', P.duc, 24],
+        ['in_progress', P.duc, 8],
         ['completed', P.duc, 4],
       ],
     }),
@@ -477,8 +481,8 @@ function seedCases(): CaseDetail[] {
     respondedAt: response === 'waiting' ? null : ago(hours - 1),
     declineReason,
   })
-  byId.get(95)!.assignments = [assignment(P.technician, 24, 'waiting')]
-  byId.get(93)!.assignments = [assignment(P.technician, 28, 'accepted')]
+  byId.get(95)!.assignments = [assignment(P.technician, 7, 'waiting')]
+  byId.get(93)!.assignments = [assignment(P.technician, 20, 'accepted')]
   byId.get(91)!.assignments = [
     assignment(
       P.technician,
@@ -488,7 +492,7 @@ function seedCases(): CaseDetail[] {
     ),
     assignment(P.long, 46, 'accepted'),
   ]
-  byId.get(90)!.assignments = [assignment(P.duc, 68, 'accepted')]
+  byId.get(90)!.assignments = [assignment(P.duc, 25, 'accepted')]
   byId.get(87)!.assignments = [assignment(P.long, 118, 'accepted')]
   byId.get(85)!.assignments = [assignment(P.technician, 198, 'accepted')]
 
@@ -518,7 +522,7 @@ function seedCases(): CaseDetail[] {
 // Store (localStorage, so the demo survives sign-out / reload)
 // ---------------------------------------------------------------------------
 
-const STORAGE_KEY = 'smartmaint.mock.f3.v1'
+const STORAGE_KEY = 'smartmaint.mock.f3.v4'
 
 function load(): CaseDetail[] {
   try {
@@ -569,6 +573,8 @@ function toSummary(c: CaseDetail): CaseSummary {
     technician: c.technician,
     submittedAt: c.submittedAt,
     dueAt: c.dueAt,
+    slaStartedAt: c.slaStartedAt,
+    completedAt: c.completedAt,
     isEmergencyFlow: c.isEmergencyFlow,
   }
 }
@@ -603,7 +609,7 @@ function transition(id: number, action: CaseAction, reason: string | null = null
     throw new ApiError(
       409,
       'case.invalid_transition',
-      'This action is no longer possible. The case may have been changed by someone else — reload the page.',
+      'This action is no longer possible. The case may have been changed by someone else. Reload the page.',
     )
   }
   if (rule.to) {
@@ -703,6 +709,7 @@ export const mock = {
       submittedAt: now,
       dueAt: null,
       slaDueAt: null,
+      slaStartedAt: null,
       completedAt: null,
       costBearer: service.defaultCostBearer,
       isEmergencyFlow: service.isEmergency,
@@ -713,7 +720,7 @@ export const mock = {
           from: null,
           to: 'pending',
           by: requester,
-          reason: service.isEmergency ? 'Emergency service type — handed over to F4.' : null,
+          reason: service.isEmergency ? 'Emergency service type, handed over to F4.' : null,
         },
       ],
       assignments: [],
@@ -738,9 +745,10 @@ export const mock = {
     if (body.urgency === 'emergency') {
       // Officer escalates: the case leaves F3 for the emergency flow (F4, Tùng).
       c.isEmergencyFlow = true
-      c.history.at(-1)!.reason = 'Escalated to Emergency — handed over to F4.'
+      c.history.at(-1)!.reason = 'Escalated to Emergency, handed over to F4.'
     }
-    c.slaDueAt = c.dueAt = slaDue(new Date().toISOString(), body.urgency)
+    c.slaStartedAt = new Date().toISOString()
+    c.slaDueAt = c.dueAt = slaDue(c.slaStartedAt, body.urgency)
     save()
     return respond(undefined)
   },
@@ -841,7 +849,8 @@ export const mock = {
         declineReason: null,
       })
     }
-    c.slaDueAt = c.dueAt = slaDue(new Date().toISOString(), c.urgency)
+    c.slaStartedAt = new Date().toISOString()
+    c.slaDueAt = c.dueAt = slaDue(c.slaStartedAt, c.urgency)
     save()
     return respond(undefined)
   },

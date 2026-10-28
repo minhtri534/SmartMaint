@@ -62,7 +62,7 @@ function RejectForm({ caseId, onDone }: { caseId: number; onDone: () => void }) 
       </p>
       {reject.error && <Alert>{reject.error.message}</Alert>}
       <DialogActions>
-        <Button variant="secondary" onClick={onDone}>
+        <Button variant="ghost" onClick={onDone}>
           Back
         </Button>
         <Button type="submit" variant="danger" loading={reject.isPending}>

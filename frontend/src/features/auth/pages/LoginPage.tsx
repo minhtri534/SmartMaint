@@ -38,8 +38,8 @@ export function LoginPage() {
   const showGenericError = login.error && Object.keys(login.error.fieldErrors).length === 0
 
   return (
-    <Card className="w-full max-w-sm">
-      <h1 className="text-xl font-semibold">Sign in to SmartMaint</h1>
+    <Card padding="roomy" className="w-full max-w-[400px]">
+      <h1 className="text-title font-semibold tracking-[-0.01em]">Sign in</h1>
       <p className="text-muted mt-1 text-sm">Use the account your Administrator gave you.</p>
 
       <form onSubmit={onSubmit} noValidate className="mt-6 flex flex-col gap-4">
@@ -63,7 +63,7 @@ export function LoginPage() {
           error={errors.password?.message}
           {...register('password')}
         />
-        <Button type="submit" loading={login.isPending} className="mt-2">
+        <Button type="submit" variant="primary" loading={login.isPending} className="mt-2 h-[38px]">
           Sign in
         </Button>
       </form>

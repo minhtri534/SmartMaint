@@ -39,11 +39,15 @@ export function PhotoPicker({ label, value, onChange, max = 5, error, hint }: Ph
       <div className="flex flex-wrap gap-2">
         {value.map((url, i) => (
           <div key={url.slice(-40) + i} className="relative">
-            <img src={url} alt="" className="border-line size-20 rounded-md border object-cover" />
+            <img
+              src={url}
+              alt=""
+              className="border-border size-20 rounded-lg border object-cover"
+            />
             <button
               type="button"
               onClick={() => onChange(value.filter((_, j) => j !== i))}
-              className="bg-ink absolute -top-2 -right-2 size-5 rounded-full text-xs text-white"
+              className="bg-primary absolute -top-2 -right-2 grid size-5 place-items-center rounded-full text-xs text-white"
               aria-label="Remove photo"
             >
               ×
@@ -54,9 +58,9 @@ export function PhotoPicker({ label, value, onChange, max = 5, error, hint }: Ph
           <label
             htmlFor={inputId}
             className={cn(
-              'text-muted hover:bg-canvas flex size-20 cursor-pointer flex-col items-center justify-center',
-              'rounded-md border border-dashed text-xs',
-              error ? 'border-danger' : 'border-line',
+              'text-muted hover:bg-raised flex size-20 cursor-pointer flex-col items-center justify-center',
+              'rounded-lg border border-dashed text-xs',
+              error ? 'border-negative' : 'border-control',
             )}
           >
             <span className="text-xl leading-none">+</span>
@@ -76,7 +80,7 @@ export function PhotoPicker({ label, value, onChange, max = 5, error, hint }: Ph
         />
       </div>
       {(error || hint) && (
-        <p className={cn('text-xs', error ? 'text-danger' : 'text-muted')}>{error ?? hint}</p>
+        <p className={cn('text-xs', error ? 'text-negative' : 'text-muted')}>{error ?? hint}</p>
       )}
     </div>
   )

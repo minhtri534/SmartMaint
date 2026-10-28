@@ -69,9 +69,9 @@ function AssignForm({ caseDetail, onDone }: { caseDetail: CaseDetail; onDone: ()
       >
         {options.map((t) => (
           <option key={t.id} value={t.id}>
-            {t.fullName} — {t.specialties.join(', ')} — {t.openCases} open
-            {t.specialties.includes(group) ? ' ✓ matches' : ''}
-            {declinedIds.has(t.id) ? ' (declined this case)' : ''}
+            {t.fullName} · {t.specialties.join(', ')} · {t.openCases} open
+            {t.specialties.includes(group) ? ' · right specialty' : ''}
+            {declinedIds.has(t.id) ? ' · declined this case' : ''}
           </option>
         ))}
       </Select>
@@ -81,10 +81,10 @@ function AssignForm({ caseDetail, onDone }: { caseDetail: CaseDetail; onDone: ()
       </p>
       {assign.error && <Alert>{assign.error.message}</Alert>}
       <DialogActions>
-        <Button variant="secondary" onClick={onDone}>
+        <Button variant="ghost" onClick={onDone}>
           Back
         </Button>
-        <Button type="submit" loading={assign.isPending}>
+        <Button type="submit" variant="primary" loading={assign.isPending}>
           Assign
         </Button>
       </DialogActions>

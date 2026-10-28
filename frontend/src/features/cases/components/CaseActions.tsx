@@ -11,20 +11,24 @@ import { RateDialog } from './dialogs/RateDialog'
 import { ReasonDialog } from './dialogs/ReasonDialog'
 import { RejectDialog } from './dialogs/RejectDialog'
 
-/** Button text and style per action. Secondary actions are listed first so the main one ends up on the right. */
-const BUTTONS: Record<CaseAction, { label: string; variant: 'primary' | 'secondary' }> = {
-  cancel: { label: 'Cancel case', variant: 'secondary' },
-  reject: { label: 'Reject', variant: 'secondary' },
-  decline: { label: 'Decline job', variant: 'secondary' },
-  reopen: { label: 'Not OK — reopen', variant: 'secondary' },
-  approve: { label: 'Approve', variant: 'primary' },
-  assign: { label: 'Assign technician', variant: 'primary' },
-  accept: { label: 'Accept job', variant: 'primary' },
-  start: { label: 'Start work on site', variant: 'primary' },
-  complete: { label: 'Report completed', variant: 'primary' },
-  close: { label: 'Verify and close', variant: 'primary' },
-  rate: { label: 'Rate the service', variant: 'primary' },
-}
+/**
+ * Button text and style per action. Secondary actions are listed first so the main one ends up on the right.
+ * At most one primary per status (the state machine never offers two primary actions at once).
+ */
+const BUTTONS: Record<CaseAction, { label: string; variant: 'primary' | 'secondary' | 'danger' }> =
+  {
+    cancel: { label: 'Cancel case', variant: 'danger' },
+    reject: { label: 'Reject', variant: 'secondary' },
+    decline: { label: 'Decline job', variant: 'secondary' },
+    reopen: { label: 'Not OK, reopen', variant: 'secondary' },
+    approve: { label: 'Approve', variant: 'primary' },
+    assign: { label: 'Assign technician', variant: 'primary' },
+    accept: { label: 'Accept job', variant: 'primary' },
+    start: { label: 'Start work on site', variant: 'primary' },
+    complete: { label: 'Report completed', variant: 'primary' },
+    close: { label: 'Verify and close', variant: 'primary' },
+    rate: { label: 'Rate the service', variant: 'primary' },
+  }
 const ORDER = Object.keys(BUTTONS) as CaseAction[]
 
 /** The buttons the signed-in user may press on this case, and the dialog each one opens. */

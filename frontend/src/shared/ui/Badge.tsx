@@ -1,22 +1,23 @@
 import type { ReactNode } from 'react'
 import { cn } from '@/shared/utils/cn'
 
-export type BadgeTone = 'neutral' | 'info' | 'success' | 'warning' | 'danger'
+export type BadgeTone = 'neutral' | 'accent' | 'positive' | 'warning' | 'negative'
 
+/** Pale tint with dark ink of the same hue. One status mark per row. */
 const TONES: Record<BadgeTone, string> = {
-  neutral: 'bg-canvas text-muted border-line',
-  info: 'bg-primary-soft text-primary border-primary/20',
-  success: 'bg-success-soft text-success border-success/20',
-  warning: 'bg-warning-soft text-warning border-warning/20',
-  danger: 'bg-danger-soft text-danger border-danger/20',
+  neutral: 'bg-pill-neutral-bg text-pill-neutral-ink',
+  accent: 'bg-pill-accent-bg text-pill-accent-ink',
+  positive: 'bg-pill-positive-bg text-pill-positive-ink',
+  warning: 'bg-pill-warning-bg text-pill-warning-ink',
+  negative: 'bg-pill-negative-bg text-pill-negative-ink',
 }
 
-/** Small coloured label for a status, a priority or a count. */
+/** Status pill: 22px tall, 12/500, never squeezed. */
 export function Badge({ tone = 'neutral', children }: { tone?: BadgeTone; children: ReactNode }) {
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium whitespace-nowrap',
+        'inline-flex h-[22px] flex-none items-center rounded-full px-2 text-xs font-medium whitespace-nowrap',
         TONES[tone],
       )}
     >

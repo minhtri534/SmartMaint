@@ -10,3 +10,12 @@ export const ROLE_LABELS: Record<Role, string> = {
   manager: 'Facility Manager',
   admin: 'Administrator',
 }
+
+/** The workspace each role works in, shown under the product name in the sidebar. */
+export const ROLE_WORKSPACES: Record<Role, string> = {
+  customer: 'Tenant portal',
+  officer: 'Facility office',
+  technician: 'Maintenance team',
+  manager: 'Management',
+  admin: 'Administration',
+}

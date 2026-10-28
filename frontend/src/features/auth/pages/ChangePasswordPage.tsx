@@ -43,8 +43,8 @@ export function ChangePasswordPage() {
     Object.keys(changePassword.error.fieldErrors).length === 0
 
   return (
-    <Card className="w-full max-w-sm">
-      <h1 className="text-xl font-semibold">
+    <Card padding="roomy" className="w-full max-w-[400px]">
+      <h1 className="text-title font-semibold tracking-[-0.01em]">
         {forced ? 'Set your own password' : 'Change password'}
       </h1>
       {forced && (
@@ -77,7 +77,12 @@ export function ChangePasswordPage() {
           error={errors.confirmPassword?.message}
           {...register('confirmPassword')}
         />
-        <Button type="submit" loading={changePassword.isPending} className="mt-2">
+        <Button
+          type="submit"
+          variant="primary"
+          loading={changePassword.isPending}
+          className="mt-2 h-[38px]"
+        >
           Save password
         </Button>
         {forced && (

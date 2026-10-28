@@ -2,7 +2,7 @@
 
 > Bắt đầu 23/10/2026. Nguồn: trang "Logical ERD" trong `04_Design/ERD_SmartMaint_v5` (Hùng) — **bản Drive là bản chính từ 26/10**.
 > 27/10: có đề tài update (`Smart_Corporate_Facility_Maintenance_Management_Platform_Update.docx`) — **Leader: bản update chưa phải bản cuối, có thể giảm scope; ưu tiên sửa LOGIC ERD trước, chỉnh bản update sau.** Sơ đồ F2 (12/10) không dùng nữa.
-> ⚠️ Chưa đồng bộ vào PROJECT_CONTEXT.md.
+> ✅ 28/10: Leader **xác nhận chính thức E1, E4, E6, E10** (không còn "để sau") — đã đồng bộ vào PROJECT_CONTEXT.md (Decisions Log 28/10).
 
 ## Góp ý của thầy (Leader kể lại 23/10)
 - Thực thể tĩnh trước; 2 thực thể tĩnh M–M thì tách thực thể động ở giữa.
@@ -12,16 +12,16 @@
 ## Quyết định
 | # | Ngày | Quyết định | Ghi chú |
 |---|---|---|---|
-| E1 | 23/10 | Phạm vi = tòa văn phòng cho thuê; bỏ chung cư | Đề tài update có chung cư — để sau |
+| E1 | 23/10 | Phạm vi = tòa văn phòng cho thuê; bỏ chung cư | ✅ Chốt 28/10 — bỏ hẳn chung cư (thay quyết định 12/10) |
 | E2 | 23/10 | Lỗi thường gặp theo loại thiết bị | Bản hiện tại dùng CaseCategories — để sau |
 | E3 | 23/10 | Manufacturers chỉ lưu hãng sản xuất | |
 | E4 | 23/10 | `HasCopyright` = chỉ hãng được bảo trì; thuê ngoài trên case = "lần này có thuê ngoài" (`TimeOutsourced`) | |
 | E5 | 23/10 | Khách làm hư → xử lý ngoài hệ thống | |
-| E6 | 23/10 | Không bảng Vendor | Đề tài update có Vendors — để sau |
+| E6 | 23/10 | Không bảng Vendor | ✅ Chốt 28/10 — chỉ lưu "case này có thuê ngoài hay không" (E4); không lưu nhà cung cấp, báo giá |
 | E7 | 23/10 | Officer ↔ Building M–M → `StaffBuildingAssignments` | Đổi tên 27/10 |
 | E8 | 23/10 | `IsPrimary` — chỉ báo Officer chính | |
 | E9 | 27/10 | Lưu chi phí (Costs + HourlyRate) — cần bổ sung loại chi phí, số lượng, đơn giá chép | |
-| E10 | 27/10 | Manager duyệt kế hoạch (`ApprovingManager`) | Đề tài update chỉ ghi "review / supervise" |
+| E10 | 27/10 | Manager duyệt kế hoạch (`ApprovingManager`) | ✅ Chốt 28/10 — thay BR-12 cũ (Manager chỉ xem) |
 | E11 | 27/10 | `Cases.TriggerWorkOrder` FK nullable → `MaintenanceWorkOrderDetails` (thay IsPreventative) — **Hùng đã sửa** | NULL = case sự cố |
 | E12 | 27/10 | `TriggerStatuses` (ID, Name); Chờ duyệt / Đã duyệt / Từ chối… là dữ liệu, không phải cột | |
 | E13 | 27/10 | Manager ↔ Building M–M → `ManagerBuildingAssignments` (bỏ `Manager.Building`) — **Hùng đã sửa** | Cột đang tên `Staff` → đổi `Manager` |

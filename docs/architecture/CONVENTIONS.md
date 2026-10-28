@@ -16,6 +16,7 @@
 | React / Vite / TypeScript | 19 / 8 / 7 | `frontend/package-lock.json` |
 | Router / data / form | react-router 8, TanStack Query 5, axios, react-hook-form 7 + zod 4 | như trên |
 | CSS | Tailwind CSS 4 | như trên |
+| Font | IBM Plex Sans + Plex Mono (`@fontsource/*` 5.3, OFL) — tự host | như trên |
 
 Thư viện backend: FluentValidation (validate DTO), EFCore.NamingConventions (snake_case tự động), JwtBearer, Swashbuckle SwaggerUI (chỉ phần giao diện; tài liệu OpenAPI do `Microsoft.AspNetCore.OpenApi` sinh). **Không** dùng MediatR, AutoMapper, FluentAssertions (đã chuyển sang thu phí).
 Thêm package mới (backend hay web) → hỏi Trí trước, thêm version vào `Directory.Packages.props` / `package.json` trong cùng PR.
@@ -133,7 +134,7 @@ HTTP → AuthController (mỏng) → ValidationFilter (FluentValidation tự ch�
 ```
 frontend/src/
 ├── main.tsx
-├── index.css            Tailwind + design token (@theme): bg-surface, text-muted, border-line, bg-primary...
+├── index.css            Tailwind + design token (@theme): bg-frame, bg-surface, text-muted, border-border, bg-primary... (xem 5.4)
 ├── app/                 Khung ứng dụng
 │   ├── App.tsx          provider (QueryClient, Auth) + RouterProvider
 │   ├── router.tsx       cây route (guard theo role)
@@ -142,10 +143,10 @@ frontend/src/
 ├── lib/                 Hạ tầng không có UI: api-client (axios), api-error, query-client, env, token-storage
 ├── shared/              Dùng chung mọi feature
 │   ├── ui/              Button, LinkButton, TextField, Select, TextArea, Dialog, ConfirmDialog, Tabs, Badge,
-│   │                    Card, Alert, Spinner, PageHeader (import từ '@/shared/ui')
-│   ├── layout/          AppLayout (sidebar + topbar), AuthLayout
-│   ├── types/           Role...
-│   └── utils/           cn, format (ngày giờ), apply-field-errors
+│   │                    Card, CardHeader, Alert, Spinner, PageHeader, Icon, ProductMark (import từ '@/shared/ui')
+│   ├── layout/          AppLayout (sidebar trên khung + tờ trắng), AuthLayout
+│   ├── types/           Role, ROLE_WORKSPACES...
+│   └── utils/           cn, format (ngày giờ, thời lượng "3 h 10 m", "2 h ago"), apply-field-errors
 └── features/<feature>/  Mỗi feature / luồng một thư mục
     ├── types.ts         kiểu dữ liệu, khớp DTO backend (+ nhãn hiển thị của enum)
     ├── api.ts           1 hàm / endpoint (comment ghi rõ METHOD + URL) + <feature>Keys (query keys)
@@ -168,7 +169,7 @@ Feature có luật riêng thì thêm 1 file đặt tên rõ ràng, vd. `features
 | W3 | Form: react-hook-form + zod (`schemas.ts`); lỗi field từ server gắn bằng `applyFieldErrors`; lỗi khác hiển thị `<Alert>` theo `error.code`. Đọc giá trị form lúc render bằng `useWatch` (không dùng `watch()`). |
 | W4 | Quyền: route bọc `<RequireAuth roles={[...]}>`, sidebar khai trong `navigation.ts` — cùng danh sách role với `[AuthorizeRoles]` của API. Nút không được dùng thì **ẩn** (SRS), không disable. |
 | W5 | Import ngoài feature hiện tại dùng alias `@/...`; feature A không import file nội bộ của feature B (chỉ qua `index.ts`). |
-| W6 | Style: class Tailwind dùng token trong `index.css`; không viết mã màu hex trong component; component dùng lại được đưa vào `shared/ui`. |
+| W6 | Style: class Tailwind dùng token trong `index.css`; không viết mã màu hex trong component; component dùng lại được đưa vào `shared/ui`. Luật giao diện ở 5.4. `cn()` chỉ nối class, **không** ghi đè: muốn đổi padding của `Card` thì dùng prop `padding`, đừng truyền `p-0`. |
 | W7 | Biến môi trường web chỉ đọc trong `lib/env.ts`, khai trong `frontend/.env.example`, tiền tố `VITE_`. Không đặt secret ở web. |
 | W8 | Trước PR: `npm run typecheck`, `npm run lint`, `npm run format`. |
 
@@ -187,6 +188,27 @@ Khi bảng / API chưa có (ERD chưa đóng băng), làm như `features/cases`:
 - `types.ts` viết theo **nhu cầu màn hình**, mỗi field ghi chú `ERD: Bảng.Cột` hoặc `NOT IN ERD v5` → mang đi họp ERD; thêm / cắt field nào thì sửa đúng chỗ đó.
 - `mock.ts` đóng vai backend: cùng luật phạm vi dữ liệu, cùng mã lỗi (`case.invalid_transition`...), lưu localStorage để đăng xuất / đổi role vẫn giữ dữ liệu. Có banner "Demo data" + nút **Reset demo data**.
 - `api.ts` gọi `mock.*`, comment ghi sẵn endpoint thật. Khi API xong: thay thân hàm bằng `apiClient...`, xóa `mock.ts` + `MockDataBanner` — **pages và hooks không đổi**.
+
+### 5.4 Giao diện — theo skill `design-taste-frontend` (chốt 28/10)
+
+Skill nằm ở `.claude/skills/design-taste-frontend/` (MIT, bản chép từ Leonxlnx/taste-skill, xem `VENDORED.txt`). Màn hình của mình là **app screen**, nên luật nằm ở `references/app-screens.md` của skill. Style đã rút: **framed-sheet** (seed 1994434881). Token nằm hết trong `index.css`.
+
+| # | Quy tắc giao diện |
+|---|---|
+| U1 | Khung: sidebar 228px nằm trên **nền khung xám xanh thép** (`bg-frame`); trang nằm trên **tờ trắng** viền 1px, bo 16px, **không đổ bóng**. Dưới 1024px sidebar gập thành menu. |
+| U2 | **Mỗi màn hình chỉ 1 nút chính** (`variant="primary"`, gần đen). Còn lại `secondary` (viền), `ghost` (chữ), `danger` (viền đỏ, cho hủy / xóa). |
+| U3 | **Màu nhấn teal chỉ dùng cho dữ liệu** (thanh SLA, bộ lọc đang chọn) và focus. Không tô màu sidebar, tab, nút. Đỏ chỉ cho cái đang quá hạn / lỗi — tối đa 1 dấu đỏ mỗi đối tượng. |
+| U4 | Trạng thái = **pill nền nhạt chữ đậm cùng màu** (`Badge`), 1 pill mỗi dòng. Mức khẩn cấp chỉ in khi trên mức Normal, dạng chữ. |
+| U5 | Tiêu đề trang là **danh từ** 22px ("Cases", "My requests"), không "Welcome". Dòng phụ là **phát hiện từ dữ liệu** ("2 new requests to review, 1 past the deadline"), không phải hướng dẫn dùng màn hình. |
+| U6 | Bảng: tiêu đề cột 12px xám, viết thường; không sọc ngựa vằn; số căn phải `tabular-nums`; dòng 2 xám 13px. Thiếu giá trị = dấu `—` xám. Dưới 768px bảng thành danh sách 2 dòng, không bỏ trường nào. |
+| U7 | Không gradient, không glow / kính mờ, không icon trong ô màu, không emoji (kể cả ★ ✓ — dùng SVG). Icon viền 16px một bộ (`Icon`). |
+| U8 | Font: IBM Plex Sans (gói `@fontsource`, không gọi Google). IBM Plex Mono **chỉ** cho mã (CS-000123). |
+| U9 | Mỗi khối có đủ trạng thái: đang tải (thanh xám đúng kích thước, không shimmer), lỗi (1 câu + nút Retry trong khối), rỗng (khung nét đứt + 1 câu). |
+
+**Kiểm tra trước PR** (chạy ở thư mục gốc repo):
+- `node .claude/skills/design-taste-frontend/scripts/lint.mjs --app frontend/src` → phải **0 FAIL**.
+- `node .claude/skills/design-taste-frontend/scripts/inspect.mjs --app <url>` → mở trang thật ở 1440 / 768 / 390, lưu ảnh vào `.taste-skill/` (đã gitignore). Trang cần đăng nhập thì nhờ Trí chạy bản có gắn token.
+- WARN nào giữ lại phải giải thích được trong 1 câu (vd. mono cho mã case, bóng của dialog).
 
 ## 6. Unit test (yêu cầu Report 5)
 

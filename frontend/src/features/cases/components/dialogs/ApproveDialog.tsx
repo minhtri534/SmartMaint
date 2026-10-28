@@ -73,10 +73,10 @@ function ApproveForm({ caseDetail, onDone }: { caseDetail: CaseDetail; onDone: (
       <p className="text-muted text-xs">The deadline (SLA) starts counting when you approve.</p>
       {approve.error && <Alert>{approve.error.message}</Alert>}
       <DialogActions>
-        <Button variant="secondary" onClick={onDone}>
+        <Button variant="ghost" onClick={onDone}>
           Back
         </Button>
-        <Button type="submit" loading={approve.isPending}>
+        <Button type="submit" variant="primary" loading={approve.isPending}>
           Approve
         </Button>
       </DialogActions>

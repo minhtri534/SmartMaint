@@ -7,7 +7,10 @@ function ErrorScreen({ code, title, message }: { code: string; title: string; me
       <div className="text-muted text-sm font-medium">{code}</div>
       <h1 className="text-2xl font-semibold">{title}</h1>
       <p className="text-muted max-w-md text-sm">{message}</p>
-      <Link to={paths.home} className="text-primary mt-2 text-sm font-medium hover:underline">
+      <Link
+        to={paths.home}
+        className="text-ink mt-2 text-sm font-medium underline-offset-4 hover:underline"
+      >
         Back to Home
       </Link>
     </div>

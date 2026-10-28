@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react'
+import { cn } from '@/shared/utils/cn'
 import { Alert } from './Alert'
 import { Button } from './Button'
 
@@ -7,14 +8,17 @@ interface DialogProps {
   onClose: () => void
   title: string
   description?: string
+  /** Wider dialogs hold a form with photos (e.g. the repair record). */
+  wide?: boolean
   children: ReactNode
 }
 
 /**
  * Modal built on the native <dialog> element (Esc and the backdrop are handled by the browser).
  * Screen catalog dialogs (DLG-xx) use this: put the form inside, call onClose after the mutation succeeds.
+ * A dialog floats, so it is the one surface allowed a shadow.
  */
-export function Dialog({ open, onClose, title, description, children }: DialogProps) {
+export function Dialog({ open, onClose, title, description, wide, children }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null)
 
   useEffect(() => {
@@ -28,12 +32,16 @@ export function Dialog({ open, onClose, title, description, children }: DialogPr
     <dialog
       ref={ref}
       onClose={onClose}
-      className="bg-surface text-ink m-auto w-full max-w-lg rounded-lg p-0 shadow-xl backdrop:bg-black/40"
+      className={cn(
+        'bg-surface text-ink border-border rounded-card m-auto w-[calc(100%-32px)] border p-0',
+        'shadow-[0_12px_32px_rgba(0,0,0,0.14)] backdrop:bg-black/30',
+        wide ? 'max-w-2xl' : 'max-w-lg',
+      )}
     >
       {open && (
-        <div className="flex flex-col gap-4 p-6">
+        <div className="flex max-h-[85vh] flex-col gap-4 overflow-y-auto p-6">
           <div>
-            <h2 className="text-lg font-semibold">{title}</h2>
+            <h2 className="text-section font-semibold">{title}</h2>
             {description && <p className="text-muted mt-1 text-sm">{description}</p>}
           </div>
           {children}
@@ -78,10 +86,10 @@ export function ConfirmDialog({
       {children}
       {error && <Alert>{error}</Alert>}
       <DialogActions>
-        <Button variant="secondary" onClick={onClose}>
+        <Button variant="ghost" onClick={onClose}>
           Back
         </Button>
-        <Button loading={loading} onClick={onConfirm}>
+        <Button variant="primary" loading={loading} onClick={onConfirm}>
           {confirmLabel}
         </Button>
       </DialogActions>

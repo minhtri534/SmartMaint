@@ -62,3 +62,6 @@ desktop.ini
 # ===== draw.io backup =====
 *.drawio.bkp
 .$*.bkp
+
+# ===== taste skill working files (screenshots, dealt sheets) =====
+.taste-skill/

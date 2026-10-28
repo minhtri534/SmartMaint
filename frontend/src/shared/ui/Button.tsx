@@ -3,18 +3,24 @@ import { Link, type LinkProps } from 'react-router'
 import { cn } from '@/shared/utils/cn'
 import { Spinner } from './Spinner'
 
-type Variant = 'primary' | 'secondary' | 'danger' | 'ghost'
+/**
+ * primary   — near-black fill. ONE per screen: the main job (Approve, Send request, Report completed).
+ * secondary — white with a 1px border: every other action.
+ * ghost     — text only: "Back", "Reset demo data".
+ * danger    — outlined in the negative colour: destructive actions (Reject, Cancel case, Decline).
+ */
+type Variant = 'primary' | 'secondary' | 'ghost' | 'danger'
 
 const VARIANTS: Record<Variant, string> = {
-  primary: 'bg-primary text-white hover:bg-primary-hover',
-  secondary: 'border border-line bg-surface text-ink hover:bg-canvas',
-  danger: 'bg-danger text-white hover:opacity-90',
-  ghost: 'text-muted hover:bg-canvas hover:text-ink',
+  primary: 'bg-primary text-white hover:bg-primary-hover border border-transparent',
+  secondary: 'border border-control bg-surface text-ink hover:bg-raised',
+  ghost: 'border border-transparent text-ink hover:bg-raised',
+  danger: 'border border-negative/40 bg-surface text-negative hover:bg-pill-negative-bg',
 }
 
 const BASE = cn(
-  'inline-flex h-9 items-center justify-center gap-2 rounded-md px-4 text-sm font-medium transition-colors',
-  'focus-visible:ring-primary focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none',
+  'inline-flex h-8 items-center justify-center gap-2 rounded-control px-3 text-sm font-medium whitespace-nowrap',
+  'transition-colors duration-150 active:translate-y-px',
   'disabled:cursor-not-allowed disabled:opacity-60',
 )
 
@@ -24,7 +30,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 export function Button({
-  variant = 'primary',
+  variant = 'secondary',
   loading = false,
   disabled,
   className,
@@ -45,9 +51,9 @@ export function Button({
   )
 }
 
-/** A router link that looks like a Button (e.g. "New request" in a page header). */
+/** A router link that looks like a Button (e.g. "New request" in a title row). */
 export function LinkButton({
-  variant = 'primary',
+  variant = 'secondary',
   className,
   ...rest
 }: LinkProps & { variant?: Variant }) {

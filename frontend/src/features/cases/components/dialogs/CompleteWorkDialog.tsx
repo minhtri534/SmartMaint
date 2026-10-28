@@ -22,6 +22,7 @@ export function CompleteWorkDialog({ caseId, open, onClose }: Props) {
       open={open}
       onClose={onClose}
       title="Report work completed"
+      wide
       description="The officer checks this record and the photos before closing the case."
     >
       <CompleteWorkForm caseId={caseId} onDone={onClose} />
@@ -56,11 +57,7 @@ function CompleteWorkForm({ caseId, onDone }: { caseId: number; onDone: () => vo
   )
 
   return (
-    <form
-      onSubmit={onSubmit}
-      noValidate
-      className="flex max-h-[70vh] flex-col gap-4 overflow-y-auto"
-    >
+    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
       <TextArea
         label="Work done *"
         rows={3}
@@ -68,52 +65,60 @@ function CompleteWorkForm({ caseId, onDone }: { caseId: number; onDone: () => vo
         error={errors.workDone?.message}
         {...register('workDone')}
       />
-      <TextField
-        label="Cause *"
-        placeholder="e.g. Blocked condensate pipe"
-        error={errors.rootCause?.message}
-        {...register('rootCause')}
-      />
+      <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_140px]">
+        <TextField
+          label="Cause *"
+          placeholder="e.g. Blocked condensate pipe"
+          error={errors.rootCause?.message}
+          {...register('rootCause')}
+        />
+        <TextField
+          label="Hours worked *"
+          type="number"
+          step="0.25"
+          min="0.25"
+          inputMode="decimal"
+          error={errors.laborHours?.message}
+          {...register('laborHours')}
+        />
+      </div>
       <TextField
         label="Parts used"
         placeholder="Written by hand, e.g. 1× MCB 20A"
         hint="No stock module: parts are bought outside the system (N2)."
         {...register('partsUsed')}
       />
-      <TextField
-        label="Hours worked *"
-        type="number"
-        step="0.25"
-        min="0.25"
-        className="max-w-40"
-        error={errors.laborHours?.message}
-        {...register('laborHours')}
-      />
-      <Controller
-        control={control}
-        name="beforePhotos"
-        render={({ field }) => (
-          <PhotoPicker label="Photos before repair" value={field.value} onChange={field.onChange} />
-        )}
-      />
-      <Controller
-        control={control}
-        name="afterPhotos"
-        render={({ field }) => (
-          <PhotoPicker
-            label="Photos after repair *"
-            value={field.value}
-            onChange={field.onChange}
-            error={errors.afterPhotos?.message}
-          />
-        )}
-      />
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Controller
+          control={control}
+          name="beforePhotos"
+          render={({ field }) => (
+            <PhotoPicker
+              label="Photos before repair"
+              value={field.value}
+              onChange={field.onChange}
+            />
+          )}
+        />
+        <Controller
+          control={control}
+          name="afterPhotos"
+          render={({ field }) => (
+            <PhotoPicker
+              label="Photos after repair *"
+              value={field.value}
+              onChange={field.onChange}
+              error={errors.afterPhotos?.message}
+            />
+          )}
+        />
+      </div>
       {complete.error && <Alert>{complete.error.message}</Alert>}
       <DialogActions>
-        <Button variant="secondary" onClick={onDone}>
+        <Button variant="ghost" onClick={onDone}>
           Back
         </Button>
-        <Button type="submit" loading={complete.isPending}>
+        <Button type="submit" variant="primary" loading={complete.isPending}>
           Report completed
         </Button>
       </DialogActions>

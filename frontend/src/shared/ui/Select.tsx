@@ -1,5 +1,6 @@
 import { useId, type ComponentProps } from 'react'
-import { cn } from '@/shared/utils/cn'
+import { controlClass } from './control-class'
+import { Field } from './Field'
 
 interface SelectProps extends ComponentProps<'select'> {
   label: string
@@ -22,32 +23,19 @@ export function Select({
 }: SelectProps) {
   const generatedId = useId()
   const selectId = id ?? generatedId
-  const messageId = `${selectId}-message`
 
   return (
-    <div className={cn('flex flex-col gap-1.5', className)}>
-      <label htmlFor={selectId} className="text-sm font-medium">
-        {label}
-      </label>
+    <Field id={selectId} label={label} error={error} hint={hint} className={className}>
       <select
         id={selectId}
         aria-invalid={error ? true : undefined}
-        aria-describedby={error || hint ? messageId : undefined}
-        className={cn(
-          'border-line bg-surface h-9 rounded-md border px-2 text-sm outline-none',
-          'focus:border-primary focus:ring-primary/20 focus:ring-2',
-          error && 'border-danger focus:border-danger focus:ring-danger/20',
-        )}
+        aria-describedby={error || hint ? `${selectId}-message` : undefined}
+        className={controlClass(error) + ' h-[38px] pr-8'}
         {...rest}
       >
         {placeholder !== undefined && <option value="">{placeholder}</option>}
         {children}
       </select>
-      {(error || hint) && (
-        <p id={messageId} className={cn('text-xs', error ? 'text-danger' : 'text-muted')}>
-          {error ?? hint}
-        </p>
-      )}
-    </div>
+    </Field>
   )
 }

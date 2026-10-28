@@ -1,36 +1,28 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { ROLE_LABELS } from '@/shared/types/role'
-import { Button } from '@/shared/ui'
 import { caseKeys } from '../api'
 import { mockMe, resetMockData } from '../mock'
 
-/** Reminds everyone the F3 screens run on demo data. Remove together with mock.ts. */
+/** Quiet notice that the F3 screens run on demo data. Remove together with mock.ts. */
 export function MockDataBanner() {
   const queryClient = useQueryClient()
   const me = mockMe()
 
   return (
-    <div className="border-warning/30 bg-warning-soft text-warning flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
-      <span>
-        Demo data (no backend yet)
-        {me && (
-          <>
-            {' '}
-            — you act as <strong>{me.fullName}</strong> ({ROLE_LABELS[me.role]})
-          </>
-        )}
-        .
-      </span>
-      <Button
-        variant="ghost"
-        className="h-7 px-2"
+    <div
+      role="status"
+      className="border-notice-border bg-pill-warning-bg text-pill-warning-ink rounded-control flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border px-3 py-1.5 text-xs"
+    >
+      <span>Demo data, no backend yet{me && <> · you act as {me.fullName}</>}</span>
+      <button
+        type="button"
+        className="font-medium underline-offset-2 hover:underline"
         onClick={() => {
           resetMockData()
           void queryClient.invalidateQueries({ queryKey: caseKeys.all })
         }}
       >
         Reset demo data
-      </Button>
+      </button>
     </div>
   )
 }

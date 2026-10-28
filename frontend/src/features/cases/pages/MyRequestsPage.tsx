@@ -2,19 +2,17 @@ import { paths } from '@/app/paths'
 import { LinkButton, PageHeader } from '@/shared/ui'
 import { CaseListCard, type CaseTab } from '../components/CaseListCard'
 import { MockDataBanner } from '../components/MockDataBanner'
-import { FINAL_STATUSES } from '../types'
+import { useCases } from '../hooks'
+import { FINAL_STATUSES, type CaseSummary } from '../types'
+
+const isOpen = (c: CaseSummary) => !FINAL_STATUSES.includes(c.status)
 
 const TABS = [
+  { value: 'open', label: 'Open', match: isOpen, emptyText: 'You have no open requests.' },
   {
-    value: 'open',
-    label: 'Open',
-    match: (c) => !FINAL_STATUSES.includes(c.status),
-    emptyText: 'You have no open requests.',
-  },
-  {
-    value: 'closed',
+    value: 'finished',
     label: 'Finished',
-    match: (c) => FINAL_STATUSES.includes(c.status),
+    match: (c) => !isOpen(c),
     emptyText: 'No finished requests yet.',
   },
   {
@@ -25,15 +23,27 @@ const TABS = [
   },
 ] as const satisfies readonly [CaseTab, ...CaseTab[]]
 
-/** EMP-03 My requests (customer). */
+/** EMP-03 My requests (customer). Question: "What is happening with what I reported?" */
 export function MyRequestsPage() {
+  const cases = useCases()
+  const open = cases.data?.filter(isOpen) ?? []
+  const inWork = open.filter((c) => c.technician).length
+
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-5">
       <MockDataBanner />
       <PageHeader
         title="My requests"
-        description="Problems you reported in your building, and where each one is now."
-        actions={<LinkButton to={paths.newRequest}>New request</LinkButton>}
+        description={
+          cases.data
+            ? `${open.length} open, ${inWork} with a technician`
+            : 'Problems you reported in your building'
+        }
+        actions={
+          <LinkButton to={paths.newRequest} variant="primary">
+            New request
+          </LinkButton>
+        }
       />
       <CaseListCard tabs={TABS} showTechnician />
     </div>
