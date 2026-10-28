@@ -66,7 +66,7 @@ export const router = createBrowserRouter([
           {
             path: paths.cases,
             element: (
-              <RequireAuth roles={['officer', 'manager']}>
+              <RequireAuth roles={['staff', 'manager']}>
                 <CaseQueuePage />
               </RequireAuth>
             ),
@@ -82,7 +82,7 @@ export const router = createBrowserRouter([
           {
             path: paths.caseDetail,
             element: (
-              <RequireAuth roles={['customer', 'officer', 'technician', 'manager']}>
+              <RequireAuth roles={['customer', 'staff', 'technician', 'manager']}>
                 <CaseDetailPage />
               </RequireAuth>
             ),

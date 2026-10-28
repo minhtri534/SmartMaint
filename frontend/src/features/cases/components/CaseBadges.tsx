@@ -3,7 +3,7 @@ import { STATUS_LABELS, URGENCY_LABELS, type CaseStatus, type Urgency } from '..
 
 /**
  * One hue at three intensities (app-screens §7.6): grey when nothing is happening, the accent tint while
- * work is running, warning when someone has to act, positive when it waits for the officer's check.
+ * work is running, warning when someone has to act, positive when it waits for the staff's check.
  */
 const STATUS_TONES: Record<CaseStatus, BadgeTone> = {
   pending: 'warning',

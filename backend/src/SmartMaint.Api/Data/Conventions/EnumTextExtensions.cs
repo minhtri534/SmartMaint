@@ -20,6 +20,15 @@ public static class EnumTextExtensions
             .HasConversion(v => EnumText.ToText(v), v => EnumText.FromText<TEnum>(v))
             .HasMaxLength(MaxLength);
 
+    /// <summary>Same as above for a nullable enum column (NULL stays NULL; a CHECK ignores NULL).</summary>
+    public static PropertyBuilder<TEnum?> HasEnumText<TEnum>(this PropertyBuilder<TEnum?> property)
+        where TEnum : struct, Enum =>
+        property
+            .HasConversion<string?>(
+                v => v == null ? null : EnumText.ToText(v.Value),
+                v => v == null ? null : EnumText.FromText<TEnum>(v))
+            .HasMaxLength(MaxLength);
+
     public static void HasEnumCheck<TEnum>(this TableBuilder table, string column)
         where TEnum : struct, Enum
     {

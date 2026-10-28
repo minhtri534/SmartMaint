@@ -4,19 +4,19 @@ import { paths, resubmitPath } from '@/app/paths'
 import type { Role } from '@/shared/types/role'
 import { Alert, Button, Card, CardHeader, Icon, LinkButton, PageHeader } from '@/shared/ui'
 import { formatDateTime } from '@/shared/utils/format'
+import { useAuth } from '@/features/auth'
 import { CaseActions } from '../components/CaseActions'
 import { UrgencyNote } from '../components/CaseBadges'
 import { AssignmentList, PhotoGallery, StatusTimeline } from '../components/CaseHistory'
-import { MockDataBanner } from '../components/MockDataBanner'
 import { SlaPanel } from '../components/SlaTrack'
 import { StarsView } from '../components/Stars'
 import { StatusPath } from '../components/StatusPath'
-import { useActor, useCase } from '../hooks'
-import { COST_BEARER_LABELS, URGENCY_LABELS } from '../types'
+import { useCase } from '../hooks'
+import { COST_BEARER_LABELS, HOLD_REASON_LABELS, URGENCY_LABELS } from '../types'
 
 const BACK: Partial<Record<Role, { to: string; label: string }>> = {
   customer: { to: paths.myRequests, label: 'My requests' },
-  officer: { to: paths.cases, label: 'Cases' },
+  staff: { to: paths.cases, label: 'Cases' },
   manager: { to: paths.cases, label: 'All cases' },
   technician: { to: paths.workOrders, label: 'My work orders' },
 }
@@ -24,13 +24,13 @@ const BACK: Partial<Record<Role, { to: string; label: string }>> = {
 /**
  * COM-08 Case detail for every role; for the technician it is also TEC-03 (work order).
  * Question: "Where is this case, who has it, and is it on time?" — the road through F3 on top, the
- * deadline as the largest figure on the right. What each role can press comes from the state machine.
+ * deadline as the largest figure on the right. What each role can press comes from the server (allowedActions).
  */
 export function CaseDetailPage() {
   const id = Number(useParams().id)
-  const actor = useActor()
+  const { user } = useAuth()
   const query = useCase(id)
-  const back = actor ? BACK[actor.role] : undefined
+  const back = user ? BACK[user.role] : undefined
 
   const above = back && (
     <Link to={back.to} className="hover:text-ink inline-flex items-center gap-1">
@@ -55,12 +55,11 @@ export function CaseDetailPage() {
   }
 
   const c = query.data
-  const seesAssignments = actor?.role === 'officer' || actor?.role === 'manager'
+  const seesAssignments = user?.role === 'staff' || user?.role === 'manager'
   const lastChange = c.history.at(-1)
 
   return (
     <div className="flex flex-col gap-5">
-      <MockDataBanner />
       <PageHeader
         above={above}
         title={c.title}
@@ -69,7 +68,7 @@ export function CaseDetailPage() {
             <span className="font-mono">{c.code}</span> · {c.serviceTypeName}
           </>
         }
-        actions={actor && <CaseActions caseDetail={c} actor={actor} />}
+        actions={<CaseActions caseDetail={c} />}
       />
 
       <div className="border-border border-y py-4">
@@ -87,12 +86,18 @@ export function CaseDetailPage() {
             <span>
               Rejected by {lastChange.by.fullName}: {lastChange.reason}
             </span>
-            {actor?.role === 'customer' && (
+            {user?.role === 'customer' && (
               <LinkButton to={resubmitPath(c.id)} variant="primary">
                 Submit again
               </LinkButton>
             )}
           </div>
+        </Alert>
+      )}
+      {c.hold && (
+        <Alert tone="info">
+          On hold: {HOLD_REASON_LABELS[c.hold.reason]}. Expected to continue on{' '}
+          {c.hold.expectedResumeOn}.
         </Alert>
       )}
       {c.status === 'reopened' && lastChange?.reason && (
@@ -128,8 +133,7 @@ export function CaseDetailPage() {
                 title="Repair record"
                 aside={c.technician ? `by ${c.technician.fullName}` : undefined}
               />
-              <p className="max-w-[68ch] text-sm leading-6">{c.repairReport.workDone}</p>
-              <dl className="border-rule mt-5 grid gap-4 border-t pt-4 text-sm sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_96px]">
+              <dl className="grid gap-4 text-sm sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_96px]">
                 <Field label="Cause">{c.repairReport.rootCause}</Field>
                 <Field label="Parts used">
                   {c.repairReport.partsUsed || <span className="text-muted">—</span>}
@@ -162,8 +166,8 @@ export function CaseDetailPage() {
               <Field label="Reported by" inline>
                 {c.requester.fullName}
               </Field>
-              <Field label="Officer in charge" inline>
-                {c.officer?.fullName ?? '—'}
+              <Field label="Staff in charge" inline>
+                {c.staff?.fullName ?? '—'}
               </Field>
               <Field label="Technician" inline>
                 {c.technician?.fullName ?? <span className="text-muted">Not assigned</span>}

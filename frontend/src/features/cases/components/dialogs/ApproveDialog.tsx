@@ -18,7 +18,7 @@ interface Props {
   onClose: () => void
 }
 
-/** DLG-01 Approve case (F3 step ④): the officer confirms the urgency and who pays. */
+/** DLG-01 Approve case (F3 step ④): the staff confirms the urgency and who pays. */
 export function ApproveDialog({ caseDetail, open, onClose }: Props) {
   return (
     <Dialog

@@ -1,8 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useAuth } from '@/features/auth'
 import { caseKeys, casesApi } from './api'
-import { mockMe } from './mock'
-import type { Actor } from './state-machine'
+import { suggestServiceType } from './suggest'
+import type { ServiceType } from './types'
 
 export function useCases() {
   return useQuery({ queryKey: caseKeys.list(), queryFn: casesApi.list })
@@ -54,16 +53,15 @@ export function useCaseMutation<TVariables, TResult>(
   })
 }
 
-/**
- * The signed-in user as the case rules need it (id + role + buildings in charge).
- * TODO(api): take this from /auth/me once it returns the person id and building assignments.
- */
-export function useActor(): Actor | null {
-  const { user } = useAuth()
-  return user ? mockMe() : null
-}
-
-/** Ask the AI for a service type; nothing is saved (AI only suggests). */
+/** Ask for a service type from the description; nothing is saved (suggestion only). */
 export function useServiceTypeSuggestion() {
-  return useMutation({ mutationFn: casesApi.suggestServiceType })
+  return useMutation({
+    mutationFn: ({
+      description,
+      serviceTypes,
+    }: {
+      description: string
+      serviceTypes: ServiceType[]
+    }) => Promise.resolve(suggestServiceType(description, serviceTypes)),
+  })
 }

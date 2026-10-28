@@ -1,7 +1,6 @@
 import { paths } from '@/app/paths'
 import { LinkButton, PageHeader } from '@/shared/ui'
 import { CaseListCard, type CaseTab } from '../components/CaseListCard'
-import { MockDataBanner } from '../components/MockDataBanner'
 import { useCases } from '../hooks'
 import { FINAL_STATUSES, type CaseSummary } from '../types'
 
@@ -31,7 +30,6 @@ export function MyRequestsPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <MockDataBanner />
       <PageHeader
         title="My requests"
         description={

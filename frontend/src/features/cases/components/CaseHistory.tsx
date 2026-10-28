@@ -38,7 +38,7 @@ export function StatusTimeline({ history }: { history: StatusChange[] }) {
 const RESPONSE_TONES = { waiting: 'warning', accepted: 'positive', declined: 'negative' } as const
 const RESPONSE_LABELS = { waiting: 'Waiting', accepted: 'Accepted', declined: 'Declined' } as const
 
-/** Every assignment, including declined ones (N10). Shown to the officer and the manager. */
+/** Every assignment, including declined ones (N10). Shown to the staff and the manager. */
 export function AssignmentList({ assignments }: { assignments: Assignment[] }) {
   if (assignments.length === 0) return <p className="text-muted text-sm">Not assigned yet.</p>
   return (

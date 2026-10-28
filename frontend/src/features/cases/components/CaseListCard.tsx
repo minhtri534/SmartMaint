@@ -27,7 +27,7 @@ interface CaseListCardProps {
 }
 
 /**
- * Case list with its filter, shared by the customer, officer, manager and technician screens.
+ * Case list with its filter, shared by the customer, staff, manager and technician screens.
  * The selected filter lives in the URL (?tab=...) so "Back" from a case returns to the same filter.
  * Counts are computed from the rows on every render.
  */

@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Controller, useForm } from 'react-hook-form'
-import { Alert, Button, Dialog, DialogActions, TextArea, TextField } from '@/shared/ui'
+import { Alert, Button, Dialog, DialogActions, TextField } from '@/shared/ui'
 import { casesApi } from '../../api'
 import { useCaseMutation } from '../../hooks'
 import { completeWorkSchema, type CompleteWorkFormValues } from '../../schemas'
@@ -14,7 +14,7 @@ interface Props {
 
 /**
  * DLG-11 Report completed, with the repair record (F3 step ⑨, N21).
- * Completed is not Closed: the officer still has to verify (BR-13).
+ * Completed is not Closed: the staff still has to verify (BR-13).
  */
 export function CompleteWorkDialog({ caseId, open, onClose }: Props) {
   return (
@@ -23,7 +23,7 @@ export function CompleteWorkDialog({ caseId, open, onClose }: Props) {
       onClose={onClose}
       title="Report work completed"
       wide
-      description="The officer checks this record and the photos before closing the case."
+      description="The staff checks this record and the photos before closing the case."
     >
       <CompleteWorkForm caseId={caseId} onDone={onClose} />
     </Dialog>
@@ -40,7 +40,6 @@ function CompleteWorkForm({ caseId, onDone }: { caseId: number; onDone: () => vo
   } = useForm<CompleteWorkFormValues>({
     resolver: zodResolver(completeWorkSchema),
     defaultValues: {
-      workDone: '',
       rootCause: '',
       partsUsed: '',
       laborHours: '',
@@ -51,21 +50,19 @@ function CompleteWorkForm({ caseId, onDone }: { caseId: number; onDone: () => vo
 
   const onSubmit = handleSubmit((values) =>
     complete.mutate(
-      { id: caseId, ...values, laborHours: Number(values.laborHours) },
+      {
+        id: caseId,
+        ...values,
+        partsUsed: values.partsUsed || null,
+        laborHours: values.laborHours === '' ? null : Number(values.laborHours),
+      },
       { onSuccess: onDone },
     ),
   )
 
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
-      <TextArea
-        label="Work done *"
-        rows={3}
-        placeholder="e.g. Cleaned the drain pipe of the indoor unit and re-sealed the joint."
-        error={errors.workDone?.message}
-        {...register('workDone')}
-      />
-      <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_140px]">
+      <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_200px]">
         <TextField
           label="Cause *"
           placeholder="e.g. Blocked condensate pipe"
@@ -73,7 +70,8 @@ function CompleteWorkForm({ caseId, onDone }: { caseId: number; onDone: () => vo
           {...register('rootCause')}
         />
         <TextField
-          label="Hours worked *"
+          label="Hours worked"
+          hint="Leave empty: counted from when you started."
           type="number"
           step="0.25"
           min="0.25"

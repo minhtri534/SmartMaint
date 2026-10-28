@@ -16,7 +16,6 @@ import {
 } from '@/shared/ui'
 import { applyFieldErrors } from '@/shared/utils/apply-field-errors'
 import { casesApi } from '../api'
-import { MockDataBanner } from '../components/MockDataBanner'
 import { PhotoPicker } from '../components/PhotoPicker'
 import {
   useAssets,
@@ -138,13 +137,12 @@ export function NewRequestPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <MockDataBanner />
       <PageHeader
         title={fromId ? 'Submit again' : 'New request'}
         description={
           fromId
             ? `Filled in from ${source.data?.code ?? 'your rejected request'}. Add what was missing and send it again.`
-            : "Your building's facility officer reviews it during office hours."
+            : "Your building's facility staff reviews it during office hours."
         }
       />
 
@@ -319,7 +317,12 @@ export function NewRequestPage() {
             <Button
               className="mt-3"
               loading={suggestion.isPending}
-              onClick={() => suggestion.mutate(getValues('description'))}
+              onClick={() =>
+                suggestion.mutate({
+                  description: getValues('description'),
+                  serviceTypes: serviceTypes.data,
+                })
+              }
             >
               Suggest from description
             </Button>
@@ -389,7 +392,7 @@ export function NewRequestPage() {
 /** F3 steps ② to ⑫ as the customer sees them. */
 const NEXT_STEPS = [
   {
-    title: 'The facility officer reviews it',
+    title: 'The facility staff reviews it',
     text: 'Approved, or sent back with the reason (e.g. a photo is missing).',
   },
   {

@@ -64,17 +64,45 @@ export const COST_BEARER_LABELS: Record<CostBearer, string> = {
   customer: 'Customer (tenant / resident)',
 }
 
-/** Officer reject reasons (DLG-02). "Duplicate" is gone: duplicates are merged instead (N5). NOT IN ERD v5. */
-export const REJECT_REASONS = ['missing_info', 'out_of_scope'] as const
+/** Why staff reject a case (DLG-02). Duplicates are rejected, not merged: the customer is told a case already exists (28/10). */
+export const REJECT_REASONS = ['missing_info', 'out_of_scope', 'duplicate'] as const
 export type RejectReason = (typeof REJECT_REASONS)[number]
 
 export const REJECT_REASON_LABELS: Record<RejectReason, string> = {
   missing_info: 'Missing information',
   out_of_scope: 'Outside the building’s service scope',
+  duplicate: 'A case for this problem already exists',
 }
 
+/** Why a technician pauses work (N13). "waiting_third_party" is set by the staff decision (F5), not offered here. */
+export const HOLD_REASONS = ['waiting_parts', 'waiting_customer', 'waiting_staff_decision'] as const
+export type HoldReason = (typeof HOLD_REASONS)[number] | 'waiting_third_party'
+
+export const HOLD_REASON_LABELS: Record<HoldReason, string> = {
+  waiting_parts: 'Waiting for parts',
+  waiting_customer: 'Waiting for the customer (access, appointment)',
+  waiting_staff_decision: 'Beyond my ability, waiting for the staff’s decision',
+  waiting_third_party: 'Waiting for an outside party',
+}
+
+/** What a user can do to a case. The SERVER says which ones are allowed (CaseDetail.allowedActions). */
+export type CaseAction =
+  | 'cancel'
+  | 'approve'
+  | 'reject'
+  | 'assign'
+  | 'accept'
+  | 'decline'
+  | 'start'
+  | 'hold'
+  | 'resume'
+  | 'complete'
+  | 'close'
+  | 'reopen'
+  | 'rate'
+
 // ---------------------------------------------------------------------------
-// Reference data (owned by F1 — Huy). Shapes are only what F3 reads.
+// Reference data (F1 — Huy owns the real catalogue). Shapes are what GET /api/service-types, /buildings, /assets return.
 // ---------------------------------------------------------------------------
 
 export interface PersonRef {
@@ -83,7 +111,7 @@ export interface PersonRef {
 }
 
 /**
- * One item of the 2-level service catalogue (N24): group "Water" -> type "Leak".
+ * One item of the 2-level service catalogue (N24): group "Water", type "Leaking pipe or tap".
  * ERD: CaseCategories(Name, Description) — one level only.
  * NOT IN ERD v5: groupName, defaultUrgency, isEmergency, defaultCostBearer, photoRequired.
  */
@@ -122,7 +150,7 @@ export interface AssetRef {
   roomId: number
 }
 
-/** Where the problem is. NOT IN ERD v5: Cases only links Assets; a case without a known asset has no location. */
+/** Where the problem is. NOT IN ERD v5: Cases only links Assets; a customer may not know the asset. */
 export interface CaseLocation {
   buildingId: number
   buildingName: string
@@ -132,13 +160,14 @@ export interface CaseLocation {
 }
 
 // ---------------------------------------------------------------------------
-// Case
+// Case. Same shape as the API (Modules/Cases/Dtos). "ERD:" = column in Hùng's ERD v5, "NOT IN ERD v5" = F3 needs it,
+// the team decides at the ERD meeting (docs/database/F3_Cot_Bo_Sung_Cho_ERD.md).
 // ---------------------------------------------------------------------------
 
 /** One row in a case list. */
 export interface CaseSummary {
   id: number
-  /** Display code, e.g. CS-000123 (D-plan). NOT IN ERD v5. */
+  /** Display code, e.g. CS-000123, built from the id. */
   code: string
   /** ERD: Cases.Title */
   title: string
@@ -151,23 +180,23 @@ export interface CaseSummary {
   location: CaseLocation
   /** ERD: Cases.RequestingCustomer */
   requester: PersonRef
-  /** Officer in charge. ERD: Cases.Staff */
-  officer: PersonRef | null
+  /** The staff member who approved it. ERD: Cases.Staff */
+  staff: PersonRef | null
   /** ERD: Cases.AssignedTechnician */
   technician: PersonRef | null
   /** ERD: Cases.TimeSubmitted */
   submittedAt: string
-  /** Effective deadline = the later of the SLA deadline and the officer's extension (N16). ERD: Cases.DueTime */
+  /** SLA deadline = start of work + the urgency's SLA hours. Empty until the technician starts. ERD: Cases.DueTime */
   dueAt: string | null
-  /** When the SLA clock started: approval, or the last reopen. Derived from CaseStatusHistory (not a column). */
+  /** When the technician started work = when the SLA clock started. ERD: Cases.StartTime */
   slaStartedAt: string | null
   /** When the technician reported the work done. ERD: Cases.TimeCompleted */
   completedAt: string | null
-  /** Case was sent to the emergency flow F4 at creation (N26). Derived from the service type. */
+  /** The case belongs to the emergency flow F4 (emergency urgency): F3 offers no action. */
   isEmergencyFlow: boolean
 }
 
-/** Photo attached to a case. ERD: CaseImages(Image, Notes). NOT IN ERD v5: kind (before / after, N21). */
+/** Photo attached to a case. ERD: CaseImages(Image, Notes). NOT IN ERD v5: kind (report / before / after). */
 export interface CasePhoto {
   id: number
   url: string
@@ -184,9 +213,8 @@ export interface StatusChange {
 }
 
 /**
- * One assignment of a technician, kept even after a decline or a reassign (N10: the Manager sees declines).
- * ERD: only Cases.AssignedTechnician + TechnicianRejections(Technician, Case, RejectedTime, Reason).
- * NOT IN ERD v5 as a full history (proposed CaseAssignments table).
+ * One assignment of a technician, kept even after a decline (N10: the manager sees declines).
+ * ERD: only Cases.AssignedTechnician + TechnicianRejections. NOT IN ERD v5 as a full history (CaseAssignments).
  */
 export interface Assignment {
   technician: PersonRef
@@ -197,20 +225,27 @@ export interface Assignment {
   declineReason: string | null
 }
 
-/** Technician's repair record (N21). ERD: Cases.ActualCompletionHours only. NOT IN ERD v5: the 3 text fields. */
+/** Technician's repair record. ERD: Cases.ActualCompletionHours only. NOT IN ERD v5: rootCause, partsUsed. */
 export interface RepairReport {
-  workDone: string
   rootCause: string
   /** Parts are written by hand, there is no stock module (N2). */
-  partsUsed: string
+  partsUsed: string | null
+  /** Typed by the technician, or measured from start to finish by the system. */
   laborHours: number
 }
 
 /** Customer rating (DLG-14). NOT IN ERD v5. */
 export interface Rating {
   stars: number
-  comment: string
+  comment: string | null
   ratedAt: string
+}
+
+/** Filled while the case is On hold. NOT IN ERD v5. */
+export interface Hold {
+  reason: HoldReason
+  /** yyyy-MM-dd */
+  expectedResumeOn: string
 }
 
 export interface CaseDetail extends CaseSummary {
@@ -219,15 +254,24 @@ export interface CaseDetail extends CaseSummary {
   /** ERD: Cases.Asset (optional: the customer may not know which asset) */
   asset: AssetRef | null
   serviceTypeId: number
-  /** Copied from the service type at creation, confirmed by the officer on approval. NOT IN ERD v5. */
+  /** Copied from the service type at creation, confirmed by the staff on approval. NOT IN ERD v5. */
   costBearer: CostBearer
-  /** SLA deadline before any extension (N16). NOT IN ERD v5 (only one DueTime column). */
-  slaDueAt: string | null
   photos: CasePhoto[]
   history: StatusChange[]
   assignments: Assignment[]
   repairReport: RepairReport | null
   rating: Rating | null
+  hold: Hold | null
+  /** What the signed-in user may do right now (state machine + role + data scope, decided by the server). */
+  allowedActions: CaseAction[]
+}
+
+/** GET /api/cases */
+export interface CasePage {
+  items: CaseSummary[]
+  page: number
+  pageSize: number
+  totalCount: number
 }
 
 // ---------------------------------------------------------------------------
@@ -240,7 +284,7 @@ export interface CreateCaseRequest {
   serviceTypeId: number
   roomId: number
   assetId: number | null
-  /** Data URLs while we use mock data; the real API will take an upload (Supabase Storage). */
+  /** Data URLs for now. TODO(storage): Supabase Storage. */
   photos: string[]
 }
 
@@ -262,7 +306,17 @@ export interface ReasonRequest {
   reason: string
 }
 
-export interface CompleteWorkRequest extends RepairReport {
+export interface HoldCaseRequest {
+  reason: HoldReason
+  /** yyyy-MM-dd, today or later */
+  expectedResumeOn: string
+}
+
+export interface CompleteWorkRequest {
+  rootCause: string
+  partsUsed: string | null
+  /** Empty = the system measures the time from start to finish. */
+  laborHours: number | null
   beforePhotos: string[]
   afterPhotos: string[]
 }
@@ -272,9 +326,8 @@ export interface RateCaseRequest {
   comment: string
 }
 
-/** Technician option in the assign dialog (DLG-04). ERD: Technicians + TechnicianSpecialty. */
+/** Technician option in the assign dialog (DLG-04). Specialties come back with F1. */
 export interface TechnicianOption extends PersonRef {
-  specialties: string[]
   openCases: number
 }
 

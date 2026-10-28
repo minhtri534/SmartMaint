@@ -1,13 +1,13 @@
 import { FINAL_STATUSES, type CaseSummary } from './types'
 
 /*
- * The SLA clock of a case (N8, N16). It starts when the officer approves (or reopens) the case and runs to
- * the effective deadline = the later of the SLA deadline and the officer's extension.
- * The mock counts wall-clock hours; the real API counts the building's office hours (BR-08, O04).
+ * The SLA clock of a case (N8, N16). It starts when the technician starts work (doc "Luồng Chính", 28/10) and runs to
+ * the deadline = start + the urgency's SLA hours. It starts over after a reopen. The server wall-clock counts hours;
+ * counting office hours is still open (BR-08, O04).
  */
 
 export type SlaState =
-  /** Not approved yet: the clock has not started. */
+  /** Work has not started: the clock has not started. */
   | 'waiting'
   /** Clock running, deadline ahead. */
   | 'running'

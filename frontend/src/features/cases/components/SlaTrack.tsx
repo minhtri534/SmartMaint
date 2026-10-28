@@ -20,7 +20,7 @@ function headline(sla: Sla): { text: string; tone: string } {
     case 'late':
       return { text: `Late by ${formatDuration(sla.remaining)}`, tone: 'text-negative' }
     case 'waiting':
-      return { text: 'Not approved yet', tone: 'text-muted' }
+      return { text: 'Starts with the work', tone: 'text-muted' }
     default:
       return { text: '—', tone: 'text-muted' }
   }
@@ -69,7 +69,6 @@ export function SlaText({ c }: { c: CaseSummary }) {
 export function SlaPanel({ c }: { c: CaseDetail }) {
   const sla = slaOf(c)
   const head = headline(sla)
-  const extended = c.slaDueAt !== null && c.dueAt !== null && c.slaDueAt !== c.dueAt
 
   return (
     <Card>
@@ -81,8 +80,7 @@ export function SlaPanel({ c }: { c: CaseDetail }) {
       <Track sla={sla} className="mt-3 h-1.5" />
       <dl className="mt-4 flex flex-col gap-2 text-sm">
         {c.slaStartedAt && <Row label="Clock started" value={formatDateTime(c.slaStartedAt)} />}
-        <Row label="Due" value={c.dueAt ? formatDateTime(c.dueAt) : 'Starts when approved'} />
-        {extended && <Row label="SLA deadline was" value={formatDateTime(c.slaDueAt)} />}
+        <Row label="Due" value={c.dueAt ? formatDateTime(c.dueAt) : 'Starts when work starts'} />
         {c.completedAt && <Row label="Reported done" value={formatDateTime(c.completedAt)} />}
       </dl>
     </Card>

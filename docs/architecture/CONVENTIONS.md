@@ -152,7 +152,7 @@ frontend/src/
     ├── api.ts           1 hàm / endpoint (comment ghi rõ METHOD + URL) + <feature>Keys (query keys)
     ├── hooks.ts         useXxx: TanStack Query query / mutation
     ├── schemas.ts       zod schema của các form
-    ├── mock.ts          (tạm, khi API chưa có) backend giả — xem 5.3
+    ├── mock.ts          (chỉ khi API chưa có) backend giả — xem 5.3; features/cases đã bỏ mock
     ├── components/      component riêng của feature; dialogs/ cho các DLG-xx
     ├── pages/           <Name>Page.tsx — 1 file / màn hình (mã màn hình trong comment, vd. EMP-02)
     └── index.ts         public API của feature — feature khác chỉ import từ đây
@@ -184,10 +184,11 @@ Feature có luật riêng thì thêm 1 file đặt tên rõ ràng, vd. `features
 
 ### 5.3 Làm web trước khi có API (dữ liệu giả)
 
-Khi bảng / API chưa có (ERD chưa đóng băng), làm như `features/cases`:
+Khi bảng / API chưa có (ERD chưa đóng băng), làm như `features/cases` đã làm ở giai đoạn đầu (28/10 đã nối API thật và xóa `mock.ts`):
 - `types.ts` viết theo **nhu cầu màn hình**, mỗi field ghi chú `ERD: Bảng.Cột` hoặc `NOT IN ERD v5` → mang đi họp ERD; thêm / cắt field nào thì sửa đúng chỗ đó.
 - `mock.ts` đóng vai backend: cùng luật phạm vi dữ liệu, cùng mã lỗi (`case.invalid_transition`...), lưu localStorage để đăng xuất / đổi role vẫn giữ dữ liệu. Có banner "Demo data" + nút **Reset demo data**.
-- `api.ts` gọi `mock.*`, comment ghi sẵn endpoint thật. Khi API xong: thay thân hàm bằng `apiClient...`, xóa `mock.ts` + `MockDataBanner` — **pages và hooks không đổi**.
+- `api.ts` gọi `mock.*`, comment ghi sẵn endpoint thật. Khi API xong: thay thân hàm bằng `apiClient...`, xóa `mock.ts` + banner — **pages và hooks không đổi** (đúng như đã xảy ra với cases).
+- **Server quyết nút nào hiện:** API trả `allowedActions` cho người gọi (máy trạng thái + role + phạm vi dữ liệu); web chỉ vẽ nút theo danh sách đó, không tự lặp lại luật (W4).
 
 ### 5.4 Giao diện — theo skill `design-taste-frontend` (chốt 28/10)
 

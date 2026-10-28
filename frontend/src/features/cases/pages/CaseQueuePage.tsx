@@ -1,7 +1,6 @@
 import { useAuth } from '@/features/auth'
 import { PageHeader } from '@/shared/ui'
 import { CaseListCard, type CaseTab } from '../components/CaseListCard'
-import { MockDataBanner } from '../components/MockDataBanner'
 import { useCases } from '../hooks'
 import { isOverdue } from '../sla'
 import { FINAL_STATUSES, type CaseStatus, type CaseSummary } from '../types'
@@ -14,14 +13,14 @@ const WITH_TECHNICIANS: readonly CaseStatus[] = [
   'reopened',
 ]
 
-// The officer's own steps in F3: review (④), assign (⑤), verify (⑩).
+// The staff's own steps in F3: review (④), assign (⑤), verify (⑩).
 const toReview = (c: CaseSummary) => c.status === 'pending' && !c.isEmergencyFlow
 const toAssign = (c: CaseSummary) => c.status === 'approved' && !c.isEmergencyFlow
 const toVerify = (c: CaseSummary) => c.status === 'completed'
-/** Waiting for the officer, or past its deadline wherever it is. */
+/** Waiting for the staff, or past its deadline wherever it is. */
 const needsYou = (c: CaseSummary) => toReview(c) || toAssign(c) || toVerify(c) || isOverdue(c)
 
-/** Overdue first, then the officer's steps in flow order, oldest first. */
+/** Overdue first, then the staff's steps in flow order, oldest first. */
 const STEP_ORDER: Partial<Record<CaseStatus, number>> = { pending: 0, approved: 1, completed: 2 }
 const byUrgencyOfWork = (a: CaseSummary, b: CaseSummary) =>
   Number(isOverdue(b)) - Number(isOverdue(a)) ||
@@ -66,7 +65,7 @@ const TABS = [
 ] as const satisfies readonly [CaseTab, ...CaseTab[]]
 
 /**
- * OFF-02 Case queue + OFF-04 Verification queue (officer: only the buildings in charge, N11) and
+ * OFF-02 Case queue + OFF-04 Verification queue (staff: only the buildings in charge, N11) and
  * OFF-03 All cases (manager: read only). Question: "Which cases need me now?"
  */
 export function CaseQueuePage() {
@@ -86,7 +85,6 @@ export function CaseQueuePage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <MockDataBanner />
       <PageHeader title={isManager ? 'All cases' : 'Cases'} description={finding} />
       <CaseListCard tabs={TABS} variant="cards" showRequester showTechnician />
     </div>

@@ -1,7 +1,7 @@
 import { PageHeader } from '@/shared/ui'
 import { CaseListCard, type CaseTab } from '../components/CaseListCard'
-import { MockDataBanner } from '../components/MockDataBanner'
-import { useActor, useCases } from '../hooks'
+import { useAuth } from '@/features/auth'
+import { useCases } from '../hooks'
 import { isOverdue } from '../sla'
 import type { CaseStatus, CaseSummary } from '../types'
 
@@ -19,9 +19,9 @@ const byNextJob = (a: CaseSummary, b: CaseSummary) =>
  * Only cases currently assigned to me; jobs waiting for my answer come first.
  */
 export function WorkOrdersPage() {
-  const actor = useActor()
+  const { user } = useAuth()
   const cases = useCases()
-  const mine = (c: CaseSummary) => c.technician?.id === actor?.id
+  const mine = (c: CaseSummary) => c.technician?.id === user?.id
 
   const tabs = [
     {
@@ -33,13 +33,13 @@ export function WorkOrdersPage() {
         const waiting = rows.filter((c) => WAITING.includes(c.status)).length
         return waiting ? `${waiting} waiting for your answer` : null
       },
-      emptyText: 'Nothing to do. New jobs from the officer appear here.',
+      emptyText: 'Nothing to do. New jobs from the staff appear here.',
     },
     {
       value: 'done',
       label: 'Done, waiting for check',
       match: (c) => mine(c) && c.status === 'completed',
-      emptyText: 'No finished work waiting for the officer.',
+      emptyText: 'No finished work waiting for the staff.',
     },
     {
       value: 'closed',
@@ -53,7 +53,6 @@ export function WorkOrdersPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <MockDataBanner />
       <PageHeader
         title="My work orders"
         description={

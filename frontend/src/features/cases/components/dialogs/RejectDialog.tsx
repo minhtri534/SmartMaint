@@ -57,8 +57,8 @@ function RejectForm({ caseId, onDone }: { caseId: number; onDone: () => void }) 
         {...register('note')}
       />
       <p className="text-muted text-xs">
-        Same problem already reported? Merge it into the main case instead of rejecting (coming
-        next).
+        Same problem already reported? Choose "A case for this problem already exists" and say which
+        case in the note.
       </p>
       {reject.error && <Alert>{reject.error.message}</Alert>}
       <DialogActions>

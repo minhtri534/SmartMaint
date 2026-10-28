@@ -12,7 +12,7 @@ interface Props {
   onClose: () => void
 }
 
-/** DLG-04 Assign technician (F3 step ⑤). Matching specialty first, then the least busy. */
+/** DLG-04 Assign technician (F3 step ⑤). The least busy technician is listed first. */
 export function AssignDialog({ caseDetail, open, onClose }: Props) {
   return (
     <Dialog
@@ -41,16 +41,11 @@ function AssignForm({ caseDetail, onDone }: { caseDetail: CaseDetail; onDone: ()
   if (technicians.isPending) return <Spinner />
   if (technicians.error) return <Alert>{technicians.error.message}</Alert>
 
-  // Service type name is "Group · Type"; a technician "matches" when the group is one of their specialties.
-  const group = caseDetail.serviceTypeName.split(' · ')[0] ?? ''
   const declinedIds = new Set(
     caseDetail.assignments.filter((a) => a.response === 'declined').map((a) => a.technician.id),
   )
-  const options = [...technicians.data].sort(
-    (a, b) =>
-      Number(b.specialties.includes(group)) - Number(a.specialties.includes(group)) ||
-      a.openCases - b.openCases,
-  )
+  // The server already lists the least busy technician first.
+  const options = technicians.data
 
   const onSubmit = handleSubmit((values) =>
     assign.mutate(
@@ -69,15 +64,14 @@ function AssignForm({ caseDetail, onDone }: { caseDetail: CaseDetail; onDone: ()
       >
         {options.map((t) => (
           <option key={t.id} value={t.id}>
-            {t.fullName} · {t.specialties.join(', ')} · {t.openCases} open
-            {t.specialties.includes(group) ? ' · right specialty' : ''}
+            {t.fullName} · {t.openCases} open
             {declinedIds.has(t.id) ? ' · declined this case' : ''}
           </option>
         ))}
       </Select>
       <p className="text-muted text-xs">
-        Nobody suitable today? Leave it Approved and extend the deadline with a reason (coming
-        next).
+        Nobody suitable today? Leave it Approved and assign later. The deadline starts when the
+        technician starts work.
       </p>
       {assign.error && <Alert>{assign.error.message}</Alert>}
       <DialogActions>

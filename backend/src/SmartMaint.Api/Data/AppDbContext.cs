@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using SmartMaint.Api.Entities;
+using SmartMaint.Api.Entities.Buildings;
+using SmartMaint.Api.Entities.Cases;
 using SmartMaint.Api.Entities.Users;
 
 namespace SmartMaint.Api.Data;
@@ -11,6 +13,22 @@ namespace SmartMaint.Api.Data;
 public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {
     public DbSet<User> Users => Set<User>();
+
+    // Buildings (minimal, F1 extends)
+    public DbSet<Building> Buildings => Set<Building>();
+    public DbSet<Floor> Floors => Set<Floor>();
+    public DbSet<Room> Rooms => Set<Room>();
+    public DbSet<Asset> Assets => Set<Asset>();
+    public DbSet<StaffBuildingAssignment> StaffBuildingAssignments => Set<StaffBuildingAssignment>();
+    public DbSet<ManagerBuildingAssignment> ManagerBuildingAssignments => Set<ManagerBuildingAssignment>();
+
+    // Cases (F3)
+    public DbSet<PriorityLevel> PriorityLevels => Set<PriorityLevel>();
+    public DbSet<CaseCategory> CaseCategories => Set<CaseCategory>();
+    public DbSet<Case> Cases => Set<Case>();
+    public DbSet<CaseImage> CaseImages => Set<CaseImage>();
+    public DbSet<CaseStatusChange> CaseStatusHistory => Set<CaseStatusChange>();
+    public DbSet<CaseAssignment> CaseAssignments => Set<CaseAssignment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

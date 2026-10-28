@@ -32,7 +32,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
     to: paths.cases,
     icon: 'queue',
     also: ['/cases/'],
-    roles: ['officer', 'manager'],
+    roles: ['staff', 'manager'],
   },
   {
     label: 'My work orders',
@@ -51,7 +51,7 @@ export function navItemsFor(role: Role): NavItem[] {
 /** Where each role lands after signing in (its main screen). */
 export const HOME_BY_ROLE: Record<Role, string> = {
   customer: paths.myRequests,
-  officer: paths.cases,
+  staff: paths.cases,
   manager: paths.cases,
   technician: paths.workOrders,
   admin: paths.home,

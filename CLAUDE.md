@@ -50,7 +50,7 @@ Gặp mâu thuẫn thì **dừng lại hỏi Leader**, không tự chọn.
 
 - **Quy ước chi tiết: `docs/architecture/CONVENTIONS.md`** — đọc trước khi thêm module / trang.
 - Chia theo **domain / luồng**, không chia theo loại file. Backend **1 project `SmartMaint.Api` chia thư mục** (chốt 27/10, thay 4 project của 19/10): `Controllers → Modules → Data / Entities`, dùng chung ở `Common/`. Mỗi module có controller / service / DTO / validator riêng; RBAC bằng `[AuthorizeRoles]`, không check role bằng tay. **Module mẫu = Auth** (`Modules/Auth`, `Controllers/AuthController.cs`).
-- Web: `frontend/src/features/<feature>` (mỗi feature: `types.ts`, `api.ts`, `hooks.ts`, `schemas.ts`, `pages/`, `components/`), dùng chung `shared/`, `lib/` (API client). **Trang mẫu = `features/auth/pages/LoginPage.tsx`; feature mẫu đầy đủ = `features/cases` (F3, đang chạy dữ liệu giả `mock.ts`)**.
+- Web: `frontend/src/features/<feature>` (mỗi feature: `types.ts`, `api.ts`, `hooks.ts`, `schemas.ts`, `pages/`, `components/`), dùng chung `shared/`, `lib/` (API client). **Trang mẫu = `features/auth/pages/LoginPage.tsx`; feature mẫu đầy đủ = `features/cases` (F3, đã nối API thật; backend mẫu cho nghiệp vụ nhiều bước = `Modules/Cases`)**.
 - Giao diện web: theo skill `design-taste-frontend` (`.claude/skills/`, style **framed-sheet**, chốt 28/10) — luật U1–U9 + cách kiểm tra ở `CONVENTIONS.md` 5.4. Làm / sửa màn hình nào thì chạy `lint.mjs --app` của skill, 0 FAIL.
 - DB dev: Postgres Docker (`docker compose up -d`); `database/Schema.sql` sinh từ migration (`scripts/db-schema.ps1`), `database/Data.sql` là seed duy nhất.
 - Unit test: mỗi API ≥ 1 case Normal + 1 Abnormal + 1 Boundary (yêu cầu Report 5).

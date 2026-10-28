@@ -38,7 +38,7 @@ public sealed class AuthServiceTests : IDisposable
         var result = await _sut.LoginAsync(new LoginRequest("  USER@Smartmaint.test ", Password), default);
 
         Assert.Equal($"token-for-{user.Id}", result.AccessToken);
-        Assert.Equal(UserRole.Officer, result.User.Role);
+        Assert.Equal(UserRole.Staff, result.User.Role);
         Assert.Equal(0, user.FailedLoginCount);
         Assert.Equal(_clock.Now, user.LastLoginAt);
     }
@@ -133,7 +133,7 @@ public sealed class AuthServiceTests : IDisposable
 
     private async Task<User> SeedUserAsync(bool mustChangePassword = false)
     {
-        var user = new User("user@smartmaint.test", "Test User", UserRole.Officer, _hasher.Hash(Password), mustChangePassword);
+        var user = new User("user@smartmaint.test", "Test User", UserRole.Staff, _hasher.Hash(Password), mustChangePassword);
         _db.Users.Add(user);
         await _db.SaveChangesAsync();
         return user;
