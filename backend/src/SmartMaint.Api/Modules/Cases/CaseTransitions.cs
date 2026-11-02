@@ -1,5 +1,5 @@
-using SmartMaint.Api.Entities.Cases;
 using SmartMaint.Api.Entities.Accounts;
+using SmartMaint.Api.Entities.Cases;
 
 namespace SmartMaint.Api.Modules.Cases;
 
@@ -28,6 +28,10 @@ public enum CaseAction
     AcceptNotFixed,
     DeclineNotFixed,
     UpdateCosts,
+
+    // Part 5 (F2): preventive work orders
+    UpdateTask,
+    CompleteChecklist,
 }
 
 /// <summary>One arrow of the F3 state machine (docs/flows/F3_Su_Co_Thong_Thuong/F3_Trang5.png): who, from where, to where.</summary>
@@ -87,6 +91,10 @@ internal static class CaseTransitions
         new(CaseAction.ReportNotFixed, UserRole.Customer, [CaseStatus.Closed], null),
         new(CaseAction.AcceptNotFixed, UserRole.Staff, [CaseStatus.Closed], CaseStatus.Reopened),
         new(CaseAction.DeclineNotFixed, UserRole.Staff, [CaseStatus.Closed], null),
+
+        // F2: the technician marks checklist items, then reports the preventive work order done
+        new(CaseAction.UpdateTask, UserRole.Technician, [CaseStatus.InProgress], null),
+        new(CaseAction.CompleteChecklist, UserRole.Technician, [CaseStatus.InProgress], CaseStatus.Completed),
     ];
 
     public static TransitionRule? Find(CaseAction action, UserRole role, CaseStatus status) =>

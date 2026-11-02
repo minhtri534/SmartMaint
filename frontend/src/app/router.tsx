@@ -21,6 +21,7 @@ import { CatalogPage } from '@/features/catalog'
 import { ForbiddenPage, NotFoundPage, RouteErrorPage } from '@/features/errors/pages/ErrorPages'
 import { FacilityTreePage } from '@/features/facilities'
 import { HomePage } from '@/features/home/pages/HomePage'
+import { ChecklistsPage, PlanDetailPage, PlanFormPage, PlansPage } from '@/features/maintenance'
 import { NotificationsPage } from '@/features/notifications'
 import { SlaSettingsPage } from '@/features/settings'
 import { AppLayout } from '@/shared/layout/AppLayout'
@@ -121,6 +122,29 @@ export const router = createBrowserRouter([
           ].map((route) => ({
             ...route,
             element: <RequireAuth roles={['admin']}>{route.element}</RequireAuth>,
+          })),
+          // F2 — preventive maintenance (MaintenanceController)
+          {
+            path: paths.checklists,
+            element: (
+              <RequireAuth roles={['staff', 'manager', 'admin']}>
+                <ChecklistsPage />
+              </RequireAuth>
+            ),
+          },
+          ...[
+            { path: paths.plans, element: <PlansPage /> },
+            { path: paths.planDetail, element: <PlanDetailPage /> },
+          ].map((route) => ({
+            ...route,
+            element: <RequireAuth roles={['staff', 'manager']}>{route.element}</RequireAuth>,
+          })),
+          ...[
+            { path: paths.planNew, element: <PlanFormPage /> },
+            { path: paths.planEdit, element: <PlanFormPage /> },
+          ].map((route) => ({
+            ...route,
+            element: <RequireAuth roles={['staff']}>{route.element}</RequireAuth>,
           })),
           // AST-07: every role may scan a label
           { path: paths.qrLanding, element: <QrLandingPage /> },

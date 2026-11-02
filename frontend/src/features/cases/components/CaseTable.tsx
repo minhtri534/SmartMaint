@@ -53,6 +53,7 @@ export function CaseTable({ cases, showRequester, showTechnician, emptyText }: C
                 </Link>
                 <div className="text-muted mt-0.5 truncate text-[13px]">
                   <span className="font-mono text-xs">{c.code}</span> · {c.serviceTypeName}
+                  {c.isPreventive && ' · Preventive'}
                   <span className="lg:hidden"> · {c.location.roomName}</span>
                 </div>
               </td>
@@ -104,6 +105,7 @@ export function CaseTable({ cases, showRequester, showTechnician, emptyText }: C
             </div>
             <div className="text-muted mt-1 truncate text-[13px]">
               <span className="font-mono text-xs">{c.code}</span> · {c.location.roomName}
+              {c.isPreventive && ' · Preventive'}
               {showTechnician && c.technician && <> · {c.technician.fullName}</>}
             </div>
             <div className="mt-1 flex gap-2">

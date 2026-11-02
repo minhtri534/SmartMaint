@@ -146,6 +146,18 @@ public sealed class CasesController(ICaseService cases) : ControllerBase
     public Task<CaseDetailResponse> DeclineNotFixed(long id, ReasonRequest request, CancellationToken cancellationToken) =>
         cases.DeclineNotFixedAsync(id, request, cancellationToken);
 
+    /// <summary>F2 TEC-05: one checklist item.</summary>
+    [HttpPost("{id:long}/tasks/{taskId:long}")]
+    [AuthorizeRoles(UserRole.Technician)]
+    public Task<CaseDetailResponse> UpdateTask(long id, long taskId, UpdateTaskRequest request, CancellationToken cancellationToken) =>
+        cases.UpdateTaskAsync(id, taskId, request, cancellationToken);
+
+    /// <summary>F2: report a preventive work order done.</summary>
+    [HttpPost("{id:long}/complete-checklist")]
+    [AuthorizeRoles(UserRole.Technician)]
+    public Task<CaseDetailResponse> CompleteChecklist(long id, CompleteChecklistRequest request, CancellationToken cancellationToken) =>
+        cases.CompleteChecklistAsync(id, request, cancellationToken);
+
     [HttpPut("{id:long}/costs")]
     [AuthorizeRoles(UserRole.Staff)]
     public Task<CaseDetailResponse> UpdateCosts(long id, UpdateCostsRequest request, CancellationToken cancellationToken) =>

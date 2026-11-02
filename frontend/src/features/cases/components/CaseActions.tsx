@@ -6,6 +6,7 @@ import { useCaseMutation } from '../hooks'
 import type { CaseAction, CaseDetail } from '../types'
 import { ApproveDialog } from './dialogs/ApproveDialog'
 import { AssignDialog } from './dialogs/AssignDialog'
+import { CompleteChecklistDialog } from './dialogs/CompleteChecklistDialog'
 import { CompleteWorkDialog } from './dialogs/CompleteWorkDialog'
 import { CostsDialog } from './dialogs/CostsDialog'
 import { ExtendDueDialog } from './dialogs/ExtendDueDialog'
@@ -43,8 +44,13 @@ const BUTTONS: Record<CaseAction, { label: string; variant: 'primary' | 'seconda
     report_not_fixed: { label: 'Still not fixed', variant: 'secondary' },
     decline_not_fixed: { label: 'Decline report', variant: 'secondary' },
     accept_not_fixed: { label: 'Reopen for the customer', variant: 'primary' },
+    // Part 5: F2 checklist. "update_task" is pressed per item in the checklist card, not here.
+    update_task: { label: 'Update checklist', variant: 'secondary' },
+    complete_checklist: { label: 'Report maintenance done', variant: 'primary' },
   }
-const ORDER = Object.keys(BUTTONS) as CaseAction[]
+const ORDER: CaseAction[] = (Object.keys(BUTTONS) as CaseAction[]).filter(
+  (a) => a !== 'update_task',
+)
 
 /**
  * The buttons the signed-in user may press on this case, and the dialog each one opens.
@@ -59,7 +65,7 @@ export function CaseActions({ caseDetail }: { caseDetail: CaseDetail }) {
   const close = useCaseMutation(casesApi.close)
   const acceptNotFixed = useCaseMutation(casesApi.acceptNotFixed)
 
-  const actions = caseDetail.allowedActions
+  const actions = caseDetail.allowedActions.filter((a) => ORDER.includes(a))
   if (actions.length === 0) return null
 
   const id = caseDetail.id
@@ -102,6 +108,7 @@ export function CaseActions({ caseDetail }: { caseDetail: CaseDetail }) {
       <AssignDialog caseDetail={caseDetail} open={open === 'assign'} onClose={onClose} />
       <HoldDialog caseId={id} open={open === 'hold'} onClose={onClose} />
       <CompleteWorkDialog caseId={id} open={open === 'complete'} onClose={onClose} />
+      <CompleteChecklistDialog caseId={id} open={open === 'complete_checklist'} onClose={onClose} />
       <RateDialog caseId={id} open={open === 'rate'} onClose={onClose} />
       <ReasonDialog
         caseId={id}

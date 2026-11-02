@@ -10,8 +10,10 @@ import type {
   Building,
   CaseDetail,
   CasePage,
+  CompleteChecklistRequest,
   CompleteWorkRequest,
   CreateCaseRequest,
+  UpdateTaskRequest,
   HoldCaseRequest,
   RateCaseRequest,
   ReasonRequest,
@@ -96,6 +98,14 @@ export const casesApi = {
   /** PUT /api/cases/{id}/costs — staff, before closing */
   updateCosts: ({ id, ...body }: Id & UpdateCostsRequest) =>
     apiClient.put<CaseDetail>(`/cases/${id}/costs`, body).then((r) => r.data),
+
+  // Part 5: checklist of a preventive work order (F2)
+  /** POST /api/cases/{id}/tasks/{taskId} — TEC-05, technician */
+  updateTask: ({ id, taskId, ...body }: Id & { taskId: number } & UpdateTaskRequest) =>
+    post<CaseDetail>(`/cases/${id}/tasks/${taskId}`, body),
+  /** POST /api/cases/{id}/complete-checklist — technician, every item has a result */
+  completeChecklist: ({ id, ...body }: Id & CompleteChecklistRequest) =>
+    post<CaseDetail>(`/cases/${id}/complete-checklist`, body),
 }
 
 /** Query keys of this feature, in one place so invalidation never misses one. */

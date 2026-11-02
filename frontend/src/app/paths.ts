@@ -20,6 +20,12 @@ export const paths = {
   assetEdit: '/assets/:id/edit',
   qrLanding: '/qr/assets/:id',
   catalog: '/admin/catalog',
+  // F2 — preventive maintenance
+  checklists: '/maintenance/checklists',
+  plans: '/maintenance/plans',
+  planNew: '/maintenance/plans/new',
+  planDetail: '/maintenance/plans/:id',
+  planEdit: '/maintenance/plans/:id/edit',
   // Core — every role
   notifications: '/notifications',
   // Core — Administrator (ADM-01 is paths.home)
@@ -41,6 +47,8 @@ export const qrLandingPath = (id: number) => `/qr/assets/${id}`
 /** The customer's report form filled in from a QR label. */
 export const reportFromQrPath = (roomId: number, assetId: number) =>
   `/requests/new?roomId=${roomId}&assetId=${assetId}`
+export const planDetailPath = (id: number) => `/maintenance/plans/${id}`
+export const planEditPath = (id: number) => `/maintenance/plans/${id}/edit`
 export const accountDetailPath = (id: number) => `/admin/accounts/${id}`
 export const accountEditPath = (id: number) => `/admin/accounts/${id}/edit`
 export const accountChangeRolePath = (id: number) => `/admin/accounts/${id}/change-role`

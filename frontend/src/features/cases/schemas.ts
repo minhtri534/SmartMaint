@@ -123,6 +123,23 @@ export const extendDueSchema = z
   .refine((v) => v.reason !== 'other' || v.note.length > 0, { path: ['note'], message: 'Say why.' })
 export type ExtendDueFormValues = z.infer<typeof extendDueSchema>
 
+/** F2 TEC-05 a failed checklist item: what is wrong, a photo, and what happens next. */
+export const failTaskSchema = z.object({
+  note: z.string().trim().min(5, 'Say what is wrong (at least 5 characters).').max(1000),
+  photos: z.array(z.string()).max(5),
+  failAction: z.enum(['fixed_on_site', 'create_case']),
+  dangerous: z.boolean(),
+})
+export type FailTaskFormValues = z.infer<typeof failTaskSchema>
+
+/** F2 report a preventive work order done. Hours left empty = the system measures start to finish. */
+export const completeChecklistSchema = z.object({
+  note: z.string().trim().max(1000),
+  laborHours: completeWorkSchema.shape.laborHours,
+  parts: z.array(costLineSchema).max(20),
+})
+export type CompleteChecklistFormValues = z.infer<typeof completeChecklistSchema>
+
 /** Staff corrects the cost lines before closing. */
 export const costsSchema = z.object({ lines: z.array(costLineSchema).max(20) })
 export type CostsFormValues = z.infer<typeof costsSchema>

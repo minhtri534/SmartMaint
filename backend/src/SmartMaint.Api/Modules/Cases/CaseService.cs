@@ -5,6 +5,7 @@ using SmartMaint.Api.Common.Storage;
 using SmartMaint.Api.Data;
 using SmartMaint.Api.Entities.Accounts;
 using SmartMaint.Api.Entities.Cases;
+using SmartMaint.Api.Entities.Maintenance;
 using SmartMaint.Api.Modules.Cases.Dtos;
 using SmartMaint.Api.Modules.Notifications;
 
@@ -67,7 +68,8 @@ internal sealed class CaseService(
         var c = await Visible(WithDetail().AsNoTracking(), scope).SingleOrDefaultAsync(x => x.Id == id, cancellationToken)
             ?? throw CaseErrors.NotFound();
 
-        var photoUrls = await storage.GetUrlsAsync(c.Images.Select(i => i.Image).ToList(), cancellationToken);
+        var photoUrls = await storage.GetUrlsAsync(
+            [.. c.Images.Select(i => i.Image), .. c.Tasks.SelectMany(t => t.Images).Select(i => i.Image)], cancellationToken);
         // Costs: staff, managers and the technician; the customer only when the customer pays.
         var showCosts = scope.Role != UserRole.Customer || c.CostBearer == CostBearer.Customer;
         return CaseMapper.ToDetail(c, AllowedActions(c, scope, clock.GetUtcNow()), photoUrls, showCosts);
@@ -244,22 +246,99 @@ internal sealed class CaseService(
             c.ActualCompletionHours = request.LaborHours ?? MeasuredHours(c.StartedAt, now);
             await AddPhotosAsync(c, CaseImageKind.Before, request.BeforePhotos ?? [], cancellationToken);
             await AddPhotosAsync(c, CaseImageKind.After, request.AfterPhotos, cancellationToken);
-
-            // ERD: Costs — the parts the technician bought + one labour line (hours × hourly rate, E9).
-            c.Costs.AddRange((request.Parts ?? []).Select(ToCost));
-            if (c.Technician?.HourlyRate is { } rate && rate > 0)
-            {
-                var hours = c.ActualCompletionHours.Value;
-                c.Costs.Add(new Cost
-                {
-                    Name = "Labour",
-                    Description = $"{c.Technician.FullName}: {hours:0.##} h × {rate:N0} VND",
-                    Amount = Math.Round(hours * rate, 0),
-                });
-            }
-
+            AddCosts(c, request.Parts);
             return null;
         }, cancellationToken);
+
+    // ----- F2: preventive work orders ---------------------------------------------------------------------------
+
+    public Task<CaseDetailResponse> UpdateTaskAsync(
+        long id, long taskId, UpdateTaskRequest request, CancellationToken cancellationToken) =>
+        ActAsync(id, CaseAction.UpdateTask, async (c, now) =>
+        {
+            var task = await db.CaseTasks.Include(t => t.Images).SingleOrDefaultAsync(t => t.Id == taskId && t.CaseId == c.Id, cancellationToken)
+                ?? throw CaseErrors.TaskNotFound();
+            var photos = request.Photos ?? [];
+            if (request.Status == CaseTaskStatus.Fail && photos.Count == 0 && task.Images.Count == 0)
+            {
+                // TEC-05: a failed item needs a photo.
+                throw CaseErrors.PhotoRequired(task.Name);
+            }
+
+            task.Status = request.Status;
+            if (!string.IsNullOrWhiteSpace(request.Note))
+            {
+                task.Notes.Add(new TaskNote { Note = request.Note.Trim() });
+            }
+
+            foreach (var photo in photos)
+            {
+                var path = await storage.SaveAsync("tasks", DataUrl.ParseImage(photo), cancellationToken);
+                task.Images.Add(new TaskImage { Image = path });
+            }
+
+            if (request.Status != CaseTaskStatus.Fail || request.FailAction != FailAction.CreateCase || task.RepairCaseId is not null)
+            {
+                return null;
+            }
+
+            // BR-07: a repair case from the failed item — F3 at Approved for the staff to assign, F4 when dangerous.
+            var urgency = request.Dangerous ? CasePriority.Emergency : CasePriority.Normal;
+            var repair = new Case
+            {
+                RoomId = c.RoomId,
+                AssetId = c.AssetId,
+                CategoryId = c.CategoryId,
+                Title = $"Repair: {task.Name}",
+                Description = $"{request.Note?.Trim()}\nFound during preventive work order {Case.CodeOf(c.Id)}.",
+                Status = CaseStatus.Approved,
+                PriorityLevelId = (await db.PriorityLevels.SingleAsync(p => p.Code == urgency, cancellationToken)).Id,
+                CostBearer = CostBearer.Building,
+                StaffId = c.StaffId,
+                SubmittedAt = now,
+            };
+            repair.History.Add(new CaseStatusHistory
+            {
+                NewStatus = CaseStatus.Approved,
+                ChangedById = currentUser.Id,
+                ChangedAt = now,
+                Reason = $"Failed checklist item \"{task.Name}\" of {Case.CodeOf(c.Id)}.",
+            });
+            db.Cases.Add(repair);
+            await db.SaveChangesAsync(cancellationToken);
+            task.RepairCaseId = repair.Id;
+
+            var kind = request.Dangerous ? "Emergency repair" : "Repair";
+            notifications.Send(
+                await StaffOfBuildingAsync(c.Room.Floor.BuildingId, cancellationToken),
+                $"{kind} case {Case.CodeOf(repair.Id)} \"{repair.Title}\" was made from {Case.CodeOf(c.Id)}. Assign a technician.");
+            return $"Item \"{task.Name}\" failed: repair case {Case.CodeOf(repair.Id)} made.";
+        }, cancellationToken);
+
+    public Task<CaseDetailResponse> CompleteChecklistAsync(long id, CompleteChecklistRequest request, CancellationToken cancellationToken) =>
+        ActAsync(id, CaseAction.CompleteChecklist, (c, now) =>
+        {
+            c.RootCause = string.IsNullOrWhiteSpace(request.Note) ? "Preventive maintenance done." : request.Note.Trim();
+            c.CompletedAt = now;
+            c.ActualCompletionHours = request.LaborHours ?? MeasuredHours(c.StartedAt, now);
+            AddCosts(c, request.Parts);
+            return Task.FromResult<string?>(null);
+        }, cancellationToken);
+
+    /// <summary>ERD: Costs — the parts the technician bought + one labour line (hours × hourly rate, E9).</summary>
+    private static void AddCosts(Case c, IReadOnlyList<CostLineRequest>? parts)
+    {
+        c.Costs.AddRange((parts ?? []).Select(ToCost));
+        if (c.Technician?.HourlyRate is { } rate && rate > 0 && c.ActualCompletionHours is { } hours)
+        {
+            c.Costs.Add(new Cost
+            {
+                Name = "Labour",
+                Description = $"{c.Technician.FullName}: {hours:0.##} h × {rate:N0} VND",
+                Amount = Math.Round(hours * rate, 0),
+            });
+        }
+    }
 
     public Task<CaseDetailResponse> CloseAsync(long id, CancellationToken cancellationToken) =>
         ActAsync(id, CaseAction.Close, (c, now) =>
@@ -477,7 +556,7 @@ internal sealed class CaseService(
             case CaseAction.Hold:
                 notifications.Send([.. staffOfBuilding, .. customer], $"{code} \"{c.Title}\" is on hold. {reason}");
                 break;
-            case CaseAction.Complete:
+            case CaseAction.Complete or CaseAction.CompleteChecklist:
                 notifications.Send(staffOfBuilding, $"{code} \"{c.Title}\" is done and waits for your check.");
                 break;
             case CaseAction.Close:
@@ -544,6 +623,10 @@ internal sealed class CaseService(
         return action switch
         {
             CaseAction.Rate => c.RatingStars is null,
+            // F2: a preventive work order is done through its checklist, an incident through the repair record.
+            CaseAction.Complete => !c.IsPreventive,
+            CaseAction.UpdateTask => c.IsPreventive,
+            CaseAction.CompleteChecklist => c.IsPreventive && c.Tasks.All(t => t.Status != CaseTaskStatus.Pending),
             // O09: only before the deadline passes.
             CaseAction.ExtendDue => c.DueAt is { } due && now < due,
             CaseAction.ReportNotFixed => c.NotFixedAt is null && c.ClosedAt is { } closedAt && now - closedAt <= ReopenWindow,
@@ -595,7 +678,9 @@ internal sealed class CaseService(
         .Include(c => c.Priority)
         .Include(c => c.Customer)
         .Include(c => c.Staff)
-        .Include(c => c.Technician);
+        .Include(c => c.Technician)
+        .Include(c => c.TriggerWorkOrder)
+        .Include(c => c.Tasks);
 
     private IQueryable<Case> WithDetail() => WithRefs()
         .Include(c => c.Asset)
@@ -603,6 +688,8 @@ internal sealed class CaseService(
         .Include(c => c.History).ThenInclude(h => h.ChangedBy)
         .Include(c => c.Rejections).ThenInclude(r => r.Technician)
         .Include(c => c.Costs)
+        .Include(c => c.Tasks).ThenInclude(t => t.Notes)
+        .Include(c => c.Tasks).ThenInclude(t => t.Images)
         .AsSplitQuery();
 
     /// <summary>Uploads each data URL to storage (validated already) and links it to the case.</summary>

@@ -1040,3 +1040,400 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    ALTER TABLE cases ADD trigger_work_order_id bigint;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    CREATE TABLE case_checklists (
+        id bigint GENERATED ALWAYS AS IDENTITY,
+        name character varying(120) NOT NULL,
+        description character varying(500),
+        category_id bigint NOT NULL,
+        created_at timestamp with time zone NOT NULL DEFAULT (now()),
+        updated_at timestamp with time zone NOT NULL DEFAULT (now()),
+        CONSTRAINT pk_case_checklists PRIMARY KEY (id),
+        CONSTRAINT fk_case_checklists_case_categories_category_id FOREIGN KEY (category_id) REFERENCES case_categories (id) ON DELETE RESTRICT
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    CREATE TABLE frequency_types (
+        id bigint NOT NULL,
+        name character varying(50) NOT NULL,
+        CONSTRAINT pk_frequency_types PRIMARY KEY (id)
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    CREATE TABLE task_statuses (
+        id bigint NOT NULL,
+        name character varying(50) NOT NULL,
+        CONSTRAINT pk_task_statuses PRIMARY KEY (id)
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    CREATE TABLE trigger_statuses (
+        id bigint NOT NULL,
+        name character varying(50) NOT NULL,
+        CONSTRAINT pk_trigger_statuses PRIMARY KEY (id)
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    CREATE TABLE checklist_tasks (
+        id bigint GENERATED ALWAYS AS IDENTITY,
+        checklist_id bigint NOT NULL,
+        name character varying(200) NOT NULL,
+        description character varying(500),
+        created_at timestamp with time zone NOT NULL DEFAULT (now()),
+        updated_at timestamp with time zone NOT NULL DEFAULT (now()),
+        CONSTRAINT pk_checklist_tasks PRIMARY KEY (id),
+        CONSTRAINT fk_checklist_tasks_case_checklists_checklist_id FOREIGN KEY (checklist_id) REFERENCES case_checklists (id) ON DELETE CASCADE
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    CREATE TABLE case_tasks (
+        id bigint GENERATED ALWAYS AS IDENTITY,
+        case_id bigint NOT NULL,
+        name character varying(200) NOT NULL,
+        description character varying(500),
+        status_id bigint NOT NULL,
+        repair_case_id bigint,
+        created_at timestamp with time zone NOT NULL DEFAULT (now()),
+        updated_at timestamp with time zone NOT NULL DEFAULT (now()),
+        CONSTRAINT pk_case_tasks PRIMARY KEY (id),
+        CONSTRAINT fk_case_tasks_cases_case_id FOREIGN KEY (case_id) REFERENCES cases (id) ON DELETE CASCADE,
+        CONSTRAINT fk_case_tasks_cases_repair_case_id FOREIGN KEY (repair_case_id) REFERENCES cases (id) ON DELETE SET NULL,
+        CONSTRAINT fk_case_tasks_task_statuses_status_id FOREIGN KEY (status_id) REFERENCES task_statuses (id) ON DELETE RESTRICT
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    CREATE TABLE maintenance_triggers (
+        id bigint GENERATED ALWAYS AS IDENTITY,
+        frequency integer NOT NULL,
+        frequency_type_id bigint NOT NULL,
+        staff_id bigint NOT NULL,
+        approving_manager_id bigint,
+        status_id bigint NOT NULL,
+        last_paused timestamp with time zone,
+        last_triggered timestamp with time zone,
+        lead_days integer NOT NULL,
+        reject_reason character varying(500),
+        created_at timestamp with time zone NOT NULL DEFAULT (now()),
+        updated_at timestamp with time zone NOT NULL DEFAULT (now()),
+        CONSTRAINT pk_maintenance_triggers PRIMARY KEY (id),
+        CONSTRAINT ck_maintenance_triggers_frequency CHECK (frequency > 0),
+        CONSTRAINT ck_maintenance_triggers_lead_days CHECK (lead_days >= 0),
+        CONSTRAINT fk_maintenance_triggers_frequency_types_frequency_type_id FOREIGN KEY (frequency_type_id) REFERENCES frequency_types (id) ON DELETE RESTRICT,
+        CONSTRAINT fk_maintenance_triggers_managers_approving_manager_id FOREIGN KEY (approving_manager_id) REFERENCES managers (id) ON DELETE RESTRICT,
+        CONSTRAINT fk_maintenance_triggers_staff_staff_id FOREIGN KEY (staff_id) REFERENCES staff (id) ON DELETE RESTRICT,
+        CONSTRAINT fk_maintenance_triggers_trigger_statuses_status_id FOREIGN KEY (status_id) REFERENCES trigger_statuses (id) ON DELETE RESTRICT
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    CREATE TABLE task_images (
+        id bigint GENERATED ALWAYS AS IDENTITY,
+        task_id bigint NOT NULL,
+        image character varying(300) NOT NULL,
+        notes character varying(500),
+        created_at timestamp with time zone NOT NULL DEFAULT (now()),
+        updated_at timestamp with time zone NOT NULL DEFAULT (now()),
+        CONSTRAINT pk_task_images PRIMARY KEY (id),
+        CONSTRAINT fk_task_images_case_tasks_task_id FOREIGN KEY (task_id) REFERENCES case_tasks (id) ON DELETE CASCADE
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    CREATE TABLE task_notes (
+        id bigint GENERATED ALWAYS AS IDENTITY,
+        task_id bigint NOT NULL,
+        note character varying(1000) NOT NULL,
+        created_at timestamp with time zone NOT NULL DEFAULT (now()),
+        updated_at timestamp with time zone NOT NULL DEFAULT (now()),
+        CONSTRAINT pk_task_notes PRIMARY KEY (id),
+        CONSTRAINT fk_task_notes_case_tasks_task_id FOREIGN KEY (task_id) REFERENCES case_tasks (id) ON DELETE CASCADE
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    CREATE TABLE maintenance_work_order_details (
+        id bigint GENERATED ALWAYS AS IDENTITY,
+        trigger_id bigint NOT NULL,
+        checklist_id bigint NOT NULL,
+        estimated_hours numeric(6,2),
+        priority_level_id bigint NOT NULL,
+        created_at timestamp with time zone NOT NULL DEFAULT (now()),
+        updated_at timestamp with time zone NOT NULL DEFAULT (now()),
+        CONSTRAINT pk_maintenance_work_order_details PRIMARY KEY (id),
+        CONSTRAINT ck_maintenance_work_order_details_estimated_hours CHECK (estimated_hours IS NULL OR estimated_hours > 0),
+        CONSTRAINT fk_maintenance_work_order_details_case_checklists_checklist_id FOREIGN KEY (checklist_id) REFERENCES case_checklists (id) ON DELETE RESTRICT,
+        CONSTRAINT fk_maintenance_work_order_details_maintenance_triggers_trigger FOREIGN KEY (trigger_id) REFERENCES maintenance_triggers (id) ON DELETE CASCADE,
+        CONSTRAINT fk_maintenance_work_order_details_priority_levels_priority_lev FOREIGN KEY (priority_level_id) REFERENCES priority_levels (id) ON DELETE RESTRICT
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    CREATE TABLE maintenance_work_order_assets (
+        work_order_detail_id bigint NOT NULL,
+        asset_id bigint NOT NULL,
+        technician_id bigint,
+        start_time date NOT NULL,
+        end_time date,
+        last_due_date date,
+        CONSTRAINT pk_maintenance_work_order_assets PRIMARY KEY (work_order_detail_id, asset_id),
+        CONSTRAINT fk_maintenance_work_order_assets_assets_asset_id FOREIGN KEY (asset_id) REFERENCES assets (id) ON DELETE RESTRICT,
+        CONSTRAINT fk_maintenance_work_order_assets_maintenance_work_order_detail FOREIGN KEY (work_order_detail_id) REFERENCES maintenance_work_order_details (id) ON DELETE CASCADE,
+        CONSTRAINT fk_maintenance_work_order_assets_technicians_technician_id FOREIGN KEY (technician_id) REFERENCES technicians (id) ON DELETE RESTRICT
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    INSERT INTO frequency_types (id, name)
+    VALUES (1, 'day');
+    INSERT INTO frequency_types (id, name)
+    VALUES (2, 'week');
+    INSERT INTO frequency_types (id, name)
+    VALUES (3, 'month');
+    INSERT INTO frequency_types (id, name)
+    VALUES (4, 'year');
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    INSERT INTO task_statuses (id, name)
+    VALUES (1, 'pending');
+    INSERT INTO task_statuses (id, name)
+    VALUES (2, 'pass');
+    INSERT INTO task_statuses (id, name)
+    VALUES (3, 'fail');
+    INSERT INTO task_statuses (id, name)
+    VALUES (4, 'not_applicable');
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    INSERT INTO trigger_statuses (id, name)
+    VALUES (1, 'pending_approval');
+    INSERT INTO trigger_statuses (id, name)
+    VALUES (2, 'active');
+    INSERT INTO trigger_statuses (id, name)
+    VALUES (3, 'rejected');
+    INSERT INTO trigger_statuses (id, name)
+    VALUES (4, 'paused');
+    INSERT INTO trigger_statuses (id, name)
+    VALUES (5, 'ended');
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    CREATE INDEX ix_cases_trigger_work_order_id ON cases (trigger_work_order_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    CREATE INDEX ix_case_checklists_category_id ON case_checklists (category_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    CREATE UNIQUE INDEX ix_case_checklists_name ON case_checklists (name);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    CREATE INDEX ix_case_tasks_case_id ON case_tasks (case_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    CREATE INDEX ix_case_tasks_repair_case_id ON case_tasks (repair_case_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    CREATE INDEX ix_case_tasks_status_id ON case_tasks (status_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    CREATE INDEX ix_checklist_tasks_checklist_id ON checklist_tasks (checklist_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    CREATE UNIQUE INDEX ix_frequency_types_name ON frequency_types (name);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    CREATE INDEX ix_maintenance_triggers_approving_manager_id ON maintenance_triggers (approving_manager_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    CREATE INDEX ix_maintenance_triggers_frequency_type_id ON maintenance_triggers (frequency_type_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    CREATE INDEX ix_maintenance_triggers_staff_id ON maintenance_triggers (staff_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    CREATE INDEX ix_maintenance_triggers_status_id ON maintenance_triggers (status_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    CREATE INDEX ix_maintenance_work_order_assets_asset_id ON maintenance_work_order_assets (asset_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    CREATE INDEX ix_maintenance_work_order_assets_technician_id ON maintenance_work_order_assets (technician_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    CREATE INDEX ix_maintenance_work_order_details_checklist_id ON maintenance_work_order_details (checklist_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    CREATE INDEX ix_maintenance_work_order_details_priority_level_id ON maintenance_work_order_details (priority_level_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    CREATE INDEX ix_maintenance_work_order_details_trigger_id ON maintenance_work_order_details (trigger_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    CREATE INDEX ix_task_images_task_id ON task_images (task_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    CREATE INDEX ix_task_notes_task_id ON task_notes (task_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    CREATE UNIQUE INDEX ix_task_statuses_name ON task_statuses (name);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    CREATE UNIQUE INDEX ix_trigger_statuses_name ON trigger_statuses (name);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    ALTER TABLE cases ADD CONSTRAINT fk_cases_maintenance_work_order_details_trigger_work_order_id FOREIGN KEY (trigger_work_order_id) REFERENCES maintenance_work_order_details (id) ON DELETE RESTRICT;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102074916_AddPreventiveMaintenance') THEN
+    INSERT INTO __ef_migrations_history (migration_id, product_version)
+    VALUES ('20261102074916_AddPreventiveMaintenance', '10.0.13');
+    END IF;
+END $EF$;
+COMMIT;
+

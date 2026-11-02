@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
-import { paths, resubmitPath } from '@/app/paths'
+import { paths, planDetailPath, resubmitPath } from '@/app/paths'
 import type { Role } from '@/shared/types/role'
 import { Alert, Button, Card, CardHeader, Icon, LinkButton, PageHeader } from '@/shared/ui'
 import { formatDateTime, formatVnd } from '@/shared/utils/format'
 import { useAuth } from '@/features/auth'
 import { CaseActions } from '../components/CaseActions'
+import { ChecklistCard } from '../components/ChecklistCard'
 import { UrgencyNote } from '../components/CaseBadges'
 import { PhotoGallery, RejectionList, StatusTimeline } from '../components/CaseHistory'
 import { SlaPanel } from '../components/SlaTrack'
@@ -66,6 +67,7 @@ export function CaseDetailPage() {
         description={
           <>
             <span className="font-mono">{c.code}</span> · {c.serviceTypeName}
+            {c.isPreventive && ' · Preventive maintenance'}
           </>
         }
         actions={<CaseActions caseDetail={c} />}
@@ -115,7 +117,10 @@ export function CaseDetailPage() {
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="flex min-w-0 flex-col gap-6">
           <Card>
-            <CardHeader title="Problem" aside={`Reported ${formatDateTime(c.submittedAt)}`} />
+            <CardHeader
+              title={c.isPreventive ? 'Work order' : 'Problem'}
+              aside={`${c.isPreventive ? 'Made' : 'Reported'} ${formatDateTime(c.submittedAt)}`}
+            />
             <p className="max-w-[68ch] text-sm leading-6 whitespace-pre-line">{c.description}</p>
             <dl className="border-rule mt-5 grid gap-4 border-t pt-4 text-sm sm:grid-cols-2">
               <Field label="Location">
@@ -133,14 +138,16 @@ export function CaseDetailPage() {
             </div>
           </Card>
 
+          {c.isPreventive && c.tasks.length > 0 && <ChecklistCard caseDetail={c} />}
+
           {c.repairReport && (
             <Card>
               <CardHeader
-                title="Repair record"
+                title={c.isPreventive ? 'Maintenance report' : 'Repair record'}
                 aside={c.technician ? `by ${c.technician.fullName}` : undefined}
               />
               <dl className="grid gap-4 text-sm sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_96px]">
-                <Field label="Cause">{c.repairReport.rootCause}</Field>
+                <Field label={c.isPreventive ? 'Note' : 'Cause'}>{c.repairReport.rootCause}</Field>
                 <Field label="Parts used">
                   {c.repairReport.partsUsed || <span className="text-muted">—</span>}
                 </Field>
@@ -192,9 +199,21 @@ export function CaseDetailPage() {
           <Card>
             <CardHeader title="People" />
             <dl className="flex flex-col gap-3 text-sm">
-              <Field label="Reported by" inline>
-                {c.requester?.fullName ?? '—'}
-              </Field>
+              {c.isPreventive ? (
+                <Field label="Made by" inline>
+                  {c.planId && seesRejections ? (
+                    <Link to={planDetailPath(c.planId)} className="underline underline-offset-2">
+                      Maintenance plan
+                    </Link>
+                  ) : (
+                    'Maintenance plan'
+                  )}
+                </Field>
+              ) : (
+                <Field label="Reported by" inline>
+                  {c.requester?.fullName ?? '—'}
+                </Field>
+              )}
               <Field label="Staff in charge" inline>
                 {c.staff?.fullName ?? '—'}
               </Field>

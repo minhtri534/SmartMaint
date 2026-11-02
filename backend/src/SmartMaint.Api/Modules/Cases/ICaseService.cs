@@ -67,4 +67,10 @@ public interface ICaseService
 
     /// <summary>Staff corrects the cost lines before closing (status Completed).</summary>
     Task<CaseDetailResponse> UpdateCostsAsync(long id, UpdateCostsRequest request, CancellationToken cancellationToken);
+
+    /// <summary>F2 TEC-05: the result of one checklist item; a failed item can make a repair case (BR-07).</summary>
+    Task<CaseDetailResponse> UpdateTaskAsync(long id, long taskId, UpdateTaskRequest request, CancellationToken cancellationToken);
+
+    /// <summary>F2: every item has a result -> Completed (the staff verify as in F3).</summary>
+    Task<CaseDetailResponse> CompleteChecklistAsync(long id, CompleteChecklistRequest request, CancellationToken cancellationToken);
 }

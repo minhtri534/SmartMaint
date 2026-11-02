@@ -175,3 +175,32 @@ public sealed class UpdateCostsRequestValidator : AbstractValidator<UpdateCostsR
 {
     public UpdateCostsRequestValidator() => RuleFor(x => (IReadOnlyList<CostLineRequest>?)x.Lines).NotNull().ValidCostLines();
 }
+
+public sealed class UpdateTaskRequestValidator : AbstractValidator<UpdateTaskRequest>
+{
+    public UpdateTaskRequestValidator()
+    {
+        RuleFor(x => x.Status).IsInEnum()
+            .NotEqual(Entities.Maintenance.CaseTaskStatus.Pending).WithMessage("Choose Pass, Fail or N/A.");
+        RuleFor(x => x.Note).MaximumLength(1000);
+        RuleFor(x => x.Note).NotEmpty().Must(n => n!.Trim().Length >= 5)
+            .When(x => x.Status == Entities.Maintenance.CaseTaskStatus.Fail)
+            .WithMessage("Say what is wrong (at least 5 characters).");
+        RuleFor(x => x.FailAction).NotNull().IsInEnum()
+            .When(x => x.Status == Entities.Maintenance.CaseTaskStatus.Fail)
+            .WithMessage("Choose: fixed on the spot, or make a repair case.");
+        RuleFor(x => x.Photos).ValidPhotos();
+    }
+}
+
+public sealed class CompleteChecklistRequestValidator : AbstractValidator<CompleteChecklistRequest>
+{
+    public CompleteChecklistRequestValidator()
+    {
+        RuleFor(x => x.Note).MaximumLength(1000);
+        RuleFor(x => x.LaborHours)
+            .InclusiveBetween(CompleteWorkRequestValidator.MinHours, CompleteWorkRequestValidator.MaxHours)
+            .When(x => x.LaborHours is not null);
+        RuleFor(x => x.Parts).ValidCostLines();
+    }
+}

@@ -50,6 +50,11 @@
 | | `Image` = **đường dẫn file** trong Supabase Storage (bucket private), không phải URL | Web nhận URL ký tạm 1 giờ |
 | CaseStatusHistory → `case_status_history` | `changed_by_id` (FK accounts), `reason` | Không có thì không biết ai duyệt / đóng / hủy / tạm dừng và vì sao (bản soát điểm 2). Trạng thái **trước** lấy từ dòng liền trước, không lưu cột |
 | TechnicianRejections → `technician_rejections` | khóa chính (case_id, technician_id, rejected_at) | ERD chưa đánh khóa (bản soát điểm 15); cùng 1 KTV có thể từ chối lại sau khi mở lại |
+| MaintenanceTriggers → `maintenance_triggers` (Phần 5) | `lead_days` (mặc định 3) | Leader 02/11: lịch cố định, **sinh work order trước hạn N ngày** |
+| | `reject_reason` | Manager từ chối kế hoạch phải có lý do cho Staff (E10) |
+| MaintenanceWorkOrderAssets → `maintenance_work_order_assets` (Phần 5) | `last_due_date`; khóa chính (work_order_detail_id, asset_id) | Mỗi thiết bị bắt đầu một ngày khác nhau nên "đã sinh tới kỳ nào" phải lưu theo thiết bị (bản soát điểm 3 + 15). `StartTime` / `EndTime` lưu kiểu **date** = ngày đến hạn đầu tiên / ngày cuối áp dụng |
+| CaseTasks → `case_tasks` (Phần 5) | `name`, `description` chép từ `checklist_tasks` lúc sinh | Sửa checklist mẫu không làm đổi work order đã sinh |
+| | `repair_case_id` (FK cases, tùy chọn) | Mục "Không đạt" → tạo case sửa (BR-07). Bản soát điểm 6 đề nghị `Cases.SourceTask`; code đặt chiều ngược lại cho gọn (1 mục ↔ tối đa 1 case sửa) — họp chọn 1 |
 
 ## 3. Chỗ code theo ERD nguyên bản nhưng có hệ quả (biết trước, họp quyết)
 
@@ -67,12 +72,17 @@
 | Trạng thái thiết bị của Screen Catalog (Active / Under repair / Out of service do Officer đổi) | Không làm: ERD không có cột; Leader 02/11 chỉ cho Admin sửa thiết bị. "Đang hỏng" hiện ra từ số case mở của thiết bị | — |
 | Notifications(UserID, Details, TimeSent) — không IsRead, không trỏ case (bản soát điểm 12) | Trang Thông báo không có "chưa đọc", không bấm mở case được; mã case nằm trong chữ | `TimeSent` → `sent_at`; chỉ trong app, không email; giữ 90 ngày |
 | AIConversation – Account 1–1, AIConversation – AIMessage 1–1 (bản soát điểm 5) | Đã tạo đúng 1–1 (`user_id` / `conversation_id` unique) → mỗi người chỉ 1 hội thoại, 1 tin nhắn | Chưa có tính năng AI; sửa ERD trước khi làm (AI chỉ cho Technician + Customer) |
+| MaintenanceTriggers không có tòa nhà | Tòa của kế hoạch **suy ra từ thiết bị**; mọi thiết bị của 1 kế hoạch phải cùng 1 tòa (để biết Manager nào duyệt, Staff nào thấy) | Kiểm tra khi lưu |
+| Trigger – WorkOrderDetails là 1–N | Màn hình làm **1 checklist / 1 kế hoạch** (đúng 1 dòng detail) | ERD vẫn cho nhiều detail, chưa dùng |
+| MaintenanceTriggers không có cột tên | Tên kế hoạch hiển thị = "tên checklist · tên tòa" | Không thêm cột |
+| Lịch sử trạng thái của work order sinh tự động | `case_status_history.changed_by_id` bắt buộc → dòng "Assigned / Approved" do job ghi **đứng tên Staff lập kế hoạch** | — |
+| Sửa kế hoạch đang chạy | Quay lại *Chờ duyệt* (Manager duyệt lại); thiết bị giữ nguyên thì giữ `last_due_date` nên không sinh trùng | — |
 
-## 4. Bảng ERD chưa tạo (sẽ tạo đúng phần của nó)
+## 4. Bảng ERD chưa tạo
 
-| Bảng ERD | Phần |
-|---|---|
-| MaintenanceTriggers, FrequencyType, TriggerStatuses, MaintenanceWorkOrderDetails, MaintenanceWorkOrderAssets, CaseChecklists, ChecklistTasks, CaseTasks, TaskStatuses, TaskImages, TaskNotes; `Cases.TriggerWorkOrder` | Phần 5 — F2 |
+Không còn: đã tạo hết bảng của ERD v5.
+
+Đã tạo (Phần 5, migration `AddPreventiveMaintenance`): MaintenanceTriggers, FrequencyType (`frequency_types`), TriggerStatuses, MaintenanceWorkOrderDetails, MaintenanceWorkOrderAssets, CaseChecklists, ChecklistTasks, CaseTasks, TaskStatuses, TaskImages, TaskNotes; `Cases.TriggerWorkOrder` (`trigger_work_order_id`).
 
 Đã tạo (Phần 2, migration `AddAuditNotificationsAi`): AuditLog (`audit_logs`), AuditLogTargetType, AuditLogTargetOperation, Notifications, AIConversation (`ai_conversations`), AIMessage (`ai_messages`).
 
@@ -89,3 +99,4 @@ Tài khoản demo đăng nhập bằng **username** (`admin`, `staff`, `technici
 - 02/11 — Phần 2: AuditLog, Notifications, bảng AI; Admin quản lý tài khoản, sửa giờ SLA; thông báo trong app ở các mốc F3.
 - 02/11 — Phần 3 (F1): `assets.retired_at`; thêm dòng bảng tra audit cho F1 (migration `AddAssetRetirementAndAuditTargets`).
 - 02/11 — Phần 4 (F3 còn lại): bảng `costs`, cột "chưa sửa xong" và nhắc SLA trên `cases` (migration `AddCostsNotFixedAndSlaReminders`).
+- 02/11 — Phần 5 (F2): 11 bảng bảo trì định kỳ + `cases.trigger_work_order_id`; cột thêm `lead_days`, `reject_reason`, `last_due_date`, `case_tasks.name/description/repair_case_id` (migration `AddPreventiveMaintenance`).

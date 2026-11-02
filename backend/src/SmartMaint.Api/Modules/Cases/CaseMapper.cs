@@ -22,7 +22,8 @@ internal static class CaseMapper
         c.DueAt,
         c.StartedAt,
         c.CompletedAt,
-        IsEmergencyFlow(c));
+        IsEmergencyFlow(c),
+        c.IsPreventive);
 
     /// <summary>
     /// Needs Images, History(ChangedBy), Rejections(Technician) and Asset loaded too.
@@ -48,6 +49,7 @@ internal static class CaseMapper
             c.StartedAt,
             c.CompletedAt,
             IsEmergencyFlow(c),
+            c.IsPreventive,
             c.Description,
             c.CategoryId,
             c.Asset is null ? null : new AssetResponse(c.Asset.Id, c.Asset.Name, c.Asset.RoomId),
@@ -76,6 +78,12 @@ internal static class CaseMapper
             showCosts ? c.Costs.OrderBy(x => x.Id).Select(x => new CostResponse(x.Id, x.Name, x.Description, x.Amount)).ToList() : null,
             showCosts && c.Costs.Count > 0 ? c.Costs.Sum(x => x.Amount) : null,
             c.NotFixedReason is { } notFixed && c.NotFixedAt is { } reportedAt ? new NotFixedResponse(notFixed, reportedAt) : null,
+            c.TriggerWorkOrder?.TriggerId,
+            c.Tasks.OrderBy(t => t.Id).Select(t => new CaseTaskResponse(
+                t.Id, t.Name, t.Description, t.Status,
+                t.Notes.OrderBy(n => n.Id).Select(n => new TaskNoteResponse(n.Note, n.CreatedAt)).ToList(),
+                t.Images.OrderBy(i => i.Id).Where(i => photoUrls.ContainsKey(i.Image)).Select(i => photoUrls[i.Image]).ToList(),
+                t.RepairCaseId, t.RepairCaseId is { } r ? Case.CodeOf(r) : null)).ToList(),
             allowedActions);
     }
 

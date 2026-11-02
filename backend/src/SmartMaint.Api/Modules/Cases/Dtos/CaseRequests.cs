@@ -72,3 +72,24 @@ public sealed record ExtendDueRequest(DateTimeOffset NewDueAt, ExtendDueReason R
 
 /// <summary>Staff corrects the cost lines before closing.</summary>
 public sealed record UpdateCostsRequest(IReadOnlyList<CostLineRequest> Lines);
+
+/// <summary>F2: what the technician does with a failed checklist item (BR-07).</summary>
+public enum FailAction
+{
+    /// <summary>Fixed on the spot; the note says what was done.</summary>
+    FixedOnSite,
+
+    /// <summary>A repair case is made (F3, Approved for the staff to assign; Emergency = F4 when dangerous).</summary>
+    CreateCase,
+}
+
+/// <summary>F2 TEC-05: the result of one checklist item. Fail needs a note, a photo and a FailAction.</summary>
+public sealed record UpdateTaskRequest(
+    Entities.Maintenance.CaseTaskStatus Status,
+    string? Note,
+    IReadOnlyList<string>? Photos,
+    FailAction? FailAction,
+    bool Dangerous);
+
+/// <summary>F2: every item has a result; report the preventive work order done.</summary>
+public sealed record CompleteChecklistRequest(string? Note, decimal? LaborHours, IReadOnlyList<CostLineRequest>? Parts);

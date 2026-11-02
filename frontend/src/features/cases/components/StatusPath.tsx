@@ -70,7 +70,7 @@ export function StatusPath({ c }: { c: CaseDetail }) {
                   here ? 'text-ink font-semibold' : done ? 'text-ink' : 'text-faint',
                 )}
               >
-                {step.label}
+                {c.isPreventive && step.status === 'pending' ? 'Planned' : step.label}
               </span>
               {here && branch ? (
                 <span>

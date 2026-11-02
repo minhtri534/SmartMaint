@@ -29,6 +29,9 @@ internal static class CaseErrors
     public static AppException PhotoRequired(string serviceType) =>
         new(ErrorKind.BadRequest, "case.photo_required", $"\"{serviceType}\" needs at least one photo.");
 
+    public static AppException TaskNotFound() =>
+        new(ErrorKind.NotFound, "case.task_not_found", "This checklist item does not belong to the case.");
+
     public static AppException SameTechnician() =>
         new(ErrorKind.BadRequest, "case.same_technician", "This technician already holds the case. Choose another one.");
 

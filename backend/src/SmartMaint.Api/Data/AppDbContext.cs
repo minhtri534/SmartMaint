@@ -5,6 +5,7 @@ using SmartMaint.Api.Entities.Accounts;
 using SmartMaint.Api.Entities.Buildings;
 using SmartMaint.Api.Entities.Cases;
 using SmartMaint.Api.Entities.Core;
+using SmartMaint.Api.Entities.Maintenance;
 
 namespace SmartMaint.Api.Data;
 
@@ -45,6 +46,16 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<TechnicianRejection> TechnicianRejections => Set<TechnicianRejection>();
     public DbSet<Cost> Costs => Set<Cost>();
 
+    // Preventive maintenance (F2)
+    public DbSet<CaseChecklist> CaseChecklists => Set<CaseChecklist>();
+    public DbSet<ChecklistTask> ChecklistTasks => Set<ChecklistTask>();
+    public DbSet<MaintenanceTrigger> MaintenanceTriggers => Set<MaintenanceTrigger>();
+    public DbSet<MaintenanceWorkOrderDetail> MaintenanceWorkOrderDetails => Set<MaintenanceWorkOrderDetail>();
+    public DbSet<MaintenanceWorkOrderAsset> MaintenanceWorkOrderAssets => Set<MaintenanceWorkOrderAsset>();
+    public DbSet<CaseTask> CaseTasks => Set<CaseTask>();
+    public DbSet<TaskNote> TaskNotes => Set<TaskNote>();
+    public DbSet<TaskImage> TaskImages => Set<TaskImage>();
+
     // Core: audit, notifications, AI (tables only for now)
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<Notification> Notifications => Set<Notification>();
@@ -58,6 +69,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         modelBuilder.HasLookupTable<CaseStatus>("case_statuses");
         modelBuilder.HasLookupTable<AuditTarget>("audit_log_target_types");
         modelBuilder.HasLookupTable<AuditOperation>("audit_log_target_operations");
+        modelBuilder.HasLookupTable<FrequencyUnit>("frequency_types");
+        modelBuilder.HasLookupTable<TriggerStatus>("trigger_statuses");
+        modelBuilder.HasLookupTable<CaseTaskStatus>("task_statuses");
 
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
 

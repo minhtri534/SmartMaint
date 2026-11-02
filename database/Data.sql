@@ -352,3 +352,68 @@ BEGIN
     END LOOP;
 END
 $$;
+
+-- ---------------------------------------------------------------------------
+-- case_checklists, checklist_tasks, maintenance plans  (owner: Trí — F2)
+-- One running plan (Tower A air conditioners, monthly, first due in 2 days so the generator job makes the work
+-- orders on the first run) and one plan waiting for the manager's approval.
+-- ---------------------------------------------------------------------------
+INSERT INTO case_checklists (name, description, category_id)
+SELECT c.name, c.descr, cat.id
+FROM (VALUES ('Split AC monthly service', 'Cleaning and checks for split air conditioners.', 'Air conditioning', 'Not cooling'),
+             ('Water heater quarterly check', 'Safety checks for electric water heaters.', 'Water', 'Leaking pipe or tap')) AS c(name, descr, grp, typ)
+JOIN case_categories cat ON cat.group_name = c.grp AND cat.name = c.typ
+ON CONFLICT (name) DO NOTHING;
+
+INSERT INTO checklist_tasks (checklist_id, name, description)
+SELECT cl.id, t.name, NULL
+FROM (VALUES ('Split AC monthly service', 'Clean the air filters'),
+             ('Split AC monthly service', 'Check the drain pipe is not blocked'),
+             ('Split AC monthly service', 'Measure the outlet air temperature (below 16 °C)'),
+             ('Split AC monthly service', 'Check the remote control and the display'),
+             ('Water heater quarterly check', 'Test the earth leakage breaker (ELCB)'),
+             ('Water heater quarterly check', 'Check for leaks at the inlet and outlet'),
+             ('Water heater quarterly check', 'Check the thermostat cuts off')) AS t(checklist, name)
+JOIN case_checklists cl ON cl.name = t.checklist
+WHERE NOT EXISTS (SELECT 1 FROM checklist_tasks x WHERE x.checklist_id = cl.id AND x.name = t.name);
+
+DO $$
+DECLARE
+    stf     bigint := (SELECT id FROM accounts WHERE username = 'staff');
+    mgr     bigint := (SELECT id FROM accounts WHERE username = 'manager');
+    tech    bigint := (SELECT id FROM accounts WHERE username = 'technician');
+    plan_id bigint;
+    det_id  bigint;
+BEGIN
+    -- Running plan: Tower A split ACs, every month, made 3 days before the due day.
+    IF NOT EXISTS (SELECT 1 FROM maintenance_work_order_details d JOIN case_checklists c ON c.id = d.checklist_id
+                   WHERE c.name = 'Split AC monthly service') THEN
+        INSERT INTO maintenance_triggers (frequency, frequency_type_id, staff_id, approving_manager_id, status_id, lead_days)
+        VALUES (1, (SELECT id FROM frequency_types WHERE name = 'month'), stf, mgr,
+                (SELECT id FROM trigger_statuses WHERE name = 'active'), 3)
+        RETURNING id INTO plan_id;
+        INSERT INTO maintenance_work_order_details (trigger_id, checklist_id, estimated_hours, priority_level_id)
+        VALUES (plan_id, (SELECT id FROM case_checklists WHERE name = 'Split AC monthly service'), 1.5,
+                (SELECT id FROM priority_levels WHERE code = 'normal'))
+        RETURNING id INTO det_id;
+        INSERT INTO maintenance_work_order_assets (work_order_detail_id, asset_id, technician_id, start_time, end_time)
+        SELECT det_id, a.id, tech, CURRENT_DATE + 2, NULL
+        FROM assets a WHERE a.name IN ('Split AC Daikin 2HP (#AC-501)', 'Split AC Panasonic 1.5HP (#AC-502)');
+    END IF;
+
+    -- Plan waiting for approval: the Restroom G water heater, every 3 months, no default technician.
+    IF NOT EXISTS (SELECT 1 FROM maintenance_work_order_details d JOIN case_checklists c ON c.id = d.checklist_id
+                   WHERE c.name = 'Water heater quarterly check') THEN
+        INSERT INTO maintenance_triggers (frequency, frequency_type_id, staff_id, status_id, lead_days)
+        VALUES (3, (SELECT id FROM frequency_types WHERE name = 'month'), stf,
+                (SELECT id FROM trigger_statuses WHERE name = 'pending_approval'), 3)
+        RETURNING id INTO plan_id;
+        INSERT INTO maintenance_work_order_details (trigger_id, checklist_id, estimated_hours, priority_level_id)
+        VALUES (plan_id, (SELECT id FROM case_checklists WHERE name = 'Water heater quarterly check'), 1,
+                (SELECT id FROM priority_levels WHERE code = 'normal'))
+        RETURNING id INTO det_id;
+        INSERT INTO maintenance_work_order_assets (work_order_detail_id, asset_id, technician_id, start_time, end_time)
+        SELECT det_id, a.id, NULL, CURRENT_DATE + 7, NULL FROM assets a WHERE a.name = 'Water heater Ariston 30L (#WH-G1)';
+    END IF;
+END
+$$;

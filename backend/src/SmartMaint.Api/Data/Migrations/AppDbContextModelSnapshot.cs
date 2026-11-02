@@ -711,6 +711,10 @@ namespace SmartMaint.Api.Data.Migrations
                         .HasColumnType("character varying(120)")
                         .HasColumnName("title");
 
+                    b.Property<long?>("TriggerWorkOrderId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("trigger_work_order_id");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
@@ -746,6 +750,9 @@ namespace SmartMaint.Api.Data.Migrations
 
                     b.HasIndex("SubmittedAt")
                         .HasDatabaseName("ix_cases_submitted_at");
+
+                    b.HasIndex("TriggerWorkOrderId")
+                        .HasDatabaseName("ix_cases_trigger_work_order_id");
 
                     b.ToTable("cases", null, t =>
                         {
@@ -1510,6 +1517,556 @@ namespace SmartMaint.Api.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("SmartMaint.Api.Entities.Lookup<SmartMaint.Api.Entities.Maintenance.CaseTaskStatus>", b =>
+                {
+                    b.Property<long>("Id")
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("name");
+
+                    b.HasKey("Id")
+                        .HasName("pk_task_statuses");
+
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasDatabaseName("ix_task_statuses_name");
+
+                    b.ToTable("task_statuses", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1L,
+                            Name = "pending"
+                        },
+                        new
+                        {
+                            Id = 2L,
+                            Name = "pass"
+                        },
+                        new
+                        {
+                            Id = 3L,
+                            Name = "fail"
+                        },
+                        new
+                        {
+                            Id = 4L,
+                            Name = "not_applicable"
+                        });
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Lookup<SmartMaint.Api.Entities.Maintenance.FrequencyUnit>", b =>
+                {
+                    b.Property<long>("Id")
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("name");
+
+                    b.HasKey("Id")
+                        .HasName("pk_frequency_types");
+
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasDatabaseName("ix_frequency_types_name");
+
+                    b.ToTable("frequency_types", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1L,
+                            Name = "day"
+                        },
+                        new
+                        {
+                            Id = 2L,
+                            Name = "week"
+                        },
+                        new
+                        {
+                            Id = 3L,
+                            Name = "month"
+                        },
+                        new
+                        {
+                            Id = 4L,
+                            Name = "year"
+                        });
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Lookup<SmartMaint.Api.Entities.Maintenance.TriggerStatus>", b =>
+                {
+                    b.Property<long>("Id")
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("name");
+
+                    b.HasKey("Id")
+                        .HasName("pk_trigger_statuses");
+
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasDatabaseName("ix_trigger_statuses_name");
+
+                    b.ToTable("trigger_statuses", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1L,
+                            Name = "pending_approval"
+                        },
+                        new
+                        {
+                            Id = 2L,
+                            Name = "active"
+                        },
+                        new
+                        {
+                            Id = 3L,
+                            Name = "rejected"
+                        },
+                        new
+                        {
+                            Id = 4L,
+                            Name = "paused"
+                        },
+                        new
+                        {
+                            Id = 5L,
+                            Name = "ended"
+                        });
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Maintenance.CaseChecklist", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("CategoryId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("category_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("description");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("name");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.HasKey("Id")
+                        .HasName("pk_case_checklists");
+
+                    b.HasIndex("CategoryId")
+                        .HasDatabaseName("ix_case_checklists_category_id");
+
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasDatabaseName("ix_case_checklists_name");
+
+                    b.ToTable("case_checklists", (string)null);
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Maintenance.CaseTask", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("CaseId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("case_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("description");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.Property<long?>("RepairCaseId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("repair_case_id");
+
+                    b.Property<long>("Status")
+                        .HasColumnType("bigint")
+                        .HasColumnName("status_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.HasKey("Id")
+                        .HasName("pk_case_tasks");
+
+                    b.HasIndex("CaseId")
+                        .HasDatabaseName("ix_case_tasks_case_id");
+
+                    b.HasIndex("RepairCaseId")
+                        .HasDatabaseName("ix_case_tasks_repair_case_id");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_case_tasks_status_id");
+
+                    b.ToTable("case_tasks", (string)null);
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Maintenance.ChecklistTask", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("ChecklistId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("checklist_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("description");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.HasKey("Id")
+                        .HasName("pk_checklist_tasks");
+
+                    b.HasIndex("ChecklistId")
+                        .HasDatabaseName("ix_checklist_tasks_checklist_id");
+
+                    b.ToTable("checklist_tasks", (string)null);
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Maintenance.MaintenanceTrigger", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<long?>("ApprovingManagerId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("approving_manager_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<int>("Frequency")
+                        .HasColumnType("integer")
+                        .HasColumnName("frequency");
+
+                    b.Property<long>("FrequencyType")
+                        .HasColumnType("bigint")
+                        .HasColumnName("frequency_type_id");
+
+                    b.Property<DateTimeOffset?>("LastPaused")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_paused");
+
+                    b.Property<DateTimeOffset?>("LastTriggered")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_triggered");
+
+                    b.Property<int>("LeadDays")
+                        .HasColumnType("integer")
+                        .HasColumnName("lead_days");
+
+                    b.Property<string>("RejectReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("reject_reason");
+
+                    b.Property<long>("StaffId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("staff_id");
+
+                    b.Property<long>("Status")
+                        .HasColumnType("bigint")
+                        .HasColumnName("status_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.HasKey("Id")
+                        .HasName("pk_maintenance_triggers");
+
+                    b.HasIndex("ApprovingManagerId")
+                        .HasDatabaseName("ix_maintenance_triggers_approving_manager_id");
+
+                    b.HasIndex("FrequencyType")
+                        .HasDatabaseName("ix_maintenance_triggers_frequency_type_id");
+
+                    b.HasIndex("StaffId")
+                        .HasDatabaseName("ix_maintenance_triggers_staff_id");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_maintenance_triggers_status_id");
+
+                    b.ToTable("maintenance_triggers", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_maintenance_triggers_frequency", "frequency > 0");
+
+                            t.HasCheckConstraint("ck_maintenance_triggers_lead_days", "lead_days >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Maintenance.MaintenanceWorkOrderAsset", b =>
+                {
+                    b.Property<long>("WorkOrderDetailId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("work_order_detail_id");
+
+                    b.Property<long>("AssetId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("asset_id");
+
+                    b.Property<DateOnly?>("EndTime")
+                        .HasColumnType("date")
+                        .HasColumnName("end_time");
+
+                    b.Property<DateOnly?>("LastDueDate")
+                        .HasColumnType("date")
+                        .HasColumnName("last_due_date");
+
+                    b.Property<DateOnly>("StartTime")
+                        .HasColumnType("date")
+                        .HasColumnName("start_time");
+
+                    b.Property<long?>("TechnicianId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("technician_id");
+
+                    b.HasKey("WorkOrderDetailId", "AssetId")
+                        .HasName("pk_maintenance_work_order_assets");
+
+                    b.HasIndex("AssetId")
+                        .HasDatabaseName("ix_maintenance_work_order_assets_asset_id");
+
+                    b.HasIndex("TechnicianId")
+                        .HasDatabaseName("ix_maintenance_work_order_assets_technician_id");
+
+                    b.ToTable("maintenance_work_order_assets", (string)null);
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Maintenance.MaintenanceWorkOrderDetail", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("ChecklistId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("checklist_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<decimal?>("EstimatedHours")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("numeric(6,2)")
+                        .HasColumnName("estimated_hours");
+
+                    b.Property<long>("PriorityLevelId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("priority_level_id");
+
+                    b.Property<long>("TriggerId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("trigger_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.HasKey("Id")
+                        .HasName("pk_maintenance_work_order_details");
+
+                    b.HasIndex("ChecklistId")
+                        .HasDatabaseName("ix_maintenance_work_order_details_checklist_id");
+
+                    b.HasIndex("PriorityLevelId")
+                        .HasDatabaseName("ix_maintenance_work_order_details_priority_level_id");
+
+                    b.HasIndex("TriggerId")
+                        .HasDatabaseName("ix_maintenance_work_order_details_trigger_id");
+
+                    b.ToTable("maintenance_work_order_details", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_maintenance_work_order_details_estimated_hours", "estimated_hours IS NULL OR estimated_hours > 0");
+                        });
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Maintenance.TaskImage", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Image")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("image");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("notes");
+
+                    b.Property<long>("TaskId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("task_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.HasKey("Id")
+                        .HasName("pk_task_images");
+
+                    b.HasIndex("TaskId")
+                        .HasDatabaseName("ix_task_images_task_id");
+
+                    b.ToTable("task_images", (string)null);
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Maintenance.TaskNote", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Note")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("note");
+
+                    b.Property<long>("TaskId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("task_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.HasKey("Id")
+                        .HasName("pk_task_notes");
+
+                    b.HasIndex("TaskId")
+                        .HasDatabaseName("ix_task_notes_task_id");
+
+                    b.ToTable("task_notes", (string)null);
+                });
+
             modelBuilder.Entity("SmartMaint.Api.Entities.Accounts.Admin", b =>
                 {
                     b.HasBaseType("SmartMaint.Api.Entities.Accounts.Account");
@@ -1776,6 +2333,12 @@ namespace SmartMaint.Api.Data.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_cases_case_statuses_status_id");
 
+                    b.HasOne("SmartMaint.Api.Entities.Maintenance.MaintenanceWorkOrderDetail", "TriggerWorkOrder")
+                        .WithMany()
+                        .HasForeignKey("TriggerWorkOrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_cases_maintenance_work_order_details_trigger_work_order_id");
+
                     b.Navigation("Asset");
 
                     b.Navigation("Category");
@@ -1789,6 +2352,8 @@ namespace SmartMaint.Api.Data.Migrations
                     b.Navigation("Staff");
 
                     b.Navigation("Technician");
+
+                    b.Navigation("TriggerWorkOrder");
                 });
 
             modelBuilder.Entity("SmartMaint.Api.Entities.Cases.CaseCategory", b =>
@@ -1938,6 +2503,174 @@ namespace SmartMaint.Api.Data.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("SmartMaint.Api.Entities.Maintenance.CaseChecklist", b =>
+                {
+                    b.HasOne("SmartMaint.Api.Entities.Cases.CaseCategory", "Category")
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_case_checklists_case_categories_category_id");
+
+                    b.Navigation("Category");
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Maintenance.CaseTask", b =>
+                {
+                    b.HasOne("SmartMaint.Api.Entities.Cases.Case", "Case")
+                        .WithMany("Tasks")
+                        .HasForeignKey("CaseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_case_tasks_cases_case_id");
+
+                    b.HasOne("SmartMaint.Api.Entities.Cases.Case", "RepairCase")
+                        .WithMany()
+                        .HasForeignKey("RepairCaseId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_case_tasks_cases_repair_case_id");
+
+                    b.HasOne("SmartMaint.Api.Entities.Lookup<SmartMaint.Api.Entities.Maintenance.CaseTaskStatus>", null)
+                        .WithMany()
+                        .HasForeignKey("Status")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_case_tasks_task_statuses_status_id");
+
+                    b.Navigation("Case");
+
+                    b.Navigation("RepairCase");
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Maintenance.ChecklistTask", b =>
+                {
+                    b.HasOne("SmartMaint.Api.Entities.Maintenance.CaseChecklist", "Checklist")
+                        .WithMany("Tasks")
+                        .HasForeignKey("ChecklistId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_checklist_tasks_case_checklists_checklist_id");
+
+                    b.Navigation("Checklist");
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Maintenance.MaintenanceTrigger", b =>
+                {
+                    b.HasOne("SmartMaint.Api.Entities.Accounts.Manager", "ApprovingManager")
+                        .WithMany()
+                        .HasForeignKey("ApprovingManagerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_maintenance_triggers_managers_approving_manager_id");
+
+                    b.HasOne("SmartMaint.Api.Entities.Lookup<SmartMaint.Api.Entities.Maintenance.FrequencyUnit>", null)
+                        .WithMany()
+                        .HasForeignKey("FrequencyType")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_maintenance_triggers_frequency_types_frequency_type_id");
+
+                    b.HasOne("SmartMaint.Api.Entities.Accounts.Staff", "Staff")
+                        .WithMany()
+                        .HasForeignKey("StaffId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_maintenance_triggers_staff_staff_id");
+
+                    b.HasOne("SmartMaint.Api.Entities.Lookup<SmartMaint.Api.Entities.Maintenance.TriggerStatus>", null)
+                        .WithMany()
+                        .HasForeignKey("Status")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_maintenance_triggers_trigger_statuses_status_id");
+
+                    b.Navigation("ApprovingManager");
+
+                    b.Navigation("Staff");
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Maintenance.MaintenanceWorkOrderAsset", b =>
+                {
+                    b.HasOne("SmartMaint.Api.Entities.Buildings.Asset", "Asset")
+                        .WithMany()
+                        .HasForeignKey("AssetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_maintenance_work_order_assets_assets_asset_id");
+
+                    b.HasOne("SmartMaint.Api.Entities.Accounts.Technician", "Technician")
+                        .WithMany()
+                        .HasForeignKey("TechnicianId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_maintenance_work_order_assets_technicians_technician_id");
+
+                    b.HasOne("SmartMaint.Api.Entities.Maintenance.MaintenanceWorkOrderDetail", "WorkOrderDetail")
+                        .WithMany("Assets")
+                        .HasForeignKey("WorkOrderDetailId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_maintenance_work_order_assets_maintenance_work_order_detail");
+
+                    b.Navigation("Asset");
+
+                    b.Navigation("Technician");
+
+                    b.Navigation("WorkOrderDetail");
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Maintenance.MaintenanceWorkOrderDetail", b =>
+                {
+                    b.HasOne("SmartMaint.Api.Entities.Maintenance.CaseChecklist", "Checklist")
+                        .WithMany()
+                        .HasForeignKey("ChecklistId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_maintenance_work_order_details_case_checklists_checklist_id");
+
+                    b.HasOne("SmartMaint.Api.Entities.Cases.PriorityLevel", "PriorityLevel")
+                        .WithMany()
+                        .HasForeignKey("PriorityLevelId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_maintenance_work_order_details_priority_levels_priority_lev");
+
+                    b.HasOne("SmartMaint.Api.Entities.Maintenance.MaintenanceTrigger", "Trigger")
+                        .WithMany("Details")
+                        .HasForeignKey("TriggerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_maintenance_work_order_details_maintenance_triggers_trigger");
+
+                    b.Navigation("Checklist");
+
+                    b.Navigation("PriorityLevel");
+
+                    b.Navigation("Trigger");
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Maintenance.TaskImage", b =>
+                {
+                    b.HasOne("SmartMaint.Api.Entities.Maintenance.CaseTask", "Task")
+                        .WithMany("Images")
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_task_images_case_tasks_task_id");
+
+                    b.Navigation("Task");
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Maintenance.TaskNote", b =>
+                {
+                    b.HasOne("SmartMaint.Api.Entities.Maintenance.CaseTask", "Task")
+                        .WithMany("Notes")
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_task_notes_case_tasks_task_id");
+
+                    b.Navigation("Task");
+                });
+
             modelBuilder.Entity("SmartMaint.Api.Entities.Accounts.Admin", b =>
                 {
                     b.HasOne("SmartMaint.Api.Entities.Accounts.Account", null)
@@ -2016,11 +2749,35 @@ namespace SmartMaint.Api.Data.Migrations
                     b.Navigation("Images");
 
                     b.Navigation("Rejections");
+
+                    b.Navigation("Tasks");
                 });
 
             modelBuilder.Entity("SmartMaint.Api.Entities.Core.AiConversation", b =>
                 {
                     b.Navigation("Message");
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Maintenance.CaseChecklist", b =>
+                {
+                    b.Navigation("Tasks");
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Maintenance.CaseTask", b =>
+                {
+                    b.Navigation("Images");
+
+                    b.Navigation("Notes");
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Maintenance.MaintenanceTrigger", b =>
+                {
+                    b.Navigation("Details");
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Maintenance.MaintenanceWorkOrderDetail", b =>
+                {
+                    b.Navigation("Assets");
                 });
 
             modelBuilder.Entity("SmartMaint.Api.Entities.Accounts.Technician", b =>

@@ -24,6 +24,13 @@ public class Case : AuditableEntity
     public long CategoryId { get; set; }
     public CaseCategory Category { get; set; } = null!;
 
+    /// <summary>
+    /// ERD: TriggerWorkOrder -> MaintenanceWorkOrderDetails (E11). Set = a preventive work order made by F2 (no customer,
+    /// starts at Approved / Assigned, has CaseTasks). Empty = an incident (F3 / F4).
+    /// </summary>
+    public long? TriggerWorkOrderId { get; set; }
+    public Maintenance.MaintenanceWorkOrderDetail? TriggerWorkOrder { get; set; }
+
     public string Title { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
 
@@ -103,6 +110,11 @@ public class Case : AuditableEntity
     public List<CaseStatusHistory> History { get; set; } = [];
     public List<TechnicianRejection> Rejections { get; set; } = [];
     public List<Cost> Costs { get; set; } = [];
+
+    /// <summary>F2 checklist items (ERD: CaseTasks). Empty for an incident.</summary>
+    public List<Maintenance.CaseTask> Tasks { get; set; } = [];
+
+    public bool IsPreventive => TriggerWorkOrderId is not null;
 
     public static string CodeOf(long id) => $"CS-{id:D6}";
 }

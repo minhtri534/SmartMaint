@@ -1,12 +1,13 @@
 using FluentValidation;
 using SmartMaint.Api.Modules.Accounts;
+using SmartMaint.Api.Modules.Assets;
 using SmartMaint.Api.Modules.Audit;
 using SmartMaint.Api.Modules.Auth;
 using SmartMaint.Api.Modules.Cases;
-using SmartMaint.Api.Modules.Assets;
 using SmartMaint.Api.Modules.Catalog;
 using SmartMaint.Api.Modules.CatalogAdmin;
 using SmartMaint.Api.Modules.Facilities;
+using SmartMaint.Api.Modules.Maintenance;
 using SmartMaint.Api.Modules.Notifications;
 using SmartMaint.Api.Modules.PriorityLevels;
 
@@ -31,10 +32,14 @@ internal static class ModuleRegistration
         services.AddScoped<IFacilityService, FacilityService>();
         services.AddScoped<IAssetService, AssetService>();
         services.AddScoped<ICatalogAdminService, CatalogAdminService>();
+        services.AddScoped<IChecklistService, ChecklistService>();
+        services.AddScoped<IMaintenancePlanService, MaintenancePlanService>();
 
         // Background jobs (inside the API)
         services.AddScoped<ISlaReminder, SlaReminder>();
         services.AddHostedService<SlaReminderJob>();
+        services.AddScoped<IMaintenanceGenerator, MaintenanceGenerator>();
+        services.AddHostedService<MaintenanceGeneratorJob>();
 
         return services;
     }

@@ -34,7 +34,7 @@ internal sealed class SlaReminder(AppDbContext db, INotificationService notifica
         var cases = await db.Cases
             .Include(c => c.Room).ThenInclude(r => r.Floor)
             .Include(c => c.Priority)
-            .Where(c => c.DueAt != null && c.StartedAt != null && Running.Contains(c.Status)
+            .Where(c => c.DueAt != null && Running.Contains(c.Status)
                         && c.Priority.Code != CasePriority.Emergency
                         && (c.SlaWarnedAt == null || c.SlaOverdueNotifiedAt == null))
             .ToListAsync(cancellationToken);
@@ -58,7 +58,8 @@ internal sealed class SlaReminder(AppDbContext db, INotificationService notifica
                 c.SlaWarnedAt ??= now;
                 reminded++;
             }
-            else if (now < due && c.SlaWarnedAt is null && due - now <= (due - c.StartedAt!.Value) * WarnWhenLeft)
+            // "Close to the deadline" needs a start (F3); a preventive work order (due day set, not started) only gets "overdue".
+            else if (now < due && c.SlaWarnedAt is null && c.StartedAt is { } started && due - now <= (due - started) * WarnWhenLeft)
             {
                 notifications.Send(staff, $"{code} \"{c.Title}\" is close to its deadline ({due:yyyy-MM-dd HH:mm} UTC).");
                 c.SlaWarnedAt = now;
@@ -77,6 +78,9 @@ public sealed class JobOptions
     public const string SectionName = "Jobs";
 
     public int SlaReminderMinutes { get; set; } = 5;
+
+    /// <summary>F2 work-order generation; safe to run often (each due day is made once).</summary>
+    public int MaintenanceGeneratorMinutes { get; set; } = 60;
 }
 
 /// <summary>Runs <see cref="ISlaReminder"/> every Jobs:SlaReminderMinutes inside the API (no extra service).</summary>

@@ -76,6 +76,8 @@ internal sealed class CaseConfiguration : IEntityTypeConfiguration<Case>
         builder.HasOne(x => x.Priority).WithMany().HasForeignKey(x => x.PriorityLevelId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.Staff).WithMany().HasForeignKey(x => x.StaffId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.Technician).WithMany().HasForeignKey(x => x.AssignedTechnicianId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.TriggerWorkOrder).WithMany().HasForeignKey(x => x.TriggerWorkOrderId).OnDelete(DeleteBehavior.Restrict);
+        builder.Ignore(x => x.IsPreventive);
 
         builder.HasIndex(x => x.RequestingCustomerId);
         builder.HasIndex(x => x.AssignedTechnicianId);
