@@ -1,9 +1,10 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Controller, useForm } from 'react-hook-form'
+import { Controller, useFieldArray, useForm } from 'react-hook-form'
 import { Alert, Button, Dialog, DialogActions, TextField } from '@/shared/ui'
 import { casesApi } from '../../api'
 import { useCaseMutation } from '../../hooks'
-import { completeWorkSchema, type CompleteWorkFormValues } from '../../schemas'
+import { completeWorkSchema, toCostLines, type CompleteWorkFormValues } from '../../schemas'
+import { CostLinesField } from '../CostLinesField'
 import { PhotoPicker } from '../PhotoPicker'
 
 interface Props {
@@ -40,6 +41,7 @@ function CompleteWorkForm({ caseId, onDone }: { caseId: number; onDone: () => vo
   } = useForm<CompleteWorkFormValues>({
     resolver: zodResolver(completeWorkSchema),
     defaultValues: {
+      parts: [],
       rootCause: '',
       partsUsed: '',
       laborHours: '',
@@ -47,6 +49,7 @@ function CompleteWorkForm({ caseId, onDone }: { caseId: number; onDone: () => vo
       afterPhotos: [],
     },
   })
+  const parts = useFieldArray({ control, name: 'parts' })
 
   const onSubmit = handleSubmit((values) =>
     complete.mutate(
@@ -55,6 +58,8 @@ function CompleteWorkForm({ caseId, onDone }: { caseId: number; onDone: () => vo
         ...values,
         partsUsed: values.partsUsed || null,
         laborHours: values.laborHours === '' ? null : Number(values.laborHours),
+        // The labour line (hours × your hourly rate) is added by the server.
+        parts: toCostLines(values.parts),
       },
       { onSuccess: onDone },
     ),
@@ -85,6 +90,14 @@ function CompleteWorkForm({ caseId, onDone }: { caseId: number; onDone: () => vo
         placeholder="Written by hand, e.g. 1× MCB 20A"
         hint="No stock module: parts are bought outside the system (N2)."
         {...register('partsUsed')}
+      />
+      <CostLinesField
+        rows={parts.fields}
+        field={(i, key) => register(`parts.${i}.${key}`)}
+        errors={errors.parts}
+        onAdd={() => parts.append({ name: '', amount: '' })}
+        onRemove={parts.remove}
+        hint="What you paid for parts. Your labour is added automatically from your hours and hourly rate."
       />
       <div className="grid gap-4 sm:grid-cols-2">
         <Controller

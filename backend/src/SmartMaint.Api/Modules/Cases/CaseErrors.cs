@@ -29,6 +29,15 @@ internal static class CaseErrors
     public static AppException PhotoRequired(string serviceType) =>
         new(ErrorKind.BadRequest, "case.photo_required", $"\"{serviceType}\" needs at least one photo.");
 
+    public static AppException SameTechnician() =>
+        new(ErrorKind.BadRequest, "case.same_technician", "This technician already holds the case. Choose another one.");
+
+    public static AppException SameUrgency() =>
+        new(ErrorKind.BadRequest, "case.same_urgency", "The case already has this urgency.");
+
+    public static AppException DueNotLater() =>
+        new(ErrorKind.BadRequest, "case.due_not_later", "The new deadline must be later than the current one.");
+
     public static AppException InvalidTechnician() =>
         new(ErrorKind.BadRequest, "case.invalid_technician", "Choose an active technician.");
 }

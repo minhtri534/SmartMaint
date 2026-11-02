@@ -46,4 +46,25 @@ public interface ICaseService
     Task<CaseDetailResponse> ReopenAsync(long id, ReasonRequest request, CancellationToken cancellationToken);
 
     Task<CaseDetailResponse> RateAsync(long id, RateCaseRequest request, CancellationToken cancellationToken);
+
+    /// <summary>Staff gives the work to another technician (back to Assigned; the SLA clock keeps running).</summary>
+    Task<CaseDetailResponse> ReassignAsync(long id, ReassignCaseRequest request, CancellationToken cancellationToken);
+
+    /// <summary>O08: a new urgency with a reason; the deadline follows it; Emergency hands the case to F4.</summary>
+    Task<CaseDetailResponse> ChangeUrgencyAsync(long id, ChangeUrgencyRequest request, CancellationToken cancellationToken);
+
+    /// <summary>O09: a later deadline, only before the current one passes.</summary>
+    Task<CaseDetailResponse> ExtendDueAsync(long id, ExtendDueRequest request, CancellationToken cancellationToken);
+
+    /// <summary>Customer, within 7 days of closing: "it is not fixed". Waits for the staff member.</summary>
+    Task<CaseDetailResponse> ReportNotFixedAsync(long id, ReasonRequest request, CancellationToken cancellationToken);
+
+    /// <summary>Staff agrees: Reopened, same technician.</summary>
+    Task<CaseDetailResponse> AcceptNotFixedAsync(long id, CancellationToken cancellationToken);
+
+    /// <summary>Staff disagrees, with a reason the customer is told.</summary>
+    Task<CaseDetailResponse> DeclineNotFixedAsync(long id, ReasonRequest request, CancellationToken cancellationToken);
+
+    /// <summary>Staff corrects the cost lines before closing (status Completed).</summary>
+    Task<CaseDetailResponse> UpdateCostsAsync(long id, UpdateCostsRequest request, CancellationToken cancellationToken);
 }

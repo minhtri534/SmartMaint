@@ -105,6 +105,7 @@ public sealed class CompleteWorkRequestValidator : AbstractValidator<CompleteWor
             .WithMessage($"Between {MinHours} and {MaxHours} hours.");
         RuleFor(x => (IReadOnlyList<string>?)x.BeforePhotos).ValidPhotos();
         RuleFor(x => (IReadOnlyList<string>?)x.AfterPhotos).NotEmpty().WithMessage("Add at least one photo after the repair.").ValidPhotos();
+        RuleFor(x => x.Parts).ValidCostLines();
     }
 }
 
@@ -115,4 +116,62 @@ public sealed class RateCaseRequestValidator : AbstractValidator<RateCaseRequest
         RuleFor(x => x.Stars).InclusiveBetween(1, 5).WithMessage("Choose 1 to 5 stars.");
         RuleFor(x => x.Comment).MaximumLength(500);
     }
+}
+
+internal static class CostRules
+{
+    public const int MaxLines = 20;
+    public const decimal MaxAmount = 1_000_000_000m;
+
+    public static IRuleBuilderOptions<T, IReadOnlyList<CostLineRequest>?> ValidCostLines<T>(
+        this IRuleBuilder<T, IReadOnlyList<CostLineRequest>?> rule) =>
+        rule
+            .Must(l => l is null || l.Count <= MaxLines).WithMessage($"At most {MaxLines} cost lines.")
+            .Must(l => l is null || l.All(x => x.Name.Trim().Length is >= 2 and <= 150))
+            .WithMessage("Each cost line needs a name of 2 to 150 characters.")
+            .Must(l => l is null || l.All(x => (x.Description?.Length ?? 0) <= 300))
+            .WithMessage("A description has at most 300 characters.")
+            .Must(l => l is null || l.All(x => x.Amount is >= 0 and <= MaxAmount))
+            .WithMessage("An amount is between 0 and 1,000,000,000 VND.");
+}
+
+public sealed class ReassignCaseRequestValidator : AbstractValidator<ReassignCaseRequest>
+{
+    public ReassignCaseRequestValidator()
+    {
+        RuleFor(x => x.TechnicianId).GreaterThan(0).WithMessage("Choose a technician.");
+        RuleFor(x => x.Reason).NotEmpty().Must(r => r.Trim().Length >= ReasonRequestValidator.MinLength)
+            .WithMessage($"At least {ReasonRequestValidator.MinLength} characters.").MaximumLength(ReasonRequestValidator.MaxLength);
+    }
+}
+
+public sealed class ChangeUrgencyRequestValidator : AbstractValidator<ChangeUrgencyRequest>
+{
+    public ChangeUrgencyRequestValidator()
+    {
+        RuleFor(x => x.Urgency).IsInEnum();
+        RuleFor(x => x.Reason).NotEmpty().Must(r => r.Trim().Length >= ReasonRequestValidator.MinLength)
+            .WithMessage($"At least {ReasonRequestValidator.MinLength} characters.").MaximumLength(ReasonRequestValidator.MaxLength);
+    }
+}
+
+public sealed class ExtendDueRequestValidator : AbstractValidator<ExtendDueRequest>
+{
+    /// <summary>A deadline is moved by days, not months.</summary>
+    public const int MaxDaysAhead = 30;
+
+    public ExtendDueRequestValidator(TimeProvider clock)
+    {
+        RuleFor(x => x.Reason).IsInEnum();
+        RuleFor(x => x.Note).MaximumLength(300);
+        RuleFor(x => x.Note).NotEmpty().When(x => x.Reason == ExtendDueReason.Other).WithMessage("Say why.");
+        RuleFor(x => x.NewDueAt)
+            .Must(d => d > clock.GetUtcNow()).WithMessage("Choose a time in the future.")
+            .Must(d => d <= clock.GetUtcNow().AddDays(MaxDaysAhead)).WithMessage($"At most {MaxDaysAhead} days from now.");
+    }
+}
+
+public sealed class UpdateCostsRequestValidator : AbstractValidator<UpdateCostsRequest>
+{
+    public UpdateCostsRequestValidator() => RuleFor(x => (IReadOnlyList<CostLineRequest>?)x.Lines).NotNull().ValidCostLines();
 }

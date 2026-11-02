@@ -976,3 +976,67 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102041202_AddCostsNotFixedAndSlaReminders') THEN
+    ALTER TABLE cases ADD not_fixed_at timestamp with time zone;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102041202_AddCostsNotFixedAndSlaReminders') THEN
+    ALTER TABLE cases ADD not_fixed_reason character varying(500);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102041202_AddCostsNotFixedAndSlaReminders') THEN
+    ALTER TABLE cases ADD sla_overdue_notified_at timestamp with time zone;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102041202_AddCostsNotFixedAndSlaReminders') THEN
+    ALTER TABLE cases ADD sla_warned_at timestamp with time zone;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102041202_AddCostsNotFixedAndSlaReminders') THEN
+    CREATE TABLE costs (
+        id bigint GENERATED ALWAYS AS IDENTITY,
+        case_id bigint NOT NULL,
+        name character varying(150) NOT NULL,
+        description character varying(300),
+        amount numeric(14,2) NOT NULL,
+        created_at timestamp with time zone NOT NULL DEFAULT (now()),
+        updated_at timestamp with time zone NOT NULL DEFAULT (now()),
+        CONSTRAINT pk_costs PRIMARY KEY (id),
+        CONSTRAINT ck_costs_amount CHECK (amount >= 0),
+        CONSTRAINT fk_costs_cases_case_id FOREIGN KEY (case_id) REFERENCES cases (id) ON DELETE CASCADE
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102041202_AddCostsNotFixedAndSlaReminders') THEN
+    CREATE INDEX ix_costs_case_id ON costs (case_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102041202_AddCostsNotFixedAndSlaReminders') THEN
+    INSERT INTO __ef_migrations_history (migration_id, product_version)
+    VALUES ('20261102041202_AddCostsNotFixedAndSlaReminders', '10.0.13');
+    END IF;
+END $EF$;
+COMMIT;
+

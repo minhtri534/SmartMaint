@@ -15,9 +15,10 @@ namespace SmartMaint.Api.Modules;
 internal static class ModuleRegistration
 {
     /// <summary>Registers every module service. New module = one line here.</summary>
-    public static IServiceCollection AddModules(this IServiceCollection services)
+    public static IServiceCollection AddModules(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddValidatorsFromAssembly(typeof(ModuleRegistration).Assembly, includeInternalTypes: true);
+        services.AddOptions<JobOptions>().Bind(configuration.GetSection(JobOptions.SectionName));
 
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<ICaseService, CaseService>();
@@ -30,6 +31,10 @@ internal static class ModuleRegistration
         services.AddScoped<IFacilityService, FacilityService>();
         services.AddScoped<IAssetService, AssetService>();
         services.AddScoped<ICatalogAdminService, CatalogAdminService>();
+
+        // Background jobs (inside the API)
+        services.AddScoped<ISlaReminder, SlaReminder>();
+        services.AddHostedService<SlaReminderJob>();
 
         return services;
     }

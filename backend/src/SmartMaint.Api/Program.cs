@@ -14,7 +14,7 @@ if (Environment.GetEnvironmentVariable("PORT") is { Length: > 0 } port)
 }
 
 builder.Services
-    .AddModules()
+    .AddModules(builder.Configuration)
     .AddDatabase(builder.Configuration)
     .AddFileStorage(builder.Configuration)
     .AddApi(builder.Configuration);

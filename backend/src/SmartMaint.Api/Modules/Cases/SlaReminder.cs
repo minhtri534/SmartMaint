@@ -1,0 +1,114 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using SmartMaint.Api.Data;
+using SmartMaint.Api.Entities.Accounts;
+using SmartMaint.Api.Entities.Cases;
+using SmartMaint.Api.Modules.Notifications;
+
+namespace SmartMaint.Api.Modules.Cases;
+
+/// <summary>
+/// SRS 5.4.2 "Case close to its SLA target, or overdue": once per case, tell the staff of the building when 80% of the
+/// time is used, and the staff + managers of the building when the deadline passes. Emergency cases belong to F4.
+/// Run by <see cref="SlaReminderJob"/> every few minutes; tests call <see cref="RunOnceAsync"/> directly.
+/// </summary>
+public interface ISlaReminder
+{
+    /// <summary>Sends the reminders that are due now. Returns how many cases got one.</summary>
+    Task<int> RunOnceAsync(CancellationToken cancellationToken);
+}
+
+internal sealed class SlaReminder(AppDbContext db, INotificationService notifications, TimeProvider clock) : ISlaReminder
+{
+    /// <summary>"Close to the deadline" = less than this share of the SLA time is left.</summary>
+    public const double WarnWhenLeft = 0.2;
+
+    private static readonly CaseStatus[] Running =
+    [
+        CaseStatus.Assigned, CaseStatus.Accepted, CaseStatus.InProgress, CaseStatus.OnHold, CaseStatus.Reopened,
+    ];
+
+    public async Task<int> RunOnceAsync(CancellationToken cancellationToken)
+    {
+        var now = clock.GetUtcNow();
+        var cases = await db.Cases
+            .Include(c => c.Room).ThenInclude(r => r.Floor)
+            .Include(c => c.Priority)
+            .Where(c => c.DueAt != null && c.StartedAt != null && Running.Contains(c.Status)
+                        && c.Priority.Code != CasePriority.Emergency
+                        && (c.SlaWarnedAt == null || c.SlaOverdueNotifiedAt == null))
+            .ToListAsync(cancellationToken);
+
+        var reminded = 0;
+        foreach (var c in cases)
+        {
+            var due = c.DueAt!.Value;
+            var code = Case.CodeOf(c.Id);
+            var staff = await db.StaffBuildingAssignments
+                .Where(a => a.BuildingId == c.Room.Floor.BuildingId && a.Staff.Status == UserStatus.Active)
+                .Select(a => a.StaffId).ToListAsync(cancellationToken);
+
+            if (now >= due && c.SlaOverdueNotifiedAt is null)
+            {
+                var managers = await db.ManagerBuildingAssignments
+                    .Where(a => a.BuildingId == c.Room.Floor.BuildingId && a.Manager.Status == UserStatus.Active)
+                    .Select(a => a.ManagerId).ToListAsync(cancellationToken);
+                notifications.Send([.. staff, .. managers], $"{code} \"{c.Title}\" is past its deadline ({due:yyyy-MM-dd HH:mm} UTC).");
+                c.SlaOverdueNotifiedAt = now;
+                c.SlaWarnedAt ??= now;
+                reminded++;
+            }
+            else if (now < due && c.SlaWarnedAt is null && due - now <= (due - c.StartedAt!.Value) * WarnWhenLeft)
+            {
+                notifications.Send(staff, $"{code} \"{c.Title}\" is close to its deadline ({due:yyyy-MM-dd HH:mm} UTC).");
+                c.SlaWarnedAt = now;
+                reminded++;
+            }
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+        return reminded;
+    }
+}
+
+/// <summary>Section "Jobs" of the settings. 0 minutes = the job does not run.</summary>
+public sealed class JobOptions
+{
+    public const string SectionName = "Jobs";
+
+    public int SlaReminderMinutes { get; set; } = 5;
+}
+
+/// <summary>Runs <see cref="ISlaReminder"/> every Jobs:SlaReminderMinutes inside the API (no extra service).</summary>
+internal sealed class SlaReminderJob(IServiceScopeFactory scopes, IOptions<JobOptions> options, ILogger<SlaReminderJob> logger)
+    : BackgroundService
+{
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        var minutes = options.Value.SlaReminderMinutes;
+        if (minutes <= 0)
+        {
+            return;
+        }
+
+        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(minutes));
+        do
+        {
+            try
+            {
+                using var scope = scopes.CreateScope();
+                var count = await scope.ServiceProvider.GetRequiredService<ISlaReminder>().RunOnceAsync(stoppingToken);
+                if (count > 0)
+                {
+                    logger.LogInformation("SLA reminders sent for {Count} case(s)", count);
+                }
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                // A failed run (e.g. the database restarting) must not stop the job; the next tick tries again.
+                logger.LogError(e, "SLA reminder run failed");
+            }
+        }
+        while (await timer.WaitForNextTickAsync(stoppingToken));
+    }
+}

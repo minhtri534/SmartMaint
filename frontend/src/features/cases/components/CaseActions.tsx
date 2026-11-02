@@ -7,10 +7,14 @@ import type { CaseAction, CaseDetail } from '../types'
 import { ApproveDialog } from './dialogs/ApproveDialog'
 import { AssignDialog } from './dialogs/AssignDialog'
 import { CompleteWorkDialog } from './dialogs/CompleteWorkDialog'
+import { CostsDialog } from './dialogs/CostsDialog'
+import { ExtendDueDialog } from './dialogs/ExtendDueDialog'
 import { HoldDialog } from './dialogs/HoldDialog'
 import { RateDialog } from './dialogs/RateDialog'
+import { ReassignDialog } from './dialogs/ReassignDialog'
 import { ReasonDialog } from './dialogs/ReasonDialog'
 import { RejectDialog } from './dialogs/RejectDialog'
+import { UrgencyDialog } from './dialogs/UrgencyDialog'
 
 /**
  * Button text and style per action, in display order: secondary actions first so the main one ends up on the right.
@@ -31,6 +35,14 @@ const BUTTONS: Record<CaseAction, { label: string; variant: 'primary' | 'seconda
     complete: { label: 'Report completed', variant: 'primary' },
     close: { label: 'Verify and close', variant: 'primary' },
     rate: { label: 'Rate the service', variant: 'primary' },
+    // Part 4: staff steps in, "not fixed", costs
+    reassign: { label: 'Reassign', variant: 'secondary' },
+    change_urgency: { label: 'Change urgency', variant: 'secondary' },
+    extend_due: { label: 'Move deadline', variant: 'secondary' },
+    update_costs: { label: 'Correct costs', variant: 'secondary' },
+    report_not_fixed: { label: 'Still not fixed', variant: 'secondary' },
+    decline_not_fixed: { label: 'Decline report', variant: 'secondary' },
+    accept_not_fixed: { label: 'Reopen for the customer', variant: 'primary' },
   }
 const ORDER = Object.keys(BUTTONS) as CaseAction[]
 
@@ -45,6 +57,7 @@ export function CaseActions({ caseDetail }: { caseDetail: CaseDetail }) {
   const start = useCaseMutation(casesApi.start)
   const resume = useCaseMutation(casesApi.resume)
   const close = useCaseMutation(casesApi.close)
+  const acceptNotFixed = useCaseMutation(casesApi.acceptNotFixed)
 
   const actions = caseDetail.allowedActions
   if (actions.length === 0) return null
@@ -128,6 +141,45 @@ export function CaseActions({ caseDetail }: { caseDetail: CaseDetail }) {
         confirmLabel="Reopen"
         action={casesApi.reopen}
       />
+      <ReassignDialog caseDetail={caseDetail} open={open === 'reassign'} onClose={onClose} />
+      <UrgencyDialog caseDetail={caseDetail} open={open === 'change_urgency'} onClose={onClose} />
+      <ExtendDueDialog caseDetail={caseDetail} open={open === 'extend_due'} onClose={onClose} />
+      <CostsDialog caseDetail={caseDetail} open={open === 'update_costs'} onClose={onClose} />
+      <ReasonDialog
+        caseId={id}
+        open={open === 'report_not_fixed'}
+        onClose={onClose}
+        title="Still not fixed"
+        description="The staff of the building decide whether to reopen the case. You can do this within 7 days of closing."
+        label="What is still wrong?"
+        placeholder="e.g. The AC blows warm air again since this morning."
+        confirmLabel="Send"
+        action={casesApi.reportNotFixed}
+      />
+      <ReasonDialog
+        caseId={id}
+        open={open === 'decline_not_fixed'}
+        onClose={onClose}
+        title="Decline the report"
+        description="The case stays closed. The customer reads your answer."
+        label="Your answer to the customer"
+        placeholder="e.g. Checked on site: the room cools to 24 degrees."
+        confirmLabel="Decline"
+        danger
+        action={casesApi.declineNotFixed}
+      />
+      <ConfirmDialog
+        open={open === 'accept_not_fixed'}
+        onClose={onClose}
+        title="Reopen for the customer"
+        description="The same technician gets the case back and must accept it again. The deadline starts over when work restarts."
+        confirmLabel="Reopen"
+        loading={acceptNotFixed.isPending}
+        error={acceptNotFixed.error?.message}
+        onConfirm={() => acceptNotFixed.mutate({ id }, { onSuccess: onClose })}
+      >
+        {caseDetail.notFixed && <p className="text-sm">“{caseDetail.notFixed.reason}”</p>}
+      </ConfirmDialog>
       <ConfirmDialog
         open={open === 'close'}
         onClose={onClose}

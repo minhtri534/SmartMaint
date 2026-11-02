@@ -633,6 +633,15 @@ namespace SmartMaint.Api.Data.Migrations
                         .HasColumnType("date")
                         .HasColumnName("hold_until");
 
+                    b.Property<DateTimeOffset?>("NotFixedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("not_fixed_at");
+
+                    b.Property<string>("NotFixedReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("not_fixed_reason");
+
                     b.Property<DateTimeOffset?>("OutsourcedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("outsourced_at");
@@ -671,6 +680,14 @@ namespace SmartMaint.Api.Data.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)")
                         .HasColumnName("root_cause");
+
+                    b.Property<DateTimeOffset?>("SlaOverdueNotifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("sla_overdue_notified_at");
+
+                    b.Property<DateTimeOffset?>("SlaWarnedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("sla_warned_at");
 
                     b.Property<long?>("StaffId")
                         .HasColumnType("bigint")
@@ -913,6 +930,59 @@ namespace SmartMaint.Api.Data.Migrations
                         .HasDatabaseName("ix_case_status_history_new_status_id");
 
                     b.ToTable("case_status_history", (string)null);
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Cases.Cost", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<long>("CaseId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("case_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("description");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("name");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.HasKey("Id")
+                        .HasName("pk_costs");
+
+                    b.HasIndex("CaseId")
+                        .HasDatabaseName("ix_costs_case_id");
+
+                    b.ToTable("costs", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_costs_amount", "amount >= 0");
+                        });
                 });
 
             modelBuilder.Entity("SmartMaint.Api.Entities.Cases.PriorityLevel", b =>
@@ -1773,6 +1843,18 @@ namespace SmartMaint.Api.Data.Migrations
                     b.Navigation("ChangedBy");
                 });
 
+            modelBuilder.Entity("SmartMaint.Api.Entities.Cases.Cost", b =>
+                {
+                    b.HasOne("SmartMaint.Api.Entities.Cases.Case", "Case")
+                        .WithMany("Costs")
+                        .HasForeignKey("CaseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_costs_cases_case_id");
+
+                    b.Navigation("Case");
+                });
+
             modelBuilder.Entity("SmartMaint.Api.Entities.Cases.TechnicianRejection", b =>
                 {
                     b.HasOne("SmartMaint.Api.Entities.Cases.Case", "Case")
@@ -1927,6 +2009,8 @@ namespace SmartMaint.Api.Data.Migrations
 
             modelBuilder.Entity("SmartMaint.Api.Entities.Cases.Case", b =>
                 {
+                    b.Navigation("Costs");
+
                     b.Navigation("History");
 
                     b.Navigation("Images");

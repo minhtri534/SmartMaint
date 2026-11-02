@@ -29,7 +29,7 @@ internal static class CaseMapper
     /// <paramref name="photoUrls"/> maps CaseImages.Image (storage path) to a URL the browser can open.
     /// </summary>
     public static CaseDetailResponse ToDetail(
-        Case c, IReadOnlyList<CaseAction> allowedActions, IReadOnlyDictionary<string, string> photoUrls)
+        Case c, IReadOnlyList<CaseAction> allowedActions, IReadOnlyDictionary<string, string> photoUrls, bool showCosts)
     {
         var history = c.History.OrderBy(h => h.ChangedAt).ThenBy(h => h.Id).ToList();
         return new CaseDetailResponse(
@@ -73,6 +73,9 @@ internal static class CaseMapper
             c.Status == CaseStatus.OnHold && c.HoldReason is { } reason && c.HoldUntil is { } until
                 ? new HoldResponse(reason, until)
                 : null,
+            showCosts ? c.Costs.OrderBy(x => x.Id).Select(x => new CostResponse(x.Id, x.Name, x.Description, x.Amount)).ToList() : null,
+            showCosts && c.Costs.Count > 0 ? c.Costs.Sum(x => x.Amount) : null,
+            c.NotFixedReason is { } notFixed && c.NotFixedAt is { } reportedAt ? new NotFixedResponse(notFixed, reportedAt) : null,
             allowedActions);
     }
 

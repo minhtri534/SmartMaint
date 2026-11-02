@@ -15,7 +15,9 @@ internal sealed class NotificationService(AppDbContext db, ICurrentUser currentU
     public void Send(IEnumerable<long> userIds, string details)
     {
         var now = clock.GetUtcNow();
-        foreach (var userId in userIds.Distinct().Where(id => id != currentUser.Id))
+        // A background job (SLA reminders) has no signed-in user: then nobody is skipped.
+        long? me = currentUser.IsAuthenticated ? currentUser.Id : null;
+        foreach (var userId in userIds.Distinct().Where(id => id != me))
         {
             db.Notifications.Add(new Notification { UserId = userId, Details = details, SentAt = now });
         }

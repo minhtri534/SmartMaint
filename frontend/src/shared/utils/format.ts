@@ -34,3 +34,10 @@ export function formatRelative(iso: string, now = Date.now()): string {
   if (diff < 7 * DAY) return `${Math.floor(diff / DAY)} d ago`
   return formatDate(iso)
 }
+
+const vnd = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
+
+/** "150,000 VND". Costs are whole VND. */
+export function formatVnd(amount: number): string {
+  return `${vnd.format(amount)} VND`
+}

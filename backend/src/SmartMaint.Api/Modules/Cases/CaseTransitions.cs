@@ -19,6 +19,15 @@ public enum CaseAction
     Close,
     Reopen,
     Rate,
+
+    // Part 4 (02/11): staff steps in, the customer's "not fixed" report, cost lines
+    Reassign,
+    ChangeUrgency,
+    ExtendDue,
+    ReportNotFixed,
+    AcceptNotFixed,
+    DeclineNotFixed,
+    UpdateCosts,
 }
 
 /// <summary>One arrow of the F3 state machine (docs/flows/F3_Su_Co_Thong_Thuong/F3_Trang5.png): who, from where, to where.</summary>
@@ -26,8 +35,8 @@ internal sealed record TransitionRule(CaseAction Action, UserRole Role, CaseStat
 
 /// <summary>
 /// The F3 state machine as a table, one row per arrow. CaseService is the only place that reads it.
-/// Not here (next iterations): reassign, change urgency / extend the deadline, customer "not fixed" report,
-/// the F5 hand-over decision beyond the hold reason.
+/// To = null: the status stays (the action still writes a history row when it has a reason).
+/// Not here: the F5 hand-over decision beyond the hold reason.
 /// </summary>
 internal static class CaseTransitions
 {
@@ -36,6 +45,12 @@ internal static class CaseTransitions
     [
         CaseStatus.Approved, CaseStatus.Assigned, CaseStatus.Accepted,
         CaseStatus.InProgress, CaseStatus.OnHold, CaseStatus.Reopened,
+    ];
+
+    /// <summary>A technician holds the case (assigned, not finished yet).</summary>
+    private static readonly CaseStatus[] WithTechnician =
+    [
+        CaseStatus.Assigned, CaseStatus.Accepted, CaseStatus.InProgress, CaseStatus.OnHold, CaseStatus.Reopened,
     ];
 
     public static readonly IReadOnlyList<TransitionRule> Rules =
@@ -61,6 +76,17 @@ internal static class CaseTransitions
         new(CaseAction.Close, UserRole.Staff, [CaseStatus.Completed], CaseStatus.Closed),
         new(CaseAction.Reopen, UserRole.Staff, [CaseStatus.Completed, CaseStatus.Closed], CaseStatus.Reopened),
         new(CaseAction.Rate, UserRole.Customer, [CaseStatus.Closed], null),
+
+        // Staff steps in while the work is under way (O08, O09)
+        new(CaseAction.Reassign, UserRole.Staff, WithTechnician, CaseStatus.Assigned),
+        new(CaseAction.ChangeUrgency, UserRole.Staff, Handling, null),
+        new(CaseAction.ExtendDue, UserRole.Staff, WithTechnician, null),
+        new(CaseAction.UpdateCosts, UserRole.Staff, [CaseStatus.Completed], null),
+
+        // Customer: "not fixed" within 7 days of closing; the staff member reopens or declines it
+        new(CaseAction.ReportNotFixed, UserRole.Customer, [CaseStatus.Closed], null),
+        new(CaseAction.AcceptNotFixed, UserRole.Staff, [CaseStatus.Closed], CaseStatus.Reopened),
+        new(CaseAction.DeclineNotFixed, UserRole.Staff, [CaseStatus.Closed], null),
     ];
 
     public static TransitionRule? Find(CaseAction action, UserRole role, CaseStatus status) =>

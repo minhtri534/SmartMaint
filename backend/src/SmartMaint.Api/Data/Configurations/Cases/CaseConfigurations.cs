@@ -67,6 +67,7 @@ internal sealed class CaseConfiguration : IEntityTypeConfiguration<Case>
         builder.Property(x => x.RootCause).HasMaxLength(1000);
         builder.Property(x => x.PartsUsed).HasMaxLength(500);
         builder.Property(x => x.RatingComment).HasMaxLength(500);
+        builder.Property(x => x.NotFixedReason).HasMaxLength(500);
 
         builder.HasOne(x => x.Customer).WithMany().HasForeignKey(x => x.RequestingCustomerId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.Room).WithMany().HasForeignKey(x => x.RoomId).OnDelete(DeleteBehavior.Restrict);
@@ -109,6 +110,21 @@ internal sealed class CaseStatusHistoryConfiguration : IEntityTypeConfiguration<
         builder.Property(x => x.Reason).HasMaxLength(600);
         builder.HasOne(x => x.Case).WithMany(x => x.History).HasForeignKey(x => x.CaseId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne(x => x.ChangedBy).WithMany().HasForeignKey(x => x.ChangedById).OnDelete(DeleteBehavior.Restrict);
+        builder.HasIndex(x => x.CaseId);
+    }
+}
+
+internal sealed class CostConfiguration : IEntityTypeConfiguration<Cost>
+{
+    public void Configure(EntityTypeBuilder<Cost> builder)
+    {
+        builder.ToTable("costs", t => t.HasCheckConstraint("ck_costs_amount", "amount >= 0"));
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Id).UseIdentityAlwaysColumn();
+        builder.Property(x => x.Name).HasMaxLength(150);
+        builder.Property(x => x.Description).HasMaxLength(300);
+        builder.Property(x => x.Amount).HasPrecision(14, 2);
+        builder.HasOne(x => x.Case).WithMany(x => x.Costs).HasForeignKey(x => x.CaseId).OnDelete(DeleteBehavior.Cascade);
         builder.HasIndex(x => x.CaseId);
     }
 }

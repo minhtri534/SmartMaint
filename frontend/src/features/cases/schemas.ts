@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { COST_BEARERS, HOLD_REASONS, REJECT_REASONS, URGENCIES } from './types'
+import { COST_BEARERS, EXTEND_REASONS, HOLD_REASONS, REJECT_REASONS, URGENCIES } from './types'
 
 /*
  * Form rules of F3. Select boxes keep their value as a string ("" = nothing chosen);
@@ -68,8 +68,23 @@ export const holdSchema = z.object({
 })
 export type HoldFormValues = z.infer<typeof holdSchema>
 
+/** One cost line in a form: amount typed as text, VND. Mirrors backend CostRules. */
+export const costLineSchema = z.object({
+  name: z.string().trim().min(2, 'At least 2 characters.').max(150),
+  amount: z
+    .string()
+    .trim()
+    .regex(/^\d{1,10}$/, 'A whole number of VND, e.g. 150000.'),
+})
+export type CostLineValues = z.infer<typeof costLineSchema>
+
+/** Form rows -> request lines. */
+export const toCostLines = (rows: CostLineValues[]) =>
+  rows.map((r) => ({ name: r.name, description: null, amount: Number(r.amount) }))
+
 /** DLG-11 Complete work + repair record. Hours left empty = the system measures start to finish. */
 export const completeWorkSchema = z.object({
+  parts: z.array(costLineSchema).max(20),
   rootCause: z.string().trim().min(3, 'Enter the cause.'),
   partsUsed: z.string().trim(),
   laborHours: z
@@ -83,3 +98,31 @@ export const completeWorkSchema = z.object({
   afterPhotos: z.array(z.string()).min(1, 'Add at least one photo after the repair.').max(5),
 })
 export type CompleteWorkFormValues = z.infer<typeof completeWorkSchema>
+
+/** Reassign: another technician and why. */
+export const reassignSchema = z.object({
+  technicianId: requiredId('Choose a technician.'),
+  reason: z.string().trim().min(10, 'At least 10 characters.').max(500),
+})
+export type ReassignFormValues = z.infer<typeof reassignSchema>
+
+/** O08 change urgency. */
+export const urgencySchema = z.object({
+  urgency: z.enum(URGENCIES),
+  reason: z.string().trim().min(10, 'At least 10 characters.').max(500),
+})
+export type UrgencyFormValues = z.infer<typeof urgencySchema>
+
+/** O09 extend the deadline: a later time, a reason from the list, a note when "other". */
+export const extendDueSchema = z
+  .object({
+    newDueAt: z.string().min(1, 'Choose the new deadline.'),
+    reason: z.enum(EXTEND_REASONS),
+    note: z.string().trim().max(300),
+  })
+  .refine((v) => v.reason !== 'other' || v.note.length > 0, { path: ['note'], message: 'Say why.' })
+export type ExtendDueFormValues = z.infer<typeof extendDueSchema>
+
+/** Staff corrects the cost lines before closing. */
+export const costsSchema = z.object({ lines: z.array(costLineSchema).max(20) })
+export type CostsFormValues = z.infer<typeof costsSchema>

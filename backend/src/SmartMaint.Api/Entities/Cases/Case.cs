@@ -85,9 +85,24 @@ public class Case : AuditableEntity
     public string? RatingComment { get; set; }
     public DateTimeOffset? RatedAt { get; set; }
 
+    /// <summary>
+    /// NOT IN ERD v5: the customer's "not fixed" report waiting for the staff member's answer (within 7 days of closing).
+    /// Cleared when the staff member reopens the case or declines the report.
+    /// </summary>
+    public string? NotFixedReason { get; set; }
+    public DateTimeOffset? NotFixedAt { get; set; }
+
+    /// <summary>
+    /// NOT IN ERD v5: when the SLA reminder job told the staff that the deadline is near / passed, so each reminder
+    /// goes out once. Both are cleared when the deadline changes.
+    /// </summary>
+    public DateTimeOffset? SlaWarnedAt { get; set; }
+    public DateTimeOffset? SlaOverdueNotifiedAt { get; set; }
+
     public List<CaseImage> Images { get; set; } = [];
     public List<CaseStatusHistory> History { get; set; } = [];
     public List<TechnicianRejection> Rejections { get; set; } = [];
+    public List<Cost> Costs { get; set; } = [];
 
     public static string CodeOf(long id) => $"CS-{id:D6}";
 }
@@ -123,6 +138,19 @@ public class CaseStatusHistory : Entity
     public long ChangedById { get; set; }
     public Account ChangedBy { get; set; } = null!;
     public string? Reason { get; set; }
+}
+
+/// <summary>
+/// ERD: Costs(ID, Name, Description, Amount, Case) — one cost line of a repair: a part the technician bought, or the
+/// labour line the system adds on "complete" (hours × the technician's HourlyRate, E9). Amount in VND.
+/// </summary>
+public class Cost : AuditableEntity
+{
+    public long CaseId { get; set; }
+    public Case Case { get; set; } = null!;
+    public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public decimal Amount { get; set; }
 }
 
 /// <summary>

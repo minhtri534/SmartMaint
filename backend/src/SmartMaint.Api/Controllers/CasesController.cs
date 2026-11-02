@@ -115,4 +115,39 @@ public sealed class CasesController(ICaseService cases) : ControllerBase
     [AuthorizeRoles(UserRole.Customer)]
     public Task<CaseDetailResponse> Rate(long id, RateCaseRequest request, CancellationToken cancellationToken) =>
         cases.RateAsync(id, request, cancellationToken);
+
+    [HttpPost("{id:long}/reassign")]
+    [AuthorizeRoles(UserRole.Staff)]
+    public Task<CaseDetailResponse> Reassign(long id, ReassignCaseRequest request, CancellationToken cancellationToken) =>
+        cases.ReassignAsync(id, request, cancellationToken);
+
+    [HttpPost("{id:long}/urgency")]
+    [AuthorizeRoles(UserRole.Staff)]
+    public Task<CaseDetailResponse> ChangeUrgency(long id, ChangeUrgencyRequest request, CancellationToken cancellationToken) =>
+        cases.ChangeUrgencyAsync(id, request, cancellationToken);
+
+    [HttpPost("{id:long}/due")]
+    [AuthorizeRoles(UserRole.Staff)]
+    public Task<CaseDetailResponse> ExtendDue(long id, ExtendDueRequest request, CancellationToken cancellationToken) =>
+        cases.ExtendDueAsync(id, request, cancellationToken);
+
+    [HttpPost("{id:long}/not-fixed")]
+    [AuthorizeRoles(UserRole.Customer)]
+    public Task<CaseDetailResponse> ReportNotFixed(long id, ReasonRequest request, CancellationToken cancellationToken) =>
+        cases.ReportNotFixedAsync(id, request, cancellationToken);
+
+    [HttpPost("{id:long}/not-fixed/accept")]
+    [AuthorizeRoles(UserRole.Staff)]
+    public Task<CaseDetailResponse> AcceptNotFixed(long id, CancellationToken cancellationToken) =>
+        cases.AcceptNotFixedAsync(id, cancellationToken);
+
+    [HttpPost("{id:long}/not-fixed/decline")]
+    [AuthorizeRoles(UserRole.Staff)]
+    public Task<CaseDetailResponse> DeclineNotFixed(long id, ReasonRequest request, CancellationToken cancellationToken) =>
+        cases.DeclineNotFixedAsync(id, request, cancellationToken);
+
+    [HttpPut("{id:long}/costs")]
+    [AuthorizeRoles(UserRole.Staff)]
+    public Task<CaseDetailResponse> UpdateCosts(long id, UpdateCostsRequest request, CancellationToken cancellationToken) =>
+        cases.UpdateCostsAsync(id, request, cancellationToken);
 }

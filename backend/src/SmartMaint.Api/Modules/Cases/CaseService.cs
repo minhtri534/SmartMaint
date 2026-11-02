@@ -29,6 +29,14 @@ internal sealed class CaseService(
         [RejectReason.Duplicate] = "A case for this problem already exists",
     };
 
+    private static readonly Dictionary<ExtendDueReason, string> ExtendLabels = new()
+    {
+        [ExtendDueReason.WaitingParts] = "waiting for parts",
+        [ExtendDueReason.CustomerRescheduled] = "the customer asked for another time",
+        [ExtendDueReason.LargerThanExpected] = "the work is larger than expected",
+        [ExtendDueReason.Other] = "other reason",
+    };
+
     private static readonly Dictionary<HoldReason, string> HoldLabels = new()
     {
         [HoldReason.WaitingParts] = "Waiting for parts",
@@ -60,7 +68,9 @@ internal sealed class CaseService(
             ?? throw CaseErrors.NotFound();
 
         var photoUrls = await storage.GetUrlsAsync(c.Images.Select(i => i.Image).ToList(), cancellationToken);
-        return CaseMapper.ToDetail(c, AllowedActions(c, scope, clock.GetUtcNow()), photoUrls);
+        // Costs: staff, managers and the technician; the customer only when the customer pays.
+        var showCosts = scope.Role != UserRole.Customer || c.CostBearer == CostBearer.Customer;
+        return CaseMapper.ToDetail(c, AllowedActions(c, scope, clock.GetUtcNow()), photoUrls, showCosts);
     }
 
     // ----- create -----------------------------------------------------------------------------------------------
@@ -196,8 +206,9 @@ internal sealed class CaseService(
     public Task<CaseDetailResponse> StartAsync(long id, CancellationToken cancellationToken) =>
         ActAsync(id, CaseAction.Start, (c, now) =>
         {
-            c.StartedAt = now;
-            c.DueAt = now.AddHours(c.Priority.SlaHours);
+            // After a reassignment the clock keeps running from the first start.
+            c.StartedAt ??= now;
+            c.DueAt ??= c.StartedAt.Value.AddHours(c.Priority.SlaHours);
             return Task.FromResult<string?>(null);
         }, cancellationToken);
 
@@ -233,6 +244,20 @@ internal sealed class CaseService(
             c.ActualCompletionHours = request.LaborHours ?? MeasuredHours(c.StartedAt, now);
             await AddPhotosAsync(c, CaseImageKind.Before, request.BeforePhotos ?? [], cancellationToken);
             await AddPhotosAsync(c, CaseImageKind.After, request.AfterPhotos, cancellationToken);
+
+            // ERD: Costs — the parts the technician bought + one labour line (hours × hourly rate, E9).
+            c.Costs.AddRange((request.Parts ?? []).Select(ToCost));
+            if (c.Technician?.HourlyRate is { } rate && rate > 0)
+            {
+                var hours = c.ActualCompletionHours.Value;
+                c.Costs.Add(new Cost
+                {
+                    Name = "Labour",
+                    Description = $"{c.Technician.FullName}: {hours:0.##} h × {rate:N0} VND",
+                    Amount = Math.Round(hours * rate, 0),
+                });
+            }
+
             return null;
         }, cancellationToken);
 
@@ -246,13 +271,119 @@ internal sealed class CaseService(
     public Task<CaseDetailResponse> ReopenAsync(long id, ReasonRequest request, CancellationToken cancellationToken) =>
         ActAsync(id, CaseAction.Reopen, (c, _) =>
         {
-            // BR-04: by default the same technician (still on the case) gets it back and must accept again.
-            // The SLA starts over with the next "start"; the old times stay in the status history.
-            c.StartedAt = null;
-            c.DueAt = null;
-            c.CompletedAt = null;
-            c.ClosedAt = null;
+            ClearForReopen(c);
             return Task.FromResult<string?>(request.Reason.Trim());
+        }, cancellationToken);
+
+    /// <summary>
+    /// BR-04: by default the same technician (still on the case) gets it back and must accept again.
+    /// The SLA starts over with the next "start"; the old times stay in the status history.
+    /// </summary>
+    private static void ClearForReopen(Case c)
+    {
+        c.StartedAt = null;
+        c.DueAt = null;
+        c.CompletedAt = null;
+        c.ClosedAt = null;
+        c.NotFixedReason = null;
+        c.NotFixedAt = null;
+        c.SlaWarnedAt = null;
+        c.SlaOverdueNotifiedAt = null;
+    }
+
+    private static Cost ToCost(CostLineRequest line) =>
+        new() { Name = line.Name.Trim(), Description = string.IsNullOrWhiteSpace(line.Description) ? null : line.Description.Trim(), Amount = line.Amount };
+
+    // ----- Part 4: staff steps in, "not fixed", costs ------------------------------------------------------------
+
+    public Task<CaseDetailResponse> ReassignAsync(long id, ReassignCaseRequest request, CancellationToken cancellationToken) =>
+        ActAsync(id, CaseAction.Reassign, async (c, _) =>
+        {
+            var technician = await db.Technicians.SingleOrDefaultAsync(
+                t => t.Id == request.TechnicianId && t.Status == UserStatus.Active, cancellationToken)
+                ?? throw CaseErrors.InvalidTechnician();
+            if (technician.Id == c.AssignedTechnicianId)
+            {
+                throw CaseErrors.SameTechnician();
+            }
+
+            var previous = c.Technician?.FullName ?? "nobody";
+            c.AssignedTechnicianId = technician.Id;
+            c.Technician = technician;
+            // The SLA clock keeps running: StartedAt / DueAt stay (Start does not reset them).
+            return $"Reassigned from {previous} to {technician.FullName}: {request.Reason.Trim()}";
+        }, cancellationToken);
+
+    public Task<CaseDetailResponse> ChangeUrgencyAsync(long id, ChangeUrgencyRequest request, CancellationToken cancellationToken) =>
+        ActAsync(id, CaseAction.ChangeUrgency, async (c, _) =>
+        {
+            if (c.Priority.Code == request.Urgency)
+            {
+                throw CaseErrors.SameUrgency();
+            }
+
+            var before = c.Priority.Name;
+            var priority = await db.PriorityLevels.SingleAsync(p => p.Code == request.Urgency, cancellationToken);
+            c.PriorityLevelId = priority.Id;
+            c.Priority = priority;
+            if (c.StartedAt is { } started)
+            {
+                // O08: the deadline follows the new level, counted from the start of work.
+                c.DueAt = started.AddHours(priority.SlaHours);
+                c.SlaWarnedAt = null;
+                c.SlaOverdueNotifiedAt = null;
+            }
+
+            var f4 = request.Urgency == CasePriority.Emergency ? " Handed over to F4." : string.Empty;
+            return $"Urgency {before} → {priority.Name}: {request.Reason.Trim()}{f4}";
+        }, cancellationToken);
+
+    public Task<CaseDetailResponse> ExtendDueAsync(long id, ExtendDueRequest request, CancellationToken cancellationToken) =>
+        ActAsync(id, CaseAction.ExtendDue, (c, _) =>
+        {
+            if (request.NewDueAt <= c.DueAt)
+            {
+                throw CaseErrors.DueNotLater();
+            }
+
+            c.DueAt = request.NewDueAt;
+            c.SlaWarnedAt = null;
+            c.SlaOverdueNotifiedAt = null;
+            var note = string.IsNullOrWhiteSpace(request.Note) ? string.Empty : $" {request.Note.Trim()}";
+            return Task.FromResult<string?>(
+                $"Deadline moved to {request.NewDueAt:yyyy-MM-dd HH:mm} UTC: {ExtendLabels[request.Reason]}.{note}");
+        }, cancellationToken);
+
+    public Task<CaseDetailResponse> ReportNotFixedAsync(long id, ReasonRequest request, CancellationToken cancellationToken) =>
+        ActAsync(id, CaseAction.ReportNotFixed, (c, now) =>
+        {
+            c.NotFixedReason = request.Reason.Trim();
+            c.NotFixedAt = now;
+            return Task.FromResult<string?>($"Customer reports it is not fixed: {c.NotFixedReason}");
+        }, cancellationToken);
+
+    public Task<CaseDetailResponse> AcceptNotFixedAsync(long id, CancellationToken cancellationToken) =>
+        ActAsync(id, CaseAction.AcceptNotFixed, (c, _) =>
+        {
+            var reason = $"Not-fixed report accepted: {c.NotFixedReason}";
+            ClearForReopen(c);
+            return Task.FromResult<string?>(reason);
+        }, cancellationToken);
+
+    public Task<CaseDetailResponse> DeclineNotFixedAsync(long id, ReasonRequest request, CancellationToken cancellationToken) =>
+        ActAsync(id, CaseAction.DeclineNotFixed, (c, _) =>
+        {
+            c.NotFixedReason = null;
+            c.NotFixedAt = null;
+            return Task.FromResult<string?>($"Not-fixed report declined: {request.Reason.Trim()}");
+        }, cancellationToken);
+
+    public Task<CaseDetailResponse> UpdateCostsAsync(long id, UpdateCostsRequest request, CancellationToken cancellationToken) =>
+        ActAsync(id, CaseAction.UpdateCosts, async (c, _) =>
+        {
+            db.Costs.RemoveRange(await db.Costs.Where(x => x.CaseId == c.Id).ToListAsync(cancellationToken));
+            c.Costs.AddRange(request.Lines.Select(ToCost));
+            return $"Costs corrected, total {request.Lines.Sum(l => l.Amount):N0} VND.";
         }, cancellationToken);
 
     public Task<CaseDetailResponse> RateAsync(long id, RateCaseRequest request, CancellationToken cancellationToken) =>
@@ -290,13 +421,15 @@ internal sealed class CaseService(
         var technicianBefore = c.AssignedTechnicianId;
         var reason = await apply(c, now);
 
+        // A status change always writes a history row; an action that keeps the status (urgency, deadline, "not fixed",
+        // costs) writes one with the same status when it has a reason, so the timeline shows who did it and why.
         var to = CaseTransitions.Find(action, scope.Role, c.Status)!.To;
-        if (to is { } next)
+        if (to is not null || reason is not null)
         {
-            c.Status = next;
+            c.Status = to ?? c.Status;
             c.History.Add(new CaseStatusHistory
             {
-                NewStatus = next,
+                NewStatus = c.Status,
                 ChangedById = scope.UserId,
                 ChangedAt = now,
                 Reason = reason,
@@ -350,8 +483,21 @@ internal sealed class CaseService(
             case CaseAction.Close:
                 notifications.Send(customer, $"{code} \"{c.Title}\" was closed. Please rate the repair.");
                 break;
-            case CaseAction.Reopen:
+            case CaseAction.Reopen or CaseAction.AcceptNotFixed:
                 notifications.Send([.. technician, .. customer], $"{code} \"{c.Title}\" was reopened: {reason}");
+                break;
+            case CaseAction.Reassign:
+                notifications.Send(technicianBefore is { } old ? [old] : [], $"{code} \"{c.Title}\" was taken back from you and given to another technician.");
+                notifications.Send(technician, $"{code} \"{c.Title}\" was assigned to you.");
+                break;
+            case CaseAction.ChangeUrgency or CaseAction.ExtendDue:
+                notifications.Send([.. technician, .. customer], $"{code} \"{c.Title}\": {reason}");
+                break;
+            case CaseAction.ReportNotFixed:
+                notifications.Send(staffOfBuilding, $"{code} \"{c.Title}\": the customer says it is not fixed. Reopen it or answer.");
+                break;
+            case CaseAction.DeclineNotFixed:
+                notifications.Send(customer, $"{code} \"{c.Title}\": {reason}");
                 break;
             case CaseAction.Cancel:
                 long[] involved = [.. customer, .. (c.StaffId is { } staffId ? new[] { staffId } : []), .. (technicianBefore is { } t ? new[] { t } : [])];
@@ -398,6 +544,10 @@ internal sealed class CaseService(
         return action switch
         {
             CaseAction.Rate => c.RatingStars is null,
+            // O09: only before the deadline passes.
+            CaseAction.ExtendDue => c.DueAt is { } due && now < due,
+            CaseAction.ReportNotFixed => c.NotFixedAt is null && c.ClosedAt is { } closedAt && now - closedAt <= ReopenWindow,
+            CaseAction.AcceptNotFixed or CaseAction.DeclineNotFixed => c.NotFixedAt is not null,
             CaseAction.Reopen when c.Status == CaseStatus.Closed => c.ClosedAt is { } closed && now - closed <= ReopenWindow,
             _ => true,
         };
@@ -452,6 +602,7 @@ internal sealed class CaseService(
         .Include(c => c.Images)
         .Include(c => c.History).ThenInclude(h => h.ChangedBy)
         .Include(c => c.Rejections).ThenInclude(r => r.Technician)
+        .Include(c => c.Costs)
         .AsSplitQuery();
 
     /// <summary>Uploads each data URL to storage (validated already) and links it to the case.</summary>

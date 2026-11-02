@@ -43,6 +43,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<CaseImage> CaseImages => Set<CaseImage>();
     public DbSet<CaseStatusHistory> CaseStatusHistory => Set<CaseStatusHistory>();
     public DbSet<TechnicianRejection> TechnicianRejections => Set<TechnicianRejection>();
+    public DbSet<Cost> Costs => Set<Cost>();
 
     // Core: audit, notifications, AI (tables only for now)
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();

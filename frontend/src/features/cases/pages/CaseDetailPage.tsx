@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router'
 import { paths, resubmitPath } from '@/app/paths'
 import type { Role } from '@/shared/types/role'
 import { Alert, Button, Card, CardHeader, Icon, LinkButton, PageHeader } from '@/shared/ui'
-import { formatDateTime } from '@/shared/utils/format'
+import { formatDateTime, formatVnd } from '@/shared/utils/format'
 import { useAuth } from '@/features/auth'
 import { CaseActions } from '../components/CaseActions'
 import { UrgencyNote } from '../components/CaseBadges'
@@ -100,6 +100,12 @@ export function CaseDetailPage() {
           {c.hold.expectedResumeOn}.
         </Alert>
       )}
+      {c.notFixed && (
+        <Alert tone="notice">
+          The customer says it is still not fixed ({formatDateTime(c.notFixed.reportedAt)}): “
+          {c.notFixed.reason}”
+        </Alert>
+      )}
       {c.status === 'reopened' && lastChange?.reason && (
         <Alert>
           Reopened by {lastChange.by.fullName}: {lastChange.reason}
@@ -142,6 +148,29 @@ export function CaseDetailPage() {
                   <span className="tabular-nums">{c.repairReport.laborHours} h</span>
                 </Field>
               </dl>
+            </Card>
+          )}
+
+          {c.costs && c.costs.length > 0 && (
+            <Card>
+              <CardHeader
+                title="Costs"
+                aside={<span className="tabular-nums">{formatVnd(c.totalCost ?? 0)} total</span>}
+              />
+              <ul className="flex flex-col text-sm">
+                {c.costs.map((x) => (
+                  <li
+                    key={x.id}
+                    className="border-rule flex justify-between gap-4 border-b py-2 first:pt-0 last:border-0"
+                  >
+                    <span>
+                      {x.name}
+                      {x.description && <span className="text-muted"> · {x.description}</span>}
+                    </span>
+                    <span className="flex-none tabular-nums">{formatVnd(x.amount)}</span>
+                  </li>
+                ))}
+              </ul>
             </Card>
           )}
 

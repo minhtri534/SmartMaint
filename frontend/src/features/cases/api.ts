@@ -1,6 +1,10 @@
 import { apiClient } from '@/lib/api-client'
 import type {
   ApproveCaseRequest,
+  ChangeUrgencyRequest,
+  ExtendDueRequest,
+  ReassignCaseRequest,
+  UpdateCostsRequest,
   AssignCaseRequest,
   AssetRef,
   Building,
@@ -71,6 +75,27 @@ export const casesApi = {
   reopen: ({ id, ...body }: Id & ReasonRequest) => post<CaseDetail>(`/cases/${id}/reopen`, body),
   /** DLG-14 */
   rate: ({ id, ...body }: Id & RateCaseRequest) => post<CaseDetail>(`/cases/${id}/rating`, body),
+
+  // Part 4: staff steps in, "not fixed", costs
+  /** POST /api/cases/{id}/reassign — another technician (back to Assigned) */
+  reassign: ({ id, ...body }: Id & ReassignCaseRequest) =>
+    post<CaseDetail>(`/cases/${id}/reassign`, body),
+  /** POST /api/cases/{id}/urgency — O08 */
+  changeUrgency: ({ id, ...body }: Id & ChangeUrgencyRequest) =>
+    post<CaseDetail>(`/cases/${id}/urgency`, body),
+  /** POST /api/cases/{id}/due — O09 */
+  extendDue: ({ id, ...body }: Id & ExtendDueRequest) => post<CaseDetail>(`/cases/${id}/due`, body),
+  /** POST /api/cases/{id}/not-fixed — customer, within 7 days of closing */
+  reportNotFixed: ({ id, ...body }: Id & ReasonRequest) =>
+    post<CaseDetail>(`/cases/${id}/not-fixed`, body),
+  /** POST /api/cases/{id}/not-fixed/accept — staff: reopen */
+  acceptNotFixed: ({ id }: Id) => post<CaseDetail>(`/cases/${id}/not-fixed/accept`),
+  /** POST /api/cases/{id}/not-fixed/decline — staff, with a reason for the customer */
+  declineNotFixed: ({ id, ...body }: Id & ReasonRequest) =>
+    post<CaseDetail>(`/cases/${id}/not-fixed/decline`, body),
+  /** PUT /api/cases/{id}/costs — staff, before closing */
+  updateCosts: ({ id, ...body }: Id & UpdateCostsRequest) =>
+    apiClient.put<CaseDetail>(`/cases/${id}/costs`, body).then((r) => r.data),
 }
 
 /** Query keys of this feature, in one place so invalidation never misses one. */

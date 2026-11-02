@@ -40,6 +40,10 @@
 | | `root_cause`, `parts_used` | Biên bản sửa chữa (linh kiện ghi tay, không có kho) |
 | | `hold_reason`, `hold_until` | On Hold phải có lý do + ngày dự kiến tiếp tục (N13) |
 | | `rating_stars`, `rating_comment`, `rated_at` | Khách đánh giá 1 lần / case |
+| | `not_fixed_reason`, `not_fixed_at` (Phần 4) | Khách báo "chưa sửa xong" trong 7 ngày sau đóng; chờ Staff mở lại hoặc từ chối |
+| | `sla_warned_at`, `sla_overdue_notified_at` (Phần 4) | Job nền nhắc SLA chỉ báo 1 lần "còn 20% thời gian" và 1 lần "quá hạn"; xóa khi đổi hạn |
+| Costs → `costs` (Phần 4) | theo ERD (Name, Description, Amount, Case) + `created_at` / `updated_at` | KTV ghi vật tư khi báo xong; hệ thống thêm dòng "Labour" = giờ × HourlyRate (E9, tính lúc ghi nên tăng lương không đổi chi phí cũ). Staff sửa được khi case đang Completed. Khách chỉ thấy chi phí khi khách là bên trả |
+| CaseStatusHistory (Phần 4) | Thao tác **không đổi trạng thái** (đổi ưu tiên, dời hạn, "chưa sửa xong", sửa chi phí) vẫn ghi 1 dòng với `new_status` = trạng thái hiện tại + lý do | ERD không có bảng dời hạn / đổi ưu tiên riêng |
 | | `requesting_customer_id` **cho phép trống** | Case sinh từ bảo trì định kỳ (F2) không có khách |
 | Assets → `assets` | `retired_at` (Phần 3) | BR-10: thiết bị có lịch sử thì chỉ **thanh lý**, không xóa. Thanh lý = ẩn khỏi form báo hỏng, QR hết hiệu lực, lịch sử giữ nguyên; chặn khi còn case mở. Chưa có case thì được xóa |
 | CaseImages → `case_images` | `kind` (report / before / after) | Ảnh lúc báo / trước / sau sửa |
@@ -68,7 +72,6 @@
 
 | Bảng ERD | Phần |
 |---|---|
-| Costs | Phần 4 — F3 còn lại / Phần 7 — F5 |
 | MaintenanceTriggers, FrequencyType, TriggerStatuses, MaintenanceWorkOrderDetails, MaintenanceWorkOrderAssets, CaseChecklists, ChecklistTasks, CaseTasks, TaskStatuses, TaskImages, TaskNotes; `Cases.TriggerWorkOrder` | Phần 5 — F2 |
 
 Đã tạo (Phần 2, migration `AddAuditNotificationsAi`): AuditLog (`audit_logs`), AuditLogTargetType, AuditLogTargetOperation, Notifications, AIConversation (`ai_conversations`), AIMessage (`ai_messages`).
@@ -85,3 +88,4 @@ Tài khoản demo đăng nhập bằng **username** (`admin`, `staff`, `technici
 - 02/11 — Phần 1: tạo bảng theo ERD (mục 2–4), chuyển Auth + F3 sang schema mới, ảnh lên Supabase Storage.
 - 02/11 — Phần 2: AuditLog, Notifications, bảng AI; Admin quản lý tài khoản, sửa giờ SLA; thông báo trong app ở các mốc F3.
 - 02/11 — Phần 3 (F1): `assets.retired_at`; thêm dòng bảng tra audit cho F1 (migration `AddAssetRetirementAndAuditTargets`).
+- 02/11 — Phần 4 (F3 còn lại): bảng `costs`, cột "chưa sửa xong" và nhắc SLA trên `cases` (migration `AddCostsNotFixedAndSlaReminders`).

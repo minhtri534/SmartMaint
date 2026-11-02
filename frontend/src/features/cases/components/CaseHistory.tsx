@@ -20,8 +20,18 @@ export function StatusTimeline({ history }: { history: StatusChange[] }) {
             aria-hidden="true"
           />
           <div className="text-sm">
-            <span className="font-medium">{STATUS_LABELS[h.to]}</span>
-            {h.from && <span className="text-muted"> from {STATUS_LABELS[h.from]}</span>}
+            {h.from === h.to ? (
+              // Same status: an update with a reason (urgency, deadline, "not fixed", costs).
+              <>
+                <span className="font-medium">Update</span>
+                <span className="text-muted"> while {STATUS_LABELS[h.to]}</span>
+              </>
+            ) : (
+              <>
+                <span className="font-medium">{STATUS_LABELS[h.to]}</span>
+                {h.from && <span className="text-muted"> from {STATUS_LABELS[h.from]}</span>}
+              </>
+            )}
           </div>
           <div className="text-muted text-xs tabular-nums">
             {h.by.fullName} · {formatDateTime(h.at)}

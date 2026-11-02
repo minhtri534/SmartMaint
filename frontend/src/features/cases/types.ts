@@ -100,6 +100,29 @@ export type CaseAction =
   | 'close'
   | 'reopen'
   | 'rate'
+  // Part 4: staff steps in, the customer's "not fixed" report, cost lines
+  | 'reassign'
+  | 'change_urgency'
+  | 'extend_due'
+  | 'report_not_fixed'
+  | 'accept_not_fixed'
+  | 'decline_not_fixed'
+  | 'update_costs'
+
+/** O09: why a deadline moves (a fixed list, counted in the statistics). */
+export const EXTEND_REASONS = [
+  'waiting_parts',
+  'customer_rescheduled',
+  'larger_than_expected',
+  'other',
+] as const
+export type ExtendDueReason = (typeof EXTEND_REASONS)[number]
+export const EXTEND_REASON_LABELS: Record<ExtendDueReason, string> = {
+  waiting_parts: 'Waiting for parts',
+  customer_rescheduled: 'The customer asked for another time',
+  larger_than_expected: 'The work is larger than expected',
+  other: 'Other reason',
+}
 
 // ---------------------------------------------------------------------------
 // Reference data (F1 — Huy owns the real catalogue). Shapes are what GET /api/service-types, /buildings, /assets return.
@@ -264,6 +287,11 @@ export interface CaseDetail extends CaseSummary {
   repairReport: RepairReport | null
   rating: Rating | null
   hold: Hold | null
+  /** ERD: Costs. Null when hidden from the caller (a customer when the building pays). */
+  costs: (CostLine & { id: number })[] | null
+  totalCost: number | null
+  /** The customer's "not fixed" report waiting for the staff (within 7 days of closing). NOT IN ERD v5. */
+  notFixed: { reason: string; reportedAt: string } | null
   /** What the signed-in user may do right now (state machine + role + data scope, decided by the server). */
   allowedActions: CaseAction[]
 }
@@ -314,6 +342,13 @@ export interface HoldCaseRequest {
   expectedResumeOn: string
 }
 
+/** One cost line. ERD: Costs(Name, Description, Amount). Amount in VND. */
+export interface CostLine {
+  name: string
+  description: string | null
+  amount: number
+}
+
 export interface CompleteWorkRequest {
   rootCause: string
   partsUsed: string | null
@@ -321,6 +356,29 @@ export interface CompleteWorkRequest {
   laborHours: number | null
   beforePhotos: string[]
   afterPhotos: string[]
+  /** Parts bought; the labour line is added by the server (hours × hourly rate). */
+  parts: CostLine[]
+}
+
+export interface ReassignCaseRequest {
+  technicianId: number
+  reason: string
+}
+
+export interface ChangeUrgencyRequest {
+  urgency: Urgency
+  reason: string
+}
+
+export interface ExtendDueRequest {
+  /** ISO date-time, later than the current deadline */
+  newDueAt: string
+  reason: ExtendDueReason
+  note: string | null
+}
+
+export interface UpdateCostsRequest {
+  lines: CostLine[]
 }
 
 export interface RateCaseRequest {
