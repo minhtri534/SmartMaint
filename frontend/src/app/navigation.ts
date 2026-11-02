@@ -41,7 +41,25 @@ export const NAV_ITEMS: readonly NavItem[] = [
     also: ['/cases/'],
     roles: ['technician'],
   },
+  // Core — Administrator
   { label: 'Home', to: paths.home, icon: 'home', roles: ['admin'] },
+  {
+    label: 'Accounts',
+    to: paths.accounts,
+    icon: 'users',
+    also: ['/admin/accounts/'],
+    roles: ['admin'],
+  },
+  { label: 'SLA settings', to: paths.slaSettings, icon: 'clock', roles: ['admin'] },
+  { label: 'Audit log', to: paths.auditLog, icon: 'log', roles: ['admin'] },
+  { label: 'Roles', to: paths.roles, icon: 'shield', roles: ['admin'] },
+  // Core — every role
+  {
+    label: 'Notifications',
+    to: paths.notifications,
+    icon: 'bell',
+    roles: ['customer', 'staff', 'technician', 'manager', 'admin'],
+  },
 ]
 
 export function navItemsFor(role: Role): NavItem[] {

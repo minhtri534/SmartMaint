@@ -732,3 +732,193 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102033133_AddAuditNotificationsAi') THEN
+    CREATE TABLE ai_conversations (
+        id bigint GENERATED ALWAYS AS IDENTITY,
+        context_type character varying(30) NOT NULL,
+        context_id bigint,
+        user_id bigint NOT NULL,
+        CONSTRAINT pk_ai_conversations PRIMARY KEY (id),
+        CONSTRAINT fk_ai_conversations_accounts_user_id FOREIGN KEY (user_id) REFERENCES accounts (id) ON DELETE CASCADE
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102033133_AddAuditNotificationsAi') THEN
+    CREATE TABLE audit_log_target_operations (
+        id bigint NOT NULL,
+        name character varying(50) NOT NULL,
+        CONSTRAINT pk_audit_log_target_operations PRIMARY KEY (id)
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102033133_AddAuditNotificationsAi') THEN
+    CREATE TABLE audit_log_target_types (
+        id bigint NOT NULL,
+        name character varying(50) NOT NULL,
+        CONSTRAINT pk_audit_log_target_types PRIMARY KEY (id)
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102033133_AddAuditNotificationsAi') THEN
+    CREATE TABLE notifications (
+        id bigint GENERATED ALWAYS AS IDENTITY,
+        user_id bigint NOT NULL,
+        details character varying(500) NOT NULL,
+        sent_at timestamp with time zone NOT NULL,
+        CONSTRAINT pk_notifications PRIMARY KEY (id),
+        CONSTRAINT fk_notifications_accounts_user_id FOREIGN KEY (user_id) REFERENCES accounts (id) ON DELETE CASCADE
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102033133_AddAuditNotificationsAi') THEN
+    CREATE TABLE ai_messages (
+        id bigint GENERATED ALWAYS AS IDENTITY,
+        conversation_id bigint NOT NULL,
+        message character varying(500) NOT NULL,
+        reply text,
+        sent_at timestamp with time zone NOT NULL,
+        CONSTRAINT pk_ai_messages PRIMARY KEY (id),
+        CONSTRAINT fk_ai_messages_ai_conversations_conversation_id FOREIGN KEY (conversation_id) REFERENCES ai_conversations (id) ON DELETE CASCADE
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102033133_AddAuditNotificationsAi') THEN
+    CREATE TABLE audit_logs (
+        id bigint GENERATED ALWAYS AS IDENTITY,
+        admin_id bigint NOT NULL,
+        target_type_id bigint NOT NULL,
+        operation_id bigint NOT NULL,
+        old_value text,
+        new_value text,
+        occurred_at timestamp with time zone NOT NULL,
+        CONSTRAINT pk_audit_logs PRIMARY KEY (id),
+        CONSTRAINT fk_audit_logs_admins_admin_id FOREIGN KEY (admin_id) REFERENCES admins (id) ON DELETE RESTRICT,
+        CONSTRAINT fk_audit_logs_audit_log_target_operations_operation_id FOREIGN KEY (operation_id) REFERENCES audit_log_target_operations (id) ON DELETE RESTRICT,
+        CONSTRAINT fk_audit_logs_audit_log_target_types_target_type_id FOREIGN KEY (target_type_id) REFERENCES audit_log_target_types (id) ON DELETE RESTRICT
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102033133_AddAuditNotificationsAi') THEN
+    INSERT INTO audit_log_target_operations (id, name)
+    VALUES (1, 'sign_in');
+    INSERT INTO audit_log_target_operations (id, name)
+    VALUES (2, 'create');
+    INSERT INTO audit_log_target_operations (id, name)
+    VALUES (3, 'update');
+    INSERT INTO audit_log_target_operations (id, name)
+    VALUES (4, 'change_role');
+    INSERT INTO audit_log_target_operations (id, name)
+    VALUES (5, 'deactivate');
+    INSERT INTO audit_log_target_operations (id, name)
+    VALUES (6, 'reactivate');
+    INSERT INTO audit_log_target_operations (id, name)
+    VALUES (7, 'reset_password');
+    INSERT INTO audit_log_target_operations (id, name)
+    VALUES (8, 'unlock');
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102033133_AddAuditNotificationsAi') THEN
+    INSERT INTO audit_log_target_types (id, name)
+    VALUES (1, 'account');
+    INSERT INTO audit_log_target_types (id, name)
+    VALUES (2, 'priority_level');
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102033133_AddAuditNotificationsAi') THEN
+    CREATE UNIQUE INDEX ix_ai_conversations_user_id ON ai_conversations (user_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102033133_AddAuditNotificationsAi') THEN
+    CREATE UNIQUE INDEX ix_ai_messages_conversation_id ON ai_messages (conversation_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102033133_AddAuditNotificationsAi') THEN
+    CREATE UNIQUE INDEX ix_audit_log_target_operations_name ON audit_log_target_operations (name);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102033133_AddAuditNotificationsAi') THEN
+    CREATE UNIQUE INDEX ix_audit_log_target_types_name ON audit_log_target_types (name);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102033133_AddAuditNotificationsAi') THEN
+    CREATE INDEX ix_audit_logs_admin_id ON audit_logs (admin_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102033133_AddAuditNotificationsAi') THEN
+    CREATE INDEX ix_audit_logs_occurred_at ON audit_logs (occurred_at);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102033133_AddAuditNotificationsAi') THEN
+    CREATE INDEX ix_audit_logs_operation_id ON audit_logs (operation_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102033133_AddAuditNotificationsAi') THEN
+    CREATE INDEX ix_audit_logs_target_type_id ON audit_logs (target_type_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102033133_AddAuditNotificationsAi') THEN
+    CREATE INDEX ix_notifications_user_id_sent_at ON notifications (user_id, sent_at);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102033133_AddAuditNotificationsAi') THEN
+    INSERT INTO __ef_migrations_history (migration_id, product_version)
+    VALUES ('20261102033133_AddAuditNotificationsAi', '10.0.13');
+    END IF;
+END $EF$;
+COMMIT;
+

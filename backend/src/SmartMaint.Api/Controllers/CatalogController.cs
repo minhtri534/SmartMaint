@@ -6,11 +6,11 @@ using SmartMaint.Api.Modules.Catalog.Dtos;
 
 namespace SmartMaint.Api.Controllers;
 
-/// <summary>Reference data for the case forms (service types, buildings, assets, technicians).</summary>
+/// <summary>Reference data for the forms (service types, buildings, assets, technicians, specialties).</summary>
 [ApiController]
 [Route("api")]
 [Produces("application/json")]
-[AuthorizeRoles(UserRole.Customer, UserRole.Staff, UserRole.Technician, UserRole.Manager)]
+[AuthorizeRoles(UserRole.Customer, UserRole.Staff, UserRole.Technician, UserRole.Manager, UserRole.Admin)]
 public sealed class CatalogController(ICatalogService catalog) : ControllerBase
 {
     [HttpGet("service-types")]
@@ -30,4 +30,10 @@ public sealed class CatalogController(ICatalogService catalog) : ControllerBase
     [AuthorizeRoles(UserRole.Staff)]
     public Task<IReadOnlyList<TechnicianOptionResponse>> Technicians(CancellationToken cancellationToken) =>
         catalog.GetTechniciansAsync(cancellationToken);
+
+    /// <summary>Technician specialties, for the account form (ADM-03).</summary>
+    [HttpGet("specialties")]
+    [AuthorizeRoles(UserRole.Admin, UserRole.Staff)]
+    public Task<IReadOnlyList<SpecialtyOptionResponse>> Specialties(CancellationToken cancellationToken) =>
+        catalog.GetSpecialtiesAsync(cancellationToken);
 }

@@ -1,4 +1,6 @@
 import { createBrowserRouter } from 'react-router'
+import { AccountDetailPage, AccountFormPage, AccountListPage, RolesPage } from '@/features/accounts'
+import { AuditLogPage } from '@/features/audit'
 import { ChangePasswordPage, LoginPage, RequireAuth } from '@/features/auth'
 import {
   CaseDetailPage,
@@ -9,6 +11,8 @@ import {
 } from '@/features/cases'
 import { ForbiddenPage, NotFoundPage, RouteErrorPage } from '@/features/errors/pages/ErrorPages'
 import { HomePage } from '@/features/home/pages/HomePage'
+import { NotificationsPage } from '@/features/notifications'
+import { SlaSettingsPage } from '@/features/settings'
 import { AppLayout } from '@/shared/layout/AppLayout'
 import { AuthLayout } from '@/shared/layout/AuthLayout'
 import { paths } from './paths'
@@ -87,6 +91,22 @@ export const router = createBrowserRouter([
               </RequireAuth>
             ),
           },
+          // Core — every role (NotificationsController)
+          { path: paths.notifications, element: <NotificationsPage /> },
+          // Core — Administrator (AccountsController, AuditLogsController, PriorityLevelsController: Admin)
+          ...[
+            { path: paths.accounts, element: <AccountListPage /> },
+            { path: paths.accountNew, element: <AccountFormPage mode="create" /> },
+            { path: paths.accountDetail, element: <AccountDetailPage /> },
+            { path: paths.accountEdit, element: <AccountFormPage mode="edit" /> },
+            { path: paths.accountChangeRole, element: <AccountFormPage mode="change-role" /> },
+            { path: paths.roles, element: <RolesPage /> },
+            { path: paths.auditLog, element: <AuditLogPage /> },
+            { path: paths.slaSettings, element: <SlaSettingsPage /> },
+          ].map((route) => ({
+            ...route,
+            element: <RequireAuth roles={['admin']}>{route.element}</RequireAuth>,
+          })),
         ],
       },
       { path: '*', element: <NotFoundPage /> },

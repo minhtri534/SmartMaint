@@ -22,3 +22,5 @@ public sealed record AssetOptionResponse(long Id, string Name, long RoomId);
 
 /// <summary>A technician the staff member can assign, with how many cases they hold now.</summary>
 public sealed record TechnicianOptionResponse(long Id, string FullName, int OpenCases);
+
+public sealed record SpecialtyOptionResponse(long Id, string Name);

@@ -1,7 +1,11 @@
 using FluentValidation;
+using SmartMaint.Api.Modules.Accounts;
+using SmartMaint.Api.Modules.Audit;
 using SmartMaint.Api.Modules.Auth;
 using SmartMaint.Api.Modules.Cases;
 using SmartMaint.Api.Modules.Catalog;
+using SmartMaint.Api.Modules.Notifications;
+using SmartMaint.Api.Modules.PriorityLevels;
 
 namespace SmartMaint.Api.Modules;
 
@@ -15,6 +19,10 @@ internal static class ModuleRegistration
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<ICaseService, CaseService>();
         services.AddScoped<ICatalogService, CatalogService>();
+        services.AddScoped<IAuditService, AuditService>();
+        services.AddScoped<INotificationService, NotificationService>();
+        services.AddScoped<IAccountService, AccountService>();
+        services.AddScoped<IPriorityLevelService, PriorityLevelService>();
 
         return services;
     }

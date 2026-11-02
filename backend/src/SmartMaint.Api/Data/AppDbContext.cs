@@ -4,6 +4,7 @@ using SmartMaint.Api.Entities;
 using SmartMaint.Api.Entities.Accounts;
 using SmartMaint.Api.Entities.Buildings;
 using SmartMaint.Api.Entities.Cases;
+using SmartMaint.Api.Entities.Core;
 
 namespace SmartMaint.Api.Data;
 
@@ -43,11 +44,19 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<CaseStatusHistory> CaseStatusHistory => Set<CaseStatusHistory>();
     public DbSet<TechnicianRejection> TechnicianRejections => Set<TechnicianRejection>();
 
+    // Core: audit, notifications, AI (tables only for now)
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<AiConversation> AiConversations => Set<AiConversation>();
+    public DbSet<AiMessage> AiMessages => Set<AiMessage>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         // ERD lookup tables: one row per enum member, written by the migration.
         modelBuilder.HasLookupTable<UserRole>("roles");
         modelBuilder.HasLookupTable<CaseStatus>("case_statuses");
+        modelBuilder.HasLookupTable<AuditTarget>("audit_log_target_types");
+        modelBuilder.HasLookupTable<AuditOperation>("audit_log_target_operations");
 
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
 

@@ -2,6 +2,8 @@ using SmartMaint.Api.Common.Errors;
 using SmartMaint.Api.Common.Security;
 using SmartMaint.Api.Data;
 using SmartMaint.Api.Entities.Accounts;
+using SmartMaint.Api.Entities.Core;
+using SmartMaint.Api.Modules.Audit;
 using SmartMaint.Api.Modules.Auth;
 using SmartMaint.Api.Modules.Auth.Dtos;
 using SmartMaint.UnitTests.Common;
@@ -24,7 +26,8 @@ public sealed class AuthServiceTests : IDisposable
     {
         _db = TestDbContextFactory.Create(_clock);
         _sut = new AuthService(
-            _db, _hasher, new FakeTokenService(), _currentUser, _clock, Microsoft.Extensions.Options.Options.Create(Options));
+            _db, _hasher, new FakeTokenService(), _currentUser, new AuditService(_db, _currentUser, _clock), _clock,
+            Microsoft.Extensions.Options.Options.Create(Options));
     }
 
     public void Dispose() => _db.Dispose();
@@ -129,6 +132,33 @@ public sealed class AuthServiceTests : IDisposable
             () => _sut.ChangePasswordAsync(new ChangePasswordRequest("Wrong@123", "NewPass@456"), default));
 
         Assert.Equal("auth.wrong_current_password", error.Code);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Normal)]
+    public async Task Login_Administrator_WritesASignInAuditRow()
+    {
+        var admin = new Admin("root", "Root Admin", _hasher.Hash(Password), false);
+        _db.Accounts.Add(admin);
+        await _db.SaveChangesAsync();
+
+        await _sut.LoginAsync(new LoginRequest("root", Password), default);
+
+        var row = Assert.Single(_db.AuditLogs);
+        Assert.Equal(admin.Id, row.AdminId);
+        Assert.Equal(AuditOperation.SignIn, row.Operation);
+        Assert.Equal(_clock.Now, row.OccurredAt);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Boundary)]
+    public async Task Login_NonAdministrator_WritesNoAuditRow()
+    {
+        await SeedUserAsync();
+
+        await _sut.LoginAsync(new LoginRequest("user.one", Password), default);
+
+        Assert.Empty(_db.AuditLogs); // the ERD's AuditLog only references Admins
     }
 
     private async Task<Account> SeedUserAsync(bool mustChangePassword = false)

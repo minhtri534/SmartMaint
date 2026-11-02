@@ -55,14 +55,20 @@
 | Bảng con theo role (Customers, Staff, Technicians, Manager, Admins) | Mỗi tài khoản có đúng 1 dòng ở bảng con khớp role (bản soát điểm 17) | EF ánh xạ kiểu **TPT**: tạo tài khoản là tạo luôn dòng bảng con; role và bảng con không thể lệch |
 | Tên bảng `Manager` | Code dùng `managers` (số nhiều như các bảng khác) | — |
 | Khóa chính các bảng con | Tên ràng buộc là `PK_customers`, `PK_staff`… (EF không cho đặt tên kiểu `pk_` cho TPT) | Chỉ là tên, không ảnh hưởng |
+| **Đổi role** (Leader 02/11: cho đổi, nhưng chỉ khi tài khoản chưa có lịch sử) | Mỗi role là 1 bảng con nên không "chuyển" được dòng: code xóa tài khoản cũ rồi tạo lại ở bảng role mới, cùng username + mật khẩu → **id đổi** | "Có lịch sử" = có case / dòng lịch sử trạng thái / lần từ chối / dòng audit. Có rồi thì phải khóa TK cũ, tạo TK mới |
+| AuditLog chỉ FK `AdminID`, không có `TargetID` (bản soát điểm 1) | Chỉ ghi được hành động của **Admin**: tạo / sửa / đổi role / khóa / mở / reset mật khẩu / mở khóa tài khoản, sửa giờ SLA, Admin đăng nhập. Không ghi được Staff duyệt, KTV làm… | Bản ghi bị sửa nằm trong JSON `old_value` / `new_value` (có id) |
+| AuditLog `Time` | `occurred_at`; bảng tra `audit_log_target_types` (account, priority_level) và `audit_log_target_operations` (sign_in, create, update, change_role, deactivate, reactivate, reset_password, unlock) | Dữ liệu bảng tra do migration ghi |
+| Notifications(UserID, Details, TimeSent) — không IsRead, không trỏ case (bản soát điểm 12) | Trang Thông báo không có "chưa đọc", không bấm mở case được; mã case nằm trong chữ | `TimeSent` → `sent_at`; chỉ trong app, không email; giữ 90 ngày |
+| AIConversation – Account 1–1, AIConversation – AIMessage 1–1 (bản soát điểm 5) | Đã tạo đúng 1–1 (`user_id` / `conversation_id` unique) → mỗi người chỉ 1 hội thoại, 1 tin nhắn | Chưa có tính năng AI; sửa ERD trước khi làm (AI chỉ cho Technician + Customer) |
 
 ## 4. Bảng ERD chưa tạo (sẽ tạo đúng phần của nó)
 
 | Bảng ERD | Phần |
 |---|---|
-| AuditLog, AuditLogTargetType, AuditLogTargetOperation, Notifications, AIConversation, AIMessage (AI: chỉ tạo bảng, chưa làm tính năng — AI sau này chỉ cho Technician + Customer) | Phần 2 — Lõi |
 | Costs | Phần 4 — F3 còn lại / Phần 7 — F5 |
 | MaintenanceTriggers, FrequencyType, TriggerStatuses, MaintenanceWorkOrderDetails, MaintenanceWorkOrderAssets, CaseChecklists, ChecklistTasks, CaseTasks, TaskStatuses, TaskImages, TaskNotes; `Cases.TriggerWorkOrder` | Phần 5 — F2 |
+
+Đã tạo (Phần 2, migration `AddAuditNotificationsAi`): AuditLog (`audit_logs`), AuditLogTargetType, AuditLogTargetOperation, Notifications, AIConversation (`ai_conversations`), AIMessage (`ai_messages`).
 
 Đã tạo đủ (Phần 1): Account, Roles, Customers, Staff, Technicians, Manager, Admins, Specialties, TechnicianSpecialty, Buildings, Floors, Rooms, AssetCategory, AssetType, Manufacturers, Assets, StaffBuildingAssignments, ManagerBuildingAssignments, PriorityLevels, CaseCategories, CaseStatuses, Cases, CaseImages, CaseStatusHistory, TechnicianRejections.
 
@@ -74,3 +80,4 @@ Tài khoản demo đăng nhập bằng **username** (`admin`, `staff`, `technici
 
 ## Lịch sử
 - 02/11 — Phần 1: tạo bảng theo ERD (mục 2–4), chuyển Auth + F3 sang schema mới, ảnh lên Supabase Storage.
+- 02/11 — Phần 2: AuditLog, Notifications, bảng AI; Admin quản lý tài khoản, sửa giờ SLA; thông báo trong app ở các mốc F3.

@@ -237,8 +237,8 @@ Skill nằm ở `.claude/skills/design-taste-frontend/` (MIT, bản chép từ L
 
 ## 8. Việc còn để sau (không thuộc code frame)
 
-- Audit log mọi lần đăng nhập (BR-16) — chờ bảng `audit_logs` sau khi ERD đóng băng (đã để `TODO(audit)` trong `AuthService`).
+- Audit log mọi lần đăng nhập của mọi role (BR-16) — ERD hiện chỉ cho ghi hành động của Admin (xem `ERD_v5_Thay_Doi_Khi_Code.md`).
 - Quên / đặt lại mật khẩu qua email (AUTH-02/03), kết thúc các phiên khác khi đổi mật khẩu — cần module Email + cột phiên.
 - Overlay AUTH-05 (cảnh báo trước 5 phút, quay lại đúng trang) — hiện chỉ đưa về Login kèm thông báo.
-- Notification, AI gateway (Replicate), job nền. (Lưu file: đã có `Common/Storage`, 02/11.)
+- AI gateway (Replicate), job nền, email. (Đã có 02/11: lưu file `Common/Storage`, thông báo trong app, audit log.)
 - Mobile Flutter (Tùng) — thư mục `mobile/` chưa dựng.

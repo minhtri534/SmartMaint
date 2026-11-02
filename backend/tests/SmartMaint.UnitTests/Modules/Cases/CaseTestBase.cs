@@ -4,6 +4,7 @@ using SmartMaint.Api.Entities.Buildings;
 using SmartMaint.Api.Entities.Cases;
 using SmartMaint.Api.Modules.Cases;
 using SmartMaint.Api.Modules.Cases.Dtos;
+using SmartMaint.Api.Modules.Notifications;
 using SmartMaint.UnitTests.Common;
 
 namespace SmartMaint.UnitTests.Modules.Cases;
@@ -21,6 +22,7 @@ public abstract class CaseTestBase : IDisposable
     protected readonly FakeFileStorage Storage = new();
     protected readonly AppDbContext Db;
     internal readonly CaseService Sut;
+    internal readonly NotificationService Notifications;
 
     protected readonly Customer Customer, Customer2, CustomerB;
     protected readonly Staff Staff, StaffB;
@@ -79,7 +81,8 @@ public abstract class CaseTestBase : IDisposable
         Db.ManagerBuildingAssignments.Add(new ManagerBuildingAssignment { ManagerId = Manager.Id, BuildingId = buildingA.Id });
         Db.SaveChanges();
 
-        Sut = new CaseService(Db, Me, Storage, Clock);
+        Notifications = new NotificationService(Db, Me, Clock);
+        Sut = new CaseService(Db, Me, Storage, Notifications, Clock);
     }
 
     public void Dispose() => Db.Dispose();

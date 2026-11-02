@@ -15,7 +15,7 @@ namespace SmartMaint.Api.Controllers;
 [Produces("application/json")]
 public sealed class AuthController(IAuthService authService) : ControllerBase
 {
-    /// <summary>AUTH-01: sign in with email and password.</summary>
+    /// <summary>AUTH-01: sign in with username and password.</summary>
     [HttpPost("login")]
     [AllowAnonymous]
     [ProducesResponseType<LoginResponse>(StatusCodes.Status200OK)]

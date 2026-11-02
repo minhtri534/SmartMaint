@@ -6,10 +6,16 @@ using SmartMaint.Api.Data;
 using SmartMaint.Api.Entities.Accounts;
 using SmartMaint.Api.Entities.Cases;
 using SmartMaint.Api.Modules.Cases.Dtos;
+using SmartMaint.Api.Modules.Notifications;
 
 namespace SmartMaint.Api.Modules.Cases;
 
-internal sealed class CaseService(AppDbContext db, ICurrentUser currentUser, IFileStorage storage, TimeProvider clock) : ICaseService
+internal sealed class CaseService(
+    AppDbContext db,
+    ICurrentUser currentUser,
+    IFileStorage storage,
+    INotificationService notifications,
+    TimeProvider clock) : ICaseService
 {
     /// <summary>The customer may report "not fixed" / the staff member may reopen a closed case for this long (F3 step 12).</summary>
     private static readonly TimeSpan ReopenWindow = TimeSpan.FromDays(7);
@@ -121,7 +127,13 @@ internal sealed class CaseService(AppDbContext db, ICurrentUser currentUser, IFi
 
         db.Cases.Add(c);
         await db.SaveChangesAsync(cancellationToken);
-        // TODO(notification): tell the staff of the building (all of them, N11) that a case is waiting.
+
+        // 5.4.2: every staff member of the building (N11). The code exists only after the first save.
+        var kind = category.IsEmergency ? "Emergency request" : "New request";
+        notifications.Send(
+            await StaffOfBuildingAsync(room.Floor.BuildingId, cancellationToken),
+            $"{kind} {Case.CodeOf(c.Id)} \"{c.Title}\" in {room.Floor.DisplayName}, {room.RoomNumber}.");
+        await db.SaveChangesAsync(cancellationToken);
         return await GetAsync(c.Id, cancellationToken);
     }
 
@@ -157,7 +169,6 @@ internal sealed class CaseService(AppDbContext db, ICurrentUser currentUser, IFi
 
             c.AssignedTechnicianId = technician.Id;
             c.Technician = technician;
-            // TODO(notification): tell the technician.
             // The ERD keeps only the last technician on the case, so the history row says who got it.
             return $"Assigned to {technician.FullName}.";
         }, cancellationToken);
@@ -221,7 +232,6 @@ internal sealed class CaseService(AppDbContext db, ICurrentUser currentUser, IFi
             c.ActualCompletionHours = request.LaborHours ?? MeasuredHours(c.StartedAt, now);
             await AddPhotosAsync(c, CaseImageKind.Before, request.BeforePhotos ?? [], cancellationToken);
             await AddPhotosAsync(c, CaseImageKind.After, request.AfterPhotos, cancellationToken);
-            // TODO(notification): tell the staff member there is work to verify.
             return null;
         }, cancellationToken);
 
@@ -275,6 +285,8 @@ internal sealed class CaseService(AppDbContext db, ICurrentUser currentUser, IFi
             throw CaseErrors.InvalidTransition();
         }
 
+        // Read before apply: a decline clears the technician.
+        var technicianBefore = c.AssignedTechnicianId;
         var reason = await apply(c, now);
 
         var to = CaseTransitions.Find(action, scope.Role, c.Status)!.To;
@@ -290,9 +302,69 @@ internal sealed class CaseService(AppDbContext db, ICurrentUser currentUser, IFi
             });
         }
 
+        await NotifyAsync(c, action, reason, technicianBefore, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return await GetAsync(id, cancellationToken);
     }
+
+    // ----- notifications (SRS 5.4.2, in-app only) ---------------------------------------------------------------
+
+    /// <summary>Who hears about each arrow. The person who acted is never notified (NotificationService skips them).</summary>
+    private async Task NotifyAsync(
+        Case c, CaseAction action, string? reason, long? technicianBefore, CancellationToken cancellationToken)
+    {
+        var code = Case.CodeOf(c.Id);
+        var customer = c.RequestingCustomerId is { } customerId ? new[] { customerId } : [];
+        var technician = c.AssignedTechnicianId is { } technicianId ? new[] { technicianId } : [];
+        var staffOfBuilding = await StaffOfBuildingAsync(c.Room.Floor.BuildingId, cancellationToken);
+
+        switch (action)
+        {
+            case CaseAction.Approve:
+                notifications.Send(customer, $"{code} \"{c.Title}\" was approved and will be assigned to a technician.");
+                break;
+            case CaseAction.Reject:
+                notifications.Send(customer, $"{code} \"{c.Title}\" was rejected. {reason}");
+                break;
+            case CaseAction.Assign:
+                notifications.Send(technician, $"{code} \"{c.Title}\" was assigned to you.");
+                break;
+            case CaseAction.Accept:
+                // 5.4.2: the staff member who assigned it (the last "assigned" row of the history).
+                var assignedBy = await db.CaseStatusHistory
+                    .Where(h => h.CaseId == c.Id && h.NewStatus == CaseStatus.Assigned)
+                    .OrderByDescending(h => h.ChangedAt).Select(h => (long?)h.ChangedById)
+                    .FirstOrDefaultAsync(cancellationToken);
+                notifications.Send(assignedBy is { } by ? [by] : [], $"{c.Technician?.FullName} accepted {code}.");
+                break;
+            case CaseAction.Decline:
+                notifications.Send(staffOfBuilding, $"A technician declined {code}: {reason} Assign someone else.");
+                break;
+            case CaseAction.Hold:
+                notifications.Send([.. staffOfBuilding, .. customer], $"{code} \"{c.Title}\" is on hold. {reason}");
+                break;
+            case CaseAction.Complete:
+                notifications.Send(staffOfBuilding, $"{code} \"{c.Title}\" is done and waits for your check.");
+                break;
+            case CaseAction.Close:
+                notifications.Send(customer, $"{code} \"{c.Title}\" was closed. Please rate the repair.");
+                break;
+            case CaseAction.Reopen:
+                notifications.Send([.. technician, .. customer], $"{code} \"{c.Title}\" was reopened: {reason}");
+                break;
+            case CaseAction.Cancel:
+                long[] involved = [.. customer, .. (c.StaffId is { } staffId ? new[] { staffId } : []), .. (technicianBefore is { } t ? new[] { t } : [])];
+                notifications.Send(involved, $"{code} \"{c.Title}\" was cancelled: {reason}");
+                break;
+        }
+    }
+
+    /// <summary>Every active staff member assigned to the building (there is no shared queue, N11).</summary>
+    private async Task<List<long>> StaffOfBuildingAsync(long buildingId, CancellationToken cancellationToken) =>
+        await db.StaffBuildingAssignments
+            .Where(a => a.BuildingId == buildingId && a.Staff.Status == UserStatus.Active)
+            .Select(a => a.StaffId)
+            .ToListAsync(cancellationToken);
 
     // ----- rules ------------------------------------------------------------------------------------------------
 

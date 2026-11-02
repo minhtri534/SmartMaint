@@ -3,6 +3,8 @@ using Microsoft.Extensions.Options;
 using SmartMaint.Api.Common.Security;
 using SmartMaint.Api.Data;
 using SmartMaint.Api.Entities.Accounts;
+using SmartMaint.Api.Entities.Core;
+using SmartMaint.Api.Modules.Audit;
 using SmartMaint.Api.Modules.Auth.Dtos;
 
 namespace SmartMaint.Api.Modules.Auth;
@@ -12,6 +14,7 @@ internal sealed class AuthService(
     IPasswordHasher passwordHasher,
     ITokenService tokenService,
     ICurrentUser currentUser,
+    IAuditService audit,
     TimeProvider clock,
     IOptions<AuthOptions> options) : IAuthService
 {
@@ -42,9 +45,13 @@ internal sealed class AuthService(
         }
 
         user.RecordSuccessfulLogin(now);
-        await db.SaveChangesAsync(cancellationToken);
+        // BR-16 as far as the ERD allows: AuditLog only references Admins, so only administrator sign-ins are kept.
+        if (user is Admin)
+        {
+            audit.Record(user.Id, AuditTarget.Account, AuditOperation.SignIn, null, new { user.Id, user.Username });
+        }
 
-        // TODO(audit): write every sign-in attempt to audit_logs (BR-16) once the table is frozen.
+        await db.SaveChangesAsync(cancellationToken);
         return IssueToken(user);
     }
 

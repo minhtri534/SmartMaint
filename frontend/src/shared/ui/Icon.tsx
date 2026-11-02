@@ -13,6 +13,12 @@ const PATHS = {
   menu: 'M4 7h16 M4 12h16 M4 17h16',
   close: 'M6 6l12 12 M18 6L6 18',
   back: 'M14 6l-6 6 6 6',
+  users:
+    'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M3 20a6 6 0 0 1 12 0 M16 4.5a3.5 3.5 0 0 1 0 6.5 M18 20a5 5 0 0 0-2.5-4.3',
+  log: 'M8 6h12 M8 12h12 M8 18h12 M4 6h.01 M4 12h.01 M4 18h.01',
+  bell: 'M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z M10 20a2 2 0 0 0 4 0',
+  clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z M12 7v5l3 2',
+  shield: 'M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z',
 } as const
 
 export type IconName = keyof typeof PATHS

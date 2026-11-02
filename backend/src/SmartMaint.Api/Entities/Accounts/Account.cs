@@ -77,5 +77,37 @@ public abstract class Account : AuditableEntity
         MustChangePassword = false;
     }
 
+    /// <summary>DLG-16 "Reset password": a new temporary password that must be changed at the next sign-in.</summary>
+    public void ResetPassword(string temporaryPasswordHash)
+    {
+        PasswordHash = temporaryPasswordHash;
+        MustChangePassword = true;
+        Unlock();
+    }
+
+    /// <summary>DLG-16 "Unlock": ends a BR-18 lock before its time.</summary>
+    public void Unlock()
+    {
+        FailedLoginCount = 0;
+        LockedUntil = null;
+    }
+
     public static string NormalizeUsername(string username) => username.Trim().ToLowerInvariant();
+
+    /// <summary>
+    /// A new account of the given role (the row in the role's own table comes with it).
+    /// <paramref name="roomId"/> is required for a customer and ignored for the other roles.
+    /// </summary>
+    public static Account New(
+        UserRole role, string username, string fullName, string passwordHash, bool mustChangePassword, long? roomId) =>
+        role switch
+        {
+            UserRole.Customer => new Customer(username, fullName, passwordHash, mustChangePassword,
+                roomId ?? throw new ArgumentException("A customer needs a room.", nameof(roomId))),
+            UserRole.Staff => new Staff(username, fullName, passwordHash, mustChangePassword),
+            UserRole.Technician => new Technician(username, fullName, passwordHash, mustChangePassword),
+            UserRole.Manager => new Manager(username, fullName, passwordHash, mustChangePassword),
+            UserRole.Admin => new Admin(username, fullName, passwordHash, mustChangePassword),
+            _ => throw new ArgumentOutOfRangeException(nameof(role)),
+        };
 }

@@ -66,6 +66,12 @@ internal sealed class CatalogService(AppDbContext db, ICurrentUser currentUser) 
             .Select(a => new AssetOptionResponse(a.Id, a.Name, a.RoomId))
             .ToListAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<SpecialtyOptionResponse>> GetSpecialtiesAsync(CancellationToken cancellationToken) =>
+        await db.Specialties.AsNoTracking()
+            .OrderBy(s => s.Name)
+            .Select(s => new SpecialtyOptionResponse(s.Id, s.Name))
+            .ToListAsync(cancellationToken);
+
     public async Task<IReadOnlyList<TechnicianOptionResponse>> GetTechniciansAsync(CancellationToken cancellationToken)
     {
         var technicians = await db.Technicians.AsNoTracking()

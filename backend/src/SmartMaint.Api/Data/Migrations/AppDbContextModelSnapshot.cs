@@ -997,6 +997,159 @@ namespace SmartMaint.Api.Data.Migrations
                     b.ToTable("technician_rejections", (string)null);
                 });
 
+            modelBuilder.Entity("SmartMaint.Api.Entities.Core.AiConversation", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<long?>("ContextId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("context_id");
+
+                    b.Property<string>("ContextType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("context_type");
+
+                    b.Property<long>("UserId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_ai_conversations");
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_ai_conversations_user_id");
+
+                    b.ToTable("ai_conversations", (string)null);
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Core.AiMessage", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("ConversationId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("conversation_id");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("message");
+
+                    b.Property<string>("Reply")
+                        .HasColumnType("text")
+                        .HasColumnName("reply");
+
+                    b.Property<DateTimeOffset>("SentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("sent_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_ai_messages");
+
+                    b.HasIndex("ConversationId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_ai_messages_conversation_id");
+
+                    b.ToTable("ai_messages", (string)null);
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Core.AuditLog", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("AdminId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("admin_id");
+
+                    b.Property<string>("NewValue")
+                        .HasColumnType("text")
+                        .HasColumnName("new_value");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("occurred_at");
+
+                    b.Property<string>("OldValue")
+                        .HasColumnType("text")
+                        .HasColumnName("old_value");
+
+                    b.Property<long>("Operation")
+                        .HasColumnType("bigint")
+                        .HasColumnName("operation_id");
+
+                    b.Property<long>("TargetType")
+                        .HasColumnType("bigint")
+                        .HasColumnName("target_type_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_audit_logs");
+
+                    b.HasIndex("AdminId")
+                        .HasDatabaseName("ix_audit_logs_admin_id");
+
+                    b.HasIndex("OccurredAt")
+                        .HasDatabaseName("ix_audit_logs_occurred_at");
+
+                    b.HasIndex("Operation")
+                        .HasDatabaseName("ix_audit_logs_operation_id");
+
+                    b.HasIndex("TargetType")
+                        .HasDatabaseName("ix_audit_logs_target_type_id");
+
+                    b.ToTable("audit_logs", (string)null);
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Core.Notification", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Details")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("details");
+
+                    b.Property<DateTimeOffset>("SentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("sent_at");
+
+                    b.Property<long>("UserId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_notifications");
+
+                    b.HasIndex("UserId", "SentAt")
+                        .HasDatabaseName("ix_notifications_user_id_sent_at");
+
+                    b.ToTable("notifications", (string)null);
+                });
+
             modelBuilder.Entity("SmartMaint.Api.Entities.Lookup<SmartMaint.Api.Entities.Accounts.UserRole>", b =>
                 {
                     b.Property<long>("Id")
@@ -1122,6 +1275,104 @@ namespace SmartMaint.Api.Data.Migrations
                         {
                             Id = 11L,
                             Name = "cancelled"
+                        });
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Lookup<SmartMaint.Api.Entities.Core.AuditOperation>", b =>
+                {
+                    b.Property<long>("Id")
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("name");
+
+                    b.HasKey("Id")
+                        .HasName("pk_audit_log_target_operations");
+
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasDatabaseName("ix_audit_log_target_operations_name");
+
+                    b.ToTable("audit_log_target_operations", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1L,
+                            Name = "sign_in"
+                        },
+                        new
+                        {
+                            Id = 2L,
+                            Name = "create"
+                        },
+                        new
+                        {
+                            Id = 3L,
+                            Name = "update"
+                        },
+                        new
+                        {
+                            Id = 4L,
+                            Name = "change_role"
+                        },
+                        new
+                        {
+                            Id = 5L,
+                            Name = "deactivate"
+                        },
+                        new
+                        {
+                            Id = 6L,
+                            Name = "reactivate"
+                        },
+                        new
+                        {
+                            Id = 7L,
+                            Name = "reset_password"
+                        },
+                        new
+                        {
+                            Id = 8L,
+                            Name = "unlock"
+                        });
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Lookup<SmartMaint.Api.Entities.Core.AuditTarget>", b =>
+                {
+                    b.Property<long>("Id")
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("name");
+
+                    b.HasKey("Id")
+                        .HasName("pk_audit_log_target_types");
+
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasDatabaseName("ix_audit_log_target_types_name");
+
+                    b.ToTable("audit_log_target_types", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1L,
+                            Name = "account"
+                        },
+                        new
+                        {
+                            Id = 2L,
+                            Name = "priority_level"
                         });
                 });
 
@@ -1479,6 +1730,68 @@ namespace SmartMaint.Api.Data.Migrations
                     b.Navigation("Technician");
                 });
 
+            modelBuilder.Entity("SmartMaint.Api.Entities.Core.AiConversation", b =>
+                {
+                    b.HasOne("SmartMaint.Api.Entities.Accounts.Account", "User")
+                        .WithOne()
+                        .HasForeignKey("SmartMaint.Api.Entities.Core.AiConversation", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_ai_conversations_accounts_user_id");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Core.AiMessage", b =>
+                {
+                    b.HasOne("SmartMaint.Api.Entities.Core.AiConversation", "Conversation")
+                        .WithOne("Message")
+                        .HasForeignKey("SmartMaint.Api.Entities.Core.AiMessage", "ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_ai_messages_ai_conversations_conversation_id");
+
+                    b.Navigation("Conversation");
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Core.AuditLog", b =>
+                {
+                    b.HasOne("SmartMaint.Api.Entities.Accounts.Admin", "Admin")
+                        .WithMany()
+                        .HasForeignKey("AdminId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_audit_logs_admins_admin_id");
+
+                    b.HasOne("SmartMaint.Api.Entities.Lookup<SmartMaint.Api.Entities.Core.AuditOperation>", null)
+                        .WithMany()
+                        .HasForeignKey("Operation")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_audit_logs_audit_log_target_operations_operation_id");
+
+                    b.HasOne("SmartMaint.Api.Entities.Lookup<SmartMaint.Api.Entities.Core.AuditTarget>", null)
+                        .WithMany()
+                        .HasForeignKey("TargetType")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_audit_logs_audit_log_target_types_target_type_id");
+
+                    b.Navigation("Admin");
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Core.Notification", b =>
+                {
+                    b.HasOne("SmartMaint.Api.Entities.Accounts.Account", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_notifications_accounts_user_id");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("SmartMaint.Api.Entities.Accounts.Admin", b =>
                 {
                     b.HasOne("SmartMaint.Api.Entities.Accounts.Account", null)
@@ -1555,6 +1868,11 @@ namespace SmartMaint.Api.Data.Migrations
                     b.Navigation("Images");
 
                     b.Navigation("Rejections");
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Core.AiConversation", b =>
+                {
+                    b.Navigation("Message");
                 });
 
             modelBuilder.Entity("SmartMaint.Api.Entities.Accounts.Technician", b =>

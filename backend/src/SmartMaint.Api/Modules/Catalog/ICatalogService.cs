@@ -16,4 +16,6 @@ public interface ICatalogService
 
     /// <summary>For the "assign technician" dialog (staff only), least busy first.</summary>
     Task<IReadOnlyList<TechnicianOptionResponse>> GetTechniciansAsync(CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<SpecialtyOptionResponse>> GetSpecialtiesAsync(CancellationToken cancellationToken);
 }
