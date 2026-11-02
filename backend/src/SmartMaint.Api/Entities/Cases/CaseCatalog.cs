@@ -1,13 +1,15 @@
 namespace SmartMaint.Api.Entities.Cases;
 
 /// <summary>
-/// One row per urgency level with its SLA length. ERD: PriorityLevels(Name, Description); SlaHours is NOT IN ERD v5.
-/// SLA hours are wall-clock for now; the real clock should count office hours (BR-08, O04).
+/// One row per urgency level with its SLA length. ERD: PriorityLevels(ID, Name, Description); Code and SlaHours are
+/// NOT IN ERD v5. SLA hours are wall-clock for now; the real clock should count office hours (BR-08, O04).
 /// </summary>
 public class PriorityLevel : AuditableEntity
 {
+    /// <summary>Fixed key the code works with (emergency / high / normal / low); Name is the label.</summary>
     public CasePriority Code { get; set; }
     public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
     public int SlaHours { get; set; }
 }
 

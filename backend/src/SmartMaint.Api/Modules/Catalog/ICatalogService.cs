@@ -4,7 +4,7 @@ namespace SmartMaint.Api.Modules.Catalog;
 
 /// <summary>
 /// Read-only reference data for the F3 forms. F1 (Huy) owns the full catalogue and will replace this with real CRUD;
-/// until then the customer sees every building (ERD review #11: customers are not tied to a rented area yet).
+/// a customer only gets their own room and the common areas of their building.
 /// </summary>
 public interface ICatalogService
 {

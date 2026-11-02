@@ -19,6 +19,10 @@ internal static class CaseErrors
     public static AppException UnknownRoom() =>
         new(ErrorKind.BadRequest, "case.unknown_room", "Choose a room or area.");
 
+    public static AppException RoomNotAllowed() =>
+        new(ErrorKind.BadRequest, "case.room_not_allowed",
+            "You can report problems in your own room or in the common areas of your building.");
+
     public static AppException AssetNotInRoom() =>
         new(ErrorKind.BadRequest, "case.asset_not_in_room", "That asset is not in the chosen room.");
 
@@ -27,7 +31,4 @@ internal static class CaseErrors
 
     public static AppException InvalidTechnician() =>
         new(ErrorKind.BadRequest, "case.invalid_technician", "Choose an active technician.");
-
-    public static AppException NoOpenAssignment() =>
-        new(ErrorKind.Conflict, "case.no_open_assignment", "There is no assignment waiting for your answer.");
 }

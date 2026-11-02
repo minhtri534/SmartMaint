@@ -1,7 +1,7 @@
 using SmartMaint.Api.Data;
+using SmartMaint.Api.Entities.Accounts;
 using SmartMaint.Api.Entities.Buildings;
 using SmartMaint.Api.Entities.Cases;
-using SmartMaint.Api.Entities.Users;
 using SmartMaint.Api.Modules.Cases;
 using SmartMaint.Api.Modules.Cases.Dtos;
 using SmartMaint.UnitTests.Common;
@@ -9,18 +9,25 @@ using SmartMaint.UnitTests.Common;
 namespace SmartMaint.UnitTests.Modules.Cases;
 
 /// <summary>
-/// Shared world for the Cases tests: two buildings (A has Staff, B has StaffB), priorities with their SLA hours, three
-/// service types, users of every role. Tests switch the caller with <see cref="As"/> and drive cases through the real service.
+/// Shared world for the Cases tests. Building A (staff: Staff, manager: Manager) has floor 5 with room 501 (Customer),
+/// room 502 (Customer2) and a common corridor; building B (staff: StaffB) has room 301 (CustomerB).
+/// Priorities with their SLA hours, three service types, users of every role.
+/// Tests switch the caller with <see cref="As"/> and drive cases through the real service.
 /// </summary>
 public abstract class CaseTestBase : IDisposable
 {
     protected readonly FixedTimeProvider Clock = new(new DateTimeOffset(2026, 10, 28, 8, 0, 0, TimeSpan.Zero));
     protected readonly FakeCurrentUser Me = new();
+    protected readonly FakeFileStorage Storage = new();
     protected readonly AppDbContext Db;
     internal readonly CaseService Sut;
 
-    protected readonly User Customer, Customer2, Staff, StaffB, Technician, Technician2, Manager, Admin;
-    protected readonly Room RoomA, RoomB;
+    protected readonly Customer Customer, Customer2, CustomerB;
+    protected readonly Staff Staff, StaffB;
+    protected readonly Technician Technician, Technician2;
+    protected readonly Manager Manager;
+    protected readonly Admin Admin;
+    protected readonly Room RoomA, RoomA2, CorridorA, RoomB;
     protected readonly Asset AcInRoomA, AssetInRoomB;
     protected readonly CaseCategory NotCooling, Leak, BurstPipe;
 
@@ -28,26 +35,30 @@ public abstract class CaseTestBase : IDisposable
     {
         Db = TestDbContextFactory.Create(Clock);
 
-        User NewUser(string name, UserRole role) => new($"{name}@test.local", name, role, "hash", false);
-        Customer = NewUser("customer", UserRole.Customer);
-        Customer2 = NewUser("customer2", UserRole.Customer);
-        Staff = NewUser("staff", UserRole.Staff);
-        StaffB = NewUser("staffb", UserRole.Staff);
-        Technician = NewUser("tech", UserRole.Technician);
-        Technician2 = NewUser("tech2", UserRole.Technician);
-        Manager = NewUser("manager", UserRole.Manager);
-        Admin = NewUser("admin", UserRole.Admin);
-        Db.Users.AddRange(Customer, Customer2, Staff, StaffB, Technician, Technician2, Manager, Admin);
-
         var buildingA = new Building { Name = "Tower A" };
         var buildingB = new Building { Name = "Office B" };
-        var floorA = new Floor { Building = buildingA, Name = "Floor 5" };
-        var floorB = new Floor { Building = buildingB, Name = "Floor 3" };
-        RoomA = new Room { Floor = floorA, Name = "Room 501" };
-        RoomB = new Room { Floor = floorB, Name = "Room 301" };
-        AcInRoomA = new Asset { Room = RoomA, Name = "AC 501" };
-        AssetInRoomB = new Asset { Room = RoomB, Name = "AC 301" };
-        Db.AddRange(buildingA, buildingB, floorA, floorB, RoomA, RoomB, AcInRoomA, AssetInRoomB);
+        var floorA = new Floor { Building = buildingA, FloorNumber = "5" };
+        var floorB = new Floor { Building = buildingB, FloorNumber = "3" };
+        RoomA = new Room { Floor = floorA, RoomNumber = "501" };
+        RoomA2 = new Room { Floor = floorA, RoomNumber = "502" };
+        CorridorA = new Room { Floor = floorA, RoomNumber = "Corridor 5", IsCommonArea = true };
+        RoomB = new Room { Floor = floorB, RoomNumber = "301" };
+        var acType = new AssetType { Category = new AssetCategory { Code = "HVAC", CategoryName = "HVAC" }, Code = "AC", Name = "Split AC" };
+        AcInRoomA = new Asset { Room = RoomA, Type = acType, Name = "AC 501" };
+        AssetInRoomB = new Asset { Room = RoomB, Type = acType, Name = "AC 301" };
+        Db.AddRange(buildingA, buildingB, floorA, floorB, RoomA, RoomA2, CorridorA, RoomB, AcInRoomA, AssetInRoomB);
+        Db.SaveChanges();
+
+        Customer = new Customer("customer", "customer", "hash", false, RoomA.Id);
+        Customer2 = new Customer("customer2", "customer2", "hash", false, RoomA2.Id);
+        CustomerB = new Customer("customerb", "customerb", "hash", false, RoomB.Id);
+        Staff = new Staff("staff", "staff", "hash", false);
+        StaffB = new Staff("staffb", "staffb", "hash", false);
+        Technician = new Technician("tech", "tech", "hash", false);
+        Technician2 = new Technician("tech2", "tech2", "hash", false);
+        Manager = new Manager("manager", "manager", "hash", false);
+        Admin = new Admin("admin", "admin", "hash", false);
+        Db.Accounts.AddRange(Customer, Customer2, CustomerB, Staff, StaffB, Technician, Technician2, Manager, Admin);
 
         var priorities = new[]
         {
@@ -68,7 +79,7 @@ public abstract class CaseTestBase : IDisposable
         Db.ManagerBuildingAssignments.Add(new ManagerBuildingAssignment { ManagerId = Manager.Id, BuildingId = buildingA.Id });
         Db.SaveChanges();
 
-        Sut = new CaseService(Db, Me, Clock);
+        Sut = new CaseService(Db, Me, Storage, Clock);
     }
 
     public void Dispose() => Db.Dispose();
@@ -89,7 +100,7 @@ public abstract class CaseTestBase : IDisposable
     }
 
     /// <summary>Switch the caller.</summary>
-    protected void As(User user)
+    protected void As(Account user)
     {
         Me.Id = user.Id;
         Me.Role = user.Role;
@@ -98,13 +109,16 @@ public abstract class CaseTestBase : IDisposable
     protected static CreateCaseRequest NewRequest(CaseCategory category, Room room, long? assetId = null, IReadOnlyList<string>? photos = null) =>
         new("Air conditioner blows warm air", "The AC has been running since 8am but the room is still hot.", category.Id, room.Id, assetId, photos);
 
+    /// <summary>A new case reported by the tenant of the room (Customer for building A, CustomerB for building B).</summary>
     protected async Task<CaseDetailResponse> NewCaseAsync(CaseCategory? category = null, Room? room = null)
     {
-        As(Customer);
-        return await Sut.CreateAsync(NewRequest(category ?? NotCooling, room ?? RoomA), default);
+        room ??= RoomA;
+        As(room == RoomB ? CustomerB : Customer);
+        return await Sut.CreateAsync(NewRequest(category ?? NotCooling, room), default);
     }
 
-    protected static readonly IReadOnlyList<string> Photo = ["data:image/jpeg;base64,AAAA"];
+    /// <summary>The smallest valid JPEG data URL the parser accepts.</summary>
+    protected static readonly IReadOnlyList<string> Photo = ["data:image/jpeg;base64,/9j/4AAQ"];
 
     /// <summary>Drives a new case through the real service up to <paramref name="target"/> (main path only).</summary>
     protected async Task<long> CaseAtAsync(CaseStatus target)

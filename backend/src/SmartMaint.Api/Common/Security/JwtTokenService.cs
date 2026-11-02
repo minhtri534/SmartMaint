@@ -4,7 +4,7 @@ using System.Text;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using SmartMaint.Api.Data.Conventions;
-using SmartMaint.Api.Entities.Users;
+using SmartMaint.Api.Entities.Accounts;
 
 namespace SmartMaint.Api.Common.Security;
 
@@ -12,7 +12,7 @@ internal sealed class JwtTokenService(IOptions<JwtOptions> options, TimeProvider
 {
     private readonly JwtOptions _options = options.Value;
 
-    public AccessToken CreateAccessToken(User user)
+    public AccessToken CreateAccessToken(Account user)
     {
         var now = clock.GetUtcNow();
         var expiresAt = now.AddMinutes(_options.AccessTokenMinutes);
@@ -20,7 +20,7 @@ internal sealed class JwtTokenService(IOptions<JwtOptions> options, TimeProvider
         var claims = new List<Claim>
         {
             new(AppClaims.UserId, user.Id.ToString()),
-            new(AppClaims.Email, user.Email),
+            new(AppClaims.Username, user.Username),
             new(AppClaims.Name, user.FullName),
             new(AppClaims.Role, EnumText.ToText(user.Role)),
         };

@@ -21,7 +21,7 @@ public sealed class CaseIntakeTests : CaseTestBase
         Assert.Equal($"CS-{result.Id:D6}", result.Code);
         Assert.Equal(CasePriority.Normal, result.Urgency);
         Assert.Equal("Air conditioning · Not cooling", result.ServiceTypeName);
-        Assert.Equal(Customer.Id, result.Requester.Id);
+        Assert.Equal(Customer.Id, result.Requester?.Id);
         var first = Assert.Single(result.History);
         Assert.Null(first.From);
         Assert.Equal(CaseStatus.Pending, first.To);
@@ -74,6 +74,42 @@ public sealed class CaseIntakeTests : CaseTestBase
             await ErrorCodeAsync(() => Sut.CreateAsync(NewRequest(NotCooling, RoomA) with { RoomId = 9999 }, default)));
     }
 
+    // ----- Create: where a customer may report (own room + common areas of their building) -----
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Abnormal)]
+    public async Task Create_RoomOfAnotherTenant_Throws()
+    {
+        As(Customer);
+
+        var code = await ErrorCodeAsync(() => Sut.CreateAsync(NewRequest(NotCooling, RoomA2), default));
+
+        Assert.Equal("case.room_not_allowed", code);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Abnormal)]
+    public async Task Create_RoomInAnotherBuilding_Throws()
+    {
+        As(Customer);
+
+        var code = await ErrorCodeAsync(() => Sut.CreateAsync(NewRequest(NotCooling, RoomB), default));
+
+        Assert.Equal("case.room_not_allowed", code);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Boundary)]
+    public async Task Create_CommonAreaOfOwnBuilding_Succeeds()
+    {
+        As(Customer2);
+
+        var result = await Sut.CreateAsync(NewRequest(NotCooling, CorridorA), default);
+
+        Assert.Equal(CorridorA.Id, result.Location.RoomId);
+        Assert.Equal("Floor 5", result.Location.FloorName);
+    }
+
     [Fact]
     [Trait(TestType.Key, TestType.Boundary)]
     public async Task Create_EmergencyServiceType_IsEmergencyFlowAndOffersNoF3Action()
@@ -97,13 +133,13 @@ public sealed class CaseIntakeTests : CaseTestBase
     {
         await NewCaseAsync();
         As(Customer2);
-        await Sut.CreateAsync(NewRequest(NotCooling, RoomA), default);
+        await Sut.CreateAsync(NewRequest(NotCooling, RoomA2), default);
 
         As(Customer);
         var page = await Sut.ListAsync(new PageRequest(), default);
 
         Assert.Equal(1, page.TotalCount);
-        Assert.All(page.Items, c => Assert.Equal(Customer.Id, c.Requester.Id));
+        Assert.All(page.Items, c => Assert.Equal(Customer.Id, c.Requester?.Id));
     }
 
     [Fact]

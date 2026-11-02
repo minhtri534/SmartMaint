@@ -12,7 +12,7 @@ public sealed record ServiceTypeResponse(
     CostBearer DefaultCostBearer,
     bool PhotoRequired);
 
-public sealed record RoomResponse(long Id, string Name);
+public sealed record RoomResponse(long Id, string Name, bool IsCommonArea);
 
 public sealed record FloorResponse(long Id, string Name, IReadOnlyList<RoomResponse> Rooms);
 

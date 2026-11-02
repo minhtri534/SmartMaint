@@ -1,3 +1,4 @@
+using SmartMaint.Api.Entities.Accounts;
 using SmartMaint.Api.Entities.Cases;
 using SmartMaint.Api.Modules.Cases.Dtos;
 using SmartMaint.Api.Modules.Catalog;
@@ -7,7 +8,7 @@ namespace SmartMaint.UnitTests.Modules.Cases;
 
 public sealed class CatalogServiceTests : CaseTestBase
 {
-    private CatalogService Catalog => new(Db);
+    private CatalogService Catalog => new(Db, Me);
 
     [Fact]
     [Trait(TestType.Key, TestType.Normal)]
@@ -24,12 +25,30 @@ public sealed class CatalogServiceTests : CaseTestBase
 
     [Fact]
     [Trait(TestType.Key, TestType.Normal)]
-    public async Task GetBuildings_ReturnsFloorsAndRooms()
+    public async Task GetBuildings_Staff_ReturnsEveryFloorAndRoom()
     {
+        As(Staff);
+
         var buildings = await Catalog.GetBuildingsAsync(default);
 
+        Assert.Equal(2, buildings.Count);
         var tower = Assert.Single(buildings, b => b.Name == "Tower A");
-        Assert.Equal("Room 501", Assert.Single(Assert.Single(tower.Floors).Rooms).Name);
+        var floor = Assert.Single(tower.Floors);
+        Assert.Equal("Floor 5", floor.Name);
+        Assert.Equal(["501", "502", "Corridor 5"], floor.Rooms.Select(r => r.Name));
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Boundary)]
+    public async Task GetBuildings_Customer_ReturnsOnlyOwnRoomAndCommonAreasOfOwnBuilding()
+    {
+        As(Customer);
+
+        var buildings = await Catalog.GetBuildingsAsync(default);
+
+        var tower = Assert.Single(buildings);
+        Assert.Equal("Tower A", tower.Name);
+        Assert.Equal(["501", "Corridor 5"], Assert.Single(tower.Floors).Rooms.Select(r => r.Name));
     }
 
     [Fact]
@@ -65,7 +84,7 @@ public sealed class CatalogServiceTests : CaseTestBase
     [Trait(TestType.Key, TestType.Abnormal)]
     public async Task GetTechnicians_DeactivatedTechnician_IsNotOffered()
     {
-        Db.Users.Remove(Technician2);
+        Technician2.Status = UserStatus.Deactivated;
         await Db.SaveChangesAsync();
 
         var list = await Catalog.GetTechniciansAsync(default);

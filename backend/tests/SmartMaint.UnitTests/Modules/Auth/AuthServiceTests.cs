@@ -1,7 +1,7 @@
 using SmartMaint.Api.Common.Errors;
 using SmartMaint.Api.Common.Security;
 using SmartMaint.Api.Data;
-using SmartMaint.Api.Entities.Users;
+using SmartMaint.Api.Entities.Accounts;
 using SmartMaint.Api.Modules.Auth;
 using SmartMaint.Api.Modules.Auth.Dtos;
 using SmartMaint.UnitTests.Common;
@@ -35,7 +35,7 @@ public sealed class AuthServiceTests : IDisposable
     {
         var user = await SeedUserAsync();
 
-        var result = await _sut.LoginAsync(new LoginRequest("  USER@Smartmaint.test ", Password), default);
+        var result = await _sut.LoginAsync(new LoginRequest("  User.One ", Password), default);
 
         Assert.Equal($"token-for-{user.Id}", result.AccessToken);
         Assert.Equal(UserRole.Staff, result.User.Role);
@@ -50,7 +50,7 @@ public sealed class AuthServiceTests : IDisposable
         var user = await SeedUserAsync();
 
         var error = await Assert.ThrowsAsync<AppException>(
-            () => _sut.LoginAsync(new LoginRequest(user.Email, "Wrong@123"), default));
+            () => _sut.LoginAsync(new LoginRequest(user.Username, "Wrong@123"), default));
 
         Assert.Equal("auth.invalid_credentials", error.Code);
         Assert.Equal(1, user.FailedLoginCount);
@@ -58,10 +58,10 @@ public sealed class AuthServiceTests : IDisposable
 
     [Fact]
     [Trait(TestType.Key, TestType.Abnormal)]
-    public async Task Login_WithUnknownEmail_ThrowsSameErrorAsWrongPassword()
+    public async Task Login_WithUnknownUsername_ThrowsSameErrorAsWrongPassword()
     {
         var error = await Assert.ThrowsAsync<AppException>(
-            () => _sut.LoginAsync(new LoginRequest("nobody@smartmaint.test", Password), default));
+            () => _sut.LoginAsync(new LoginRequest("nobody", Password), default));
 
         Assert.Equal("auth.invalid_credentials", error.Code);
     }
@@ -85,7 +85,7 @@ public sealed class AuthServiceTests : IDisposable
         await FailLoginAsync(user, times: Options.MaxFailedAttempts - 1);
 
         var error = await Assert.ThrowsAsync<AppException>(
-            () => _sut.LoginAsync(new LoginRequest(user.Email, "Wrong@123"), default));
+            () => _sut.LoginAsync(new LoginRequest(user.Username, "Wrong@123"), default));
 
         Assert.Equal("auth.account_locked", error.Code);
         Assert.Equal(_clock.Now.AddMinutes(Options.LockoutMinutes), user.LockedUntil);
@@ -99,7 +99,7 @@ public sealed class AuthServiceTests : IDisposable
         await FailLoginAsync(user, times: Options.MaxFailedAttempts);
         _clock.Now = user.LockedUntil!.Value;
 
-        var result = await _sut.LoginAsync(new LoginRequest(user.Email, Password), default);
+        var result = await _sut.LoginAsync(new LoginRequest(user.Username, Password), default);
 
         Assert.Equal(user.Id, result.User.Id);
         Assert.Null(user.LockedUntil);
@@ -131,20 +131,20 @@ public sealed class AuthServiceTests : IDisposable
         Assert.Equal("auth.wrong_current_password", error.Code);
     }
 
-    private async Task<User> SeedUserAsync(bool mustChangePassword = false)
+    private async Task<Account> SeedUserAsync(bool mustChangePassword = false)
     {
-        var user = new User("user@smartmaint.test", "Test User", UserRole.Staff, _hasher.Hash(Password), mustChangePassword);
-        _db.Users.Add(user);
+        var user = new Staff("user.one", "Test User", _hasher.Hash(Password), mustChangePassword);
+        _db.Accounts.Add(user);
         await _db.SaveChangesAsync();
         return user;
     }
 
-    private async Task FailLoginAsync(User user, int times)
+    private async Task FailLoginAsync(Account user, int times)
     {
         for (var i = 0; i < times; i++)
         {
             await Assert.ThrowsAsync<AppException>(
-                () => _sut.LoginAsync(new LoginRequest(user.Email, "Wrong@123"), default));
+                () => _sut.LoginAsync(new LoginRequest(user.Username, "Wrong@123"), default));
         }
     }
 }

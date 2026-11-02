@@ -16,6 +16,7 @@ if (Environment.GetEnvironmentVariable("PORT") is { Length: > 0 } port)
 builder.Services
     .AddModules()
     .AddDatabase(builder.Configuration)
+    .AddFileStorage(builder.Configuration)
     .AddApi(builder.Configuration);
 
 var app = builder.Build();
@@ -31,6 +32,7 @@ app.UseSwaggerUI(options =>
 });
 
 app.UseCors(ApiServiceCollectionExtensions.CorsPolicy);
+app.UseLocalFileStorage();
 app.UseAuthentication();
 app.UseAuthorization();
 

@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using SmartMaint.Api.Common.Security;
 using SmartMaint.Api.Data;
-using SmartMaint.Api.Entities.Users;
+using SmartMaint.Api.Entities.Accounts;
 using SmartMaint.Api.Modules.Auth.Dtos;
 
 namespace SmartMaint.Api.Modules.Auth;
@@ -19,8 +19,8 @@ internal sealed class AuthService(
 
     public async Task<LoginResponse> LoginAsync(LoginRequest request, CancellationToken cancellationToken)
     {
-        var email = User.NormalizeEmail(request.Email);
-        var user = await db.Users.SingleOrDefaultAsync(u => u.Email == email, cancellationToken)
+        var username = Account.NormalizeUsername(request.Username);
+        var user = await db.Accounts.SingleOrDefaultAsync(u => u.Username == username, cancellationToken)
             ?? throw AuthErrors.InvalidCredentials();
 
         var now = clock.GetUtcNow();
@@ -68,11 +68,11 @@ internal sealed class AuthService(
         return IssueToken(user);
     }
 
-    private async Task<User> FindCurrentUserAsync(CancellationToken cancellationToken) =>
-        await db.Users.SingleOrDefaultAsync(u => u.Id == currentUser.Id, cancellationToken)
+    private async Task<Account> FindCurrentUserAsync(CancellationToken cancellationToken) =>
+        await db.Accounts.SingleOrDefaultAsync(u => u.Id == currentUser.Id, cancellationToken)
         ?? throw AuthErrors.UserNotFound();
 
-    private LoginResponse IssueToken(User user)
+    private LoginResponse IssueToken(Account user)
     {
         var token = tokenService.CreateAccessToken(user);
         return new LoginResponse(token.Token, token.ExpiresAt, CurrentUserResponse.From(user));

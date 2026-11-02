@@ -40,11 +40,11 @@ Phiên bản đã chốt 19/10 (.NET 10 LTS, Node ≥ 24, Postgres 17…): xem `
 4. `docs/requirements/SRS_Report3.md` và `Screen_Catalog_EN.md` — viết 28/09, **chưa sửa theo note thầy 12/10** (vẫn còn "Need more info", hàng chờ chung, Employee).
 Gặp mâu thuẫn thì **dừng lại hỏi Leader**, không tự chọn.
 
-## Database — ⚠️ CHƯA ĐÓNG BĂNG
+## Database — code theo ERD Drive, sửa dần
 
-- ERD v5 logical **đang chốt từng bước** — quyết định mới nhất ở `docs/database/ERD_v5_Logical_Quyet_Dinh.md` (E1…, từ 23/10; bản Drive là bản chính); `ERD_v5_REVIEW.md` (19/10) chỉ còn để tham khảo. **Không tạo migration cho các bảng nghiệp vụ** khi chưa có ERD đóng băng.
-- Được làm trước: bảng `users` tối thiểu cho Auth, Building / Floor / Room.
-- Quy ước (D-plan): bảng + cột **snake_case tiếng Anh**; PK `bigint identity` + mã hiển thị riêng (vd. `CS-000123`); thời gian `timestamptz` (lưu UTC); enum lưu dạng text + CHECK; có `created_at` / `updated_at`. EF Core code-first → `dotnet ef migrations script` sinh `Schema.sql`; seed → `Data.sql`.
+- **Từ 02/11 (Leader chốt):** DB code **theo đúng ERD v5 logical trên Drive** (bản Hùng; bảng Account + bảng con theo role, bảng tra Roles / CaseStatuses, TechnicianRejections…), kể cả chỗ bản soát 27/10 chê — làm xong rồi họp sửa dần. Thiếu cột thì tính năng không chạy → được thêm, **mọi chỗ khác ERD ghi vào `docs/database/ERD_v5_Thay_Doi_Khi_Code.md`** trong cùng commit. Quyết định E1… vẫn ở `ERD_v5_Logical_Quyet_Dinh.md`.
+- Bảng ERD nào thuộc phần nào (Lõi / F2 / F5…) thì tạo migration ở phần đó (danh sách trong file thay đổi, mục 4).
+- Quy ước (D-plan): bảng + cột **snake_case tiếng Anh**; PK `bigint identity` + mã hiển thị riêng (vd. `CS-000123`); thời gian `timestamptz` (lưu UTC); bảng tra của ERD = bảng thật + FK (id = giá trị enum C#), các cột liệt kê khác = text + CHECK; có `created_at` / `updated_at`. EF Core code-first → `dotnet ef migrations script` sinh `Schema.sql`; seed → `Data.sql`.
 
 ## Quy ước code
 

@@ -14,7 +14,7 @@ public sealed class CaseWorkflowTests : CaseTestBase
 
     [Fact]
     [Trait(TestType.Key, TestType.Normal)]
-    public async Task Assign_ActiveTechnician_CreatesWaitingAssignment()
+    public async Task Assign_ActiveTechnician_SetsTechnicianAndRecordsWhoAssigned()
     {
         var id = await CaseAtAsync(CaseStatus.Approved);
         As(Staff);
@@ -23,9 +23,10 @@ public sealed class CaseWorkflowTests : CaseTestBase
 
         Assert.Equal(CaseStatus.Assigned, result.Status);
         Assert.Equal(Technician.Id, result.Technician?.Id);
-        var assignment = Assert.Single(result.Assignments);
-        Assert.Equal(AssignmentAnswer.Waiting, assignment.Response);
-        Assert.Equal(Staff.Id, assignment.AssignedBy.Id);
+        var row = result.History[^1];
+        Assert.Equal(CaseStatus.Approved, row.From);
+        Assert.Equal(Staff.Id, row.By.Id);
+        Assert.Equal("Assigned to tech.", row.Reason);
     }
 
     [Fact]
@@ -62,7 +63,8 @@ public sealed class CaseWorkflowTests : CaseTestBase
         var result = await Sut.AcceptAsync(id, default);
 
         Assert.Equal(CaseStatus.Accepted, result.Status);
-        Assert.Equal(AssignmentAnswer.Accepted, Assert.Single(result.Assignments).Response);
+        Assert.Equal(Technician.Id, result.History[^1].By.Id);
+        Assert.Empty(result.Rejections);
     }
 
     [Fact]
@@ -86,15 +88,16 @@ public sealed class CaseWorkflowTests : CaseTestBase
 
         Assert.Equal(CaseStatus.Approved, result.Status);
         Assert.Null(result.Technician);
-        var assignment = Assert.Single(result.Assignments);
-        Assert.Equal(AssignmentAnswer.Declined, assignment.Response);
-        Assert.Equal("Not my specialty, please reassign", assignment.DeclineReason);
+        var rejection = Assert.Single(result.Rejections);
+        Assert.Equal(Technician.Id, rejection.Technician.Id);
+        Assert.Equal("Not my specialty, please reassign", rejection.Reason);
+        Assert.Equal(Clock.Now, rejection.RejectedAt);
         Assert.Empty(result.AllowedActions); // the technician still sees the case, but has nothing to do
     }
 
     [Fact]
     [Trait(TestType.Key, TestType.Boundary)]
-    public async Task Decline_ThenAssignToSomeoneElse_KeepsBothAssignments()
+    public async Task Decline_ThenAssignToSomeoneElse_KeepsTheDeclineAndTheNewTechnician()
     {
         var id = await CaseAtAsync(CaseStatus.Assigned);
         As(Technician);
@@ -103,7 +106,7 @@ public sealed class CaseWorkflowTests : CaseTestBase
 
         var result = await Sut.AssignAsync(id, new AssignCaseRequest(Technician2.Id), default);
 
-        Assert.Equal(2, result.Assignments.Count);
+        Assert.Equal(Technician.Id, Assert.Single(result.Rejections).Technician.Id);
         Assert.Equal(Technician2.Id, result.Technician?.Id);
     }
 
@@ -320,8 +323,6 @@ public sealed class CaseWorkflowTests : CaseTestBase
         Assert.Equal(CaseStatus.Reopened, result.Status);
         Assert.Null(result.DueAt);
         Assert.Null(result.CompletedAt);
-        Assert.Equal(2, result.Assignments.Count);
-        Assert.Equal(AssignmentAnswer.Waiting, result.Assignments.Last().Response);
         Assert.Equal(Technician.Id, result.Technician?.Id);
         As(Technician);
         Assert.Contains(CaseAction.Accept, (await Sut.GetAsync(id, default)).AllowedActions);

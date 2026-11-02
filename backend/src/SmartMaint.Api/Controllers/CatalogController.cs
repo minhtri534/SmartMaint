@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using SmartMaint.Api.Common.Security;
-using SmartMaint.Api.Entities.Users;
+using SmartMaint.Api.Entities.Accounts;
 using SmartMaint.Api.Modules.Catalog;
 using SmartMaint.Api.Modules.Catalog.Dtos;
 

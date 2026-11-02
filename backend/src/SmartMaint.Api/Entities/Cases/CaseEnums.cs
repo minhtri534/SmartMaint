@@ -1,19 +1,22 @@
 namespace SmartMaint.Api.Entities.Cases;
 
-/// <summary>The 11 case statuses (F3 page 5). Stored as snake_case text: "in_progress", "on_hold"...</summary>
+/// <summary>
+/// The 11 case statuses (F3 page 5). ERD: CaseStatuses(ID, Name) — the value is the row ID, the name is the snake_case
+/// text the API sends ("in_progress", "on_hold"...).
+/// </summary>
 public enum CaseStatus
 {
-    Pending,
-    Approved,
-    Assigned,
-    Accepted,
-    InProgress,
-    OnHold,
-    Completed,
-    Closed,
-    Reopened,
-    Rejected,
-    Cancelled,
+    Pending = 1,
+    Approved = 2,
+    Assigned = 3,
+    Accepted = 4,
+    InProgress = 5,
+    OnHold = 6,
+    Completed = 7,
+    Closed = 8,
+    Reopened = 9,
+    Rejected = 10,
+    Cancelled = 11,
 }
 
 /// <summary>Urgency level. The lookup row (priority_levels) holds the SLA hours of each level.</summary>
@@ -46,11 +49,4 @@ public enum CaseImageKind
     Report,
     Before,
     After,
-}
-
-public enum AssignmentAnswer
-{
-    Waiting,
-    Accepted,
-    Declined,
 }

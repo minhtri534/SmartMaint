@@ -1,4 +1,5 @@
 using FluentValidation;
+using SmartMaint.Api.Common.Storage;
 using SmartMaint.Api.Modules.Cases.Dtos;
 
 namespace SmartMaint.Api.Modules.Cases.Validators;
@@ -16,8 +17,8 @@ internal static class PhotoRules
         this IRuleBuilder<T, IReadOnlyList<string>?> rule) =>
         rule
             .Must(p => p is null || p.Count <= MaxPhotos).WithMessage($"At most {MaxPhotos} photos.")
-            .Must(p => p is null || p.All(x => x.StartsWith("data:image/", StringComparison.Ordinal) && x.Length <= MaxLength))
-            .WithMessage("Photos must be images of reasonable size.");
+            .Must(p => p is null || p.All(x => x.Length <= MaxLength && DataUrl.IsImage(x)))
+            .WithMessage("Photos must be JPEG, PNG or WebP images of reasonable size.");
 }
 
 public sealed class CreateCaseRequestValidator : AbstractValidator<CreateCaseRequest>

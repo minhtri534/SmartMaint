@@ -1,4 +1,4 @@
-using SmartMaint.Api.Entities.Users;
+using SmartMaint.Api.Entities.Accounts;
 
 namespace SmartMaint.Api.Entities.Buildings;
 
@@ -9,17 +9,17 @@ namespace SmartMaint.Api.Entities.Buildings;
 public class StaffBuildingAssignment
 {
     public long StaffId { get; set; }
-    public User Staff { get; set; } = null!;
+    public Staff Staff { get; set; } = null!;
     public long BuildingId { get; set; }
     public Building Building { get; set; } = null!;
     public bool IsPrimary { get; set; }
 }
 
-/// <summary>Which buildings a Manager oversees (ERD: ManagerBuildingAssignments, E13). Composite key (ManagerId, BuildingId).</summary>
+/// <summary>Which buildings a Manager looks after (ERD: ManagerBuildingAssignments, E13). Composite key.</summary>
 public class ManagerBuildingAssignment
 {
     public long ManagerId { get; set; }
-    public User Manager { get; set; } = null!;
+    public Manager Manager { get; set; } = null!;
     public long BuildingId { get; set; }
     public Building Building { get; set; } = null!;
 }

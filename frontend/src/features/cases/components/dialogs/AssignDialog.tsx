@@ -41,9 +41,7 @@ function AssignForm({ caseDetail, onDone }: { caseDetail: CaseDetail; onDone: ()
   if (technicians.isPending) return <Spinner />
   if (technicians.error) return <Alert>{technicians.error.message}</Alert>
 
-  const declinedIds = new Set(
-    caseDetail.assignments.filter((a) => a.response === 'declined').map((a) => a.technician.id),
-  )
+  const declinedIds = new Set(caseDetail.rejections.map((r) => r.technician.id))
   // The server already lists the least busy technician first.
   const options = technicians.data
 

@@ -8,7 +8,7 @@ interface TextFieldProps extends ComponentProps<'input'> {
   hint?: string
 }
 
-/** Label + input + error message. Works with react-hook-form: <TextField {...register('email')} />. */
+/** Label + input + error message. Works with react-hook-form: <TextField {...register('username')} />. */
 export function TextField({ label, error, hint, className, id, ...rest }: TextFieldProps) {
   const generatedId = useId()
   const inputId = id ?? generatedId

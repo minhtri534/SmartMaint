@@ -3,7 +3,9 @@ import type { Role } from '@/shared/types/role'
 /** Mirrors backend Modules/Auth/Dtos. Keep field names identical (camelCase JSON). */
 export interface CurrentUser {
   id: number
-  email: string
+  username: string
+  /** Contact only, may be empty. NOT IN ERD v5. */
+  email: string | null
   fullName: string
   role: Role
   mustChangePassword: boolean
@@ -11,7 +13,7 @@ export interface CurrentUser {
 }
 
 export interface LoginRequest {
-  email: string
+  username: string
   password: string
 }
 

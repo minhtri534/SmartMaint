@@ -4,7 +4,7 @@ namespace SmartMaint.Api.Common.Security;
 public static class AppClaims
 {
     public const string UserId = "sub";
-    public const string Email = "email";
+    public const string Username = "preferred_username";
     public const string Name = "name";
     public const string Role = "role";
     public const string PasswordChangeRequired = "pwd_change_required";

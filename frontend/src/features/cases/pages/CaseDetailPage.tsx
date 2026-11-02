@@ -7,7 +7,7 @@ import { formatDateTime } from '@/shared/utils/format'
 import { useAuth } from '@/features/auth'
 import { CaseActions } from '../components/CaseActions'
 import { UrgencyNote } from '../components/CaseBadges'
-import { AssignmentList, PhotoGallery, StatusTimeline } from '../components/CaseHistory'
+import { PhotoGallery, RejectionList, StatusTimeline } from '../components/CaseHistory'
 import { SlaPanel } from '../components/SlaTrack'
 import { StarsView } from '../components/Stars'
 import { StatusPath } from '../components/StatusPath'
@@ -55,7 +55,7 @@ export function CaseDetailPage() {
   }
 
   const c = query.data
-  const seesAssignments = user?.role === 'staff' || user?.role === 'manager'
+  const seesRejections = user?.role === 'staff' || user?.role === 'manager'
   const lastChange = c.history.at(-1)
 
   return (
@@ -164,7 +164,7 @@ export function CaseDetailPage() {
             <CardHeader title="People" />
             <dl className="flex flex-col gap-3 text-sm">
               <Field label="Reported by" inline>
-                {c.requester.fullName}
+                {c.requester?.fullName ?? '—'}
               </Field>
               <Field label="Staff in charge" inline>
                 {c.staff?.fullName ?? '—'}
@@ -184,10 +184,10 @@ export function CaseDetailPage() {
             </dl>
           </Card>
 
-          {seesAssignments && (
+          {seesRejections && c.rejections.length > 0 && (
             <Card>
-              <CardHeader title="Assignments" aside={`${c.assignments.length} in total`} />
-              <AssignmentList assignments={c.assignments} />
+              <CardHeader title="Declined by" aside={`${c.rejections.length} in total`} />
+              <RejectionList rejections={c.rejections} />
             </Card>
           )}
 

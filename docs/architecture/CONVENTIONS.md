@@ -50,8 +50,9 @@ backend/
 │   │   ├── Security/            JWT, băm mật khẩu, ICurrentUser, [AuthorizeRoles]
 │   │   ├── Validation/          ValidationFilter, quy tắc mật khẩu, paging validator
 │   │   ├── Models/              PageRequest, PagedResult
+│   │   ├── Storage/             IFileStorage: Supabase Storage (có key) hoặc thư mục uploads/ (dev), DataUrl
 │   │   ├── Configuration/       đọc file .env
-│   │   └── Extensions/          AddApi / AddDatabase — Program.cs chỉ gọi các hàm này
+│   │   └── Extensions/          AddApi / AddDatabase / AddFileStorage — Program.cs chỉ gọi các hàm này
 │   └── Program.cs
 └── tests/SmartMaint.UnitTests/
     ├── Common/                  TestType (N/A/B), fake, DbContext in-memory
@@ -102,7 +103,7 @@ HTTP → AuthController (mỏng) → ValidationFilter (FluentValidation tự ch�
 8. **Test:** `tests/.../Modules/Buildings/BuildingServiceTests.cs` — mỗi API ≥ 1 Normal + 1 Abnormal + 1 Boundary.
 9. Chạy `dotnet test backend` xanh → mở PR cho Trí.
 
-> ⚠️ ERD chưa đóng băng (`docs/database/ERD_v5_REVIEW.md`): ngoài `users` và Building / Floor / Room, **chưa tạo migration cho bảng nghiệp vụ**.
+> Bảng theo **ERD v5 logical trên Drive** (Leader chốt 02/11). Bảng / cột nào khác ERD → ghi vào `docs/database/ERD_v5_Thay_Doi_Khi_Code.md` trong cùng PR.
 
 ## 4. Database
 
@@ -114,9 +115,11 @@ HTTP → AuthController (mỏng) → ValidationFilter (FluentValidation tự ch�
 | Mã hiển thị là cột riêng | `code = 'CS-000123'` |
 | FK: `<bảng_số_ít>_id` | `building_id`, `assigned_by_user_id` |
 | Thời gian `timestamptz` (UTC), tên `*_at` | `created_at`, `locked_until`, `resolved_at` |
-| Enum: text + CHECK, giá trị snake_case | `role IN ('customer', ...)` |
+| Bảng tra của ERD (Roles, CaseStatuses…): bảng thật `id, name` + FK; id = giá trị enum C#, dòng do migration ghi (`modelBuilder.HasLookupTable<CaseStatus>("case_statuses")` + `builder.HasLookup(x => x.Status, "status_id")`) | `cases.status_id → case_statuses.id` |
+| Enum không có bảng tra trong ERD: text + CHECK, giá trị snake_case | `status IN ('active', 'deactivated')` |
+| Account + bảng con theo role (Customers, Staff, Technicians…): EF **TPT**, bảng con dùng chung id với `accounts` | `db.Accounts` = mọi người, `db.Technicians` = chỉ KTV |
 | Mọi bảng nghiệp vụ kế thừa `AuditableEntity` | `created_at`, `updated_at` tự điền, có default `now()` |
-| Tên ràng buộc do convention sinh | `pk_users`, `ix_users_email`, `ck_users_role`, `fk_rooms_floors_floor_id` |
+| Tên ràng buộc do convention sinh | `pk_cases`, `ix_accounts_username`, `ck_accounts_status`, `fk_rooms_floors_floor_id` |
 
 **Hai file nộp kèm R4 / R5:**
 - `database/Schema.sql` — **sinh tự động** từ migration (`scripts/db-schema.ps1`), idempotent. Không sửa tay.
@@ -125,7 +128,7 @@ HTTP → AuthController (mỏng) → ValidationFilter (FluentValidation tự ch�
 **Môi trường:**
 - Dev: Postgres Docker riêng mỗi máy (`docker compose up -d`). Xóa sạch: `docker compose down -v`.
 - Supabase (deploy): chạy `Schema.sql` rồi `Data.sql` bằng SQL editor. API trên Railway **không** tự migrate.
-- Không dùng Supabase Auth. Supabase Storage dùng cho file (module Attachment, làm sau).
+- Không dùng Supabase Auth. File (ảnh case) lưu ở **Supabase Storage**, bucket private: DB chỉ giữ đường dẫn, API trả URL ký tạm 1 giờ (`IFileStorage`). Chưa điền `Supabase__Url` thì file nằm ở `backend/src/SmartMaint.Api/uploads/` (chỉ dùng khi dev).
 
 ## 5. Web — cấu trúc
 
@@ -237,5 +240,5 @@ Skill nằm ở `.claude/skills/design-taste-frontend/` (MIT, bản chép từ L
 - Audit log mọi lần đăng nhập (BR-16) — chờ bảng `audit_logs` sau khi ERD đóng băng (đã để `TODO(audit)` trong `AuthService`).
 - Quên / đặt lại mật khẩu qua email (AUTH-02/03), kết thúc các phiên khác khi đổi mật khẩu — cần module Email + cột phiên.
 - Overlay AUTH-05 (cảnh báo trước 5 phút, quay lại đúng trang) — hiện chỉ đưa về Login kèm thông báo.
-- Module Attachment (Supabase Storage), Notification, AI gateway (Replicate), job nền.
+- Notification, AI gateway (Replicate), job nền. (Lưu file: đã có `Common/Storage`, 02/11.)
 - Mobile Flutter (Tùng) — thư mục `mobile/` chưa dựng.

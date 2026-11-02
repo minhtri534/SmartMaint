@@ -1,12 +1,14 @@
 using Microsoft.EntityFrameworkCore;
+using SmartMaint.Api.Common.Security;
 using SmartMaint.Api.Data;
+using SmartMaint.Api.Entities.Accounts;
+using SmartMaint.Api.Entities.Buildings;
 using SmartMaint.Api.Entities.Cases;
-using SmartMaint.Api.Entities.Users;
 using SmartMaint.Api.Modules.Catalog.Dtos;
 
 namespace SmartMaint.Api.Modules.Catalog;
 
-internal sealed class CatalogService(AppDbContext db) : ICatalogService
+internal sealed class CatalogService(AppDbContext db, ICurrentUser currentUser) : ICatalogService
 {
     /// <summary>Statuses where a technician is still holding the case.</summary>
     private static readonly CaseStatus[] OpenStatuses =
@@ -28,13 +30,32 @@ internal sealed class CatalogService(AppDbContext db) : ICatalogService
             .OrderBy(b => b.Name)
             .ToListAsync(cancellationToken);
 
+        var isCustomer = currentUser.Role == UserRole.Customer;
+        var home = isCustomer
+            ? await db.Customers.AsNoTracking()
+                .Where(c => c.Id == currentUser.Id)
+                .Select(c => new { c.RoomId, c.Room.Floor.BuildingId })
+                .SingleAsync(cancellationToken)
+            : null;
+
+        // A customer only sees where they may report: their own room + the common areas of their building.
+        bool CanSee(Building b, Room r) =>
+            home is null || r.Id == home.RoomId || (r.IsCommonArea && b.Id == home.BuildingId);
+
         return buildings
             .Select(b => new BuildingResponse(
                 b.Id,
                 b.Name,
-                b.Floors.OrderBy(f => f.Id)
-                    .Select(f => new FloorResponse(f.Id, f.Name, f.Rooms.OrderBy(r => r.Id).Select(r => new RoomResponse(r.Id, r.Name)).ToList()))
+                b.Floors
+                    .OrderBy(f => f.Id)
+                    .Select(f => new FloorResponse(
+                        f.Id,
+                        f.DisplayName,
+                        f.Rooms.Where(r => CanSee(b, r)).OrderBy(r => r.Id)
+                            .Select(r => new RoomResponse(r.Id, r.RoomNumber, r.IsCommonArea)).ToList()))
+                    .Where(f => !isCustomer || f.Rooms.Count > 0)
                     .ToList()))
+            .Where(b => !isCustomer || b.Floors.Count > 0)
             .ToList();
     }
 
@@ -47,9 +68,9 @@ internal sealed class CatalogService(AppDbContext db) : ICatalogService
 
     public async Task<IReadOnlyList<TechnicianOptionResponse>> GetTechniciansAsync(CancellationToken cancellationToken)
     {
-        var technicians = await db.Users.AsNoTracking()
-            .Where(u => u.Role == UserRole.Technician && u.Status == UserStatus.Active)
-            .Select(u => new { u.Id, u.FullName })
+        var technicians = await db.Technicians.AsNoTracking()
+            .Where(t => t.Status == UserStatus.Active)
+            .Select(t => new { t.Id, t.FullName })
             .ToListAsync(cancellationToken);
 
         var open = await db.Cases.AsNoTracking()

@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 /** Client-side checks mirror the backend validators (LoginRequestValidator, PasswordRules). */
 export const loginSchema = z.object({
-  email: z.email('Enter a valid email address.').max(254),
+  username: z.string().trim().min(1, 'Enter your username.').max(50),
   password: z.string().min(1, 'Enter your password.'),
 })
 

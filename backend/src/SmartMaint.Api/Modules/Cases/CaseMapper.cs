@@ -1,5 +1,5 @@
+using SmartMaint.Api.Entities.Accounts;
 using SmartMaint.Api.Entities.Cases;
-using SmartMaint.Api.Entities.Users;
 using SmartMaint.Api.Modules.Cases.Dtos;
 
 namespace SmartMaint.Api.Modules.Cases;
@@ -15,61 +15,75 @@ internal static class CaseMapper
         c.Priority.Code,
         ServiceTypeName(c.Category),
         ToLocation(c),
-        ToPerson(c.Customer),
-        c.Staff is null ? null : ToPerson(c.Staff),
-        c.Technician is null ? null : ToPerson(c.Technician),
+        ToPersonOrNull(c.Customer),
+        ToPersonOrNull(c.Staff),
+        ToPersonOrNull(c.Technician),
         c.SubmittedAt,
         c.DueAt,
         c.StartedAt,
         c.CompletedAt,
         IsEmergencyFlow(c));
 
-    /// <summary>Needs Images, History(ChangedBy), Assignments(Technician, AssignedBy) and Asset loaded too.</summary>
-    public static CaseDetailResponse ToDetail(Case c, IReadOnlyList<CaseAction> allowedActions) => new(
-        c.Id,
-        Case.CodeOf(c.Id),
-        c.Title,
-        c.Status,
-        c.Priority.Code,
-        ServiceTypeName(c.Category),
-        ToLocation(c),
-        ToPerson(c.Customer),
-        c.Staff is null ? null : ToPerson(c.Staff),
-        c.Technician is null ? null : ToPerson(c.Technician),
-        c.SubmittedAt,
-        c.DueAt,
-        c.StartedAt,
-        c.CompletedAt,
-        IsEmergencyFlow(c),
-        c.Description,
-        c.CategoryId,
-        c.Asset is null ? null : new AssetResponse(c.Asset.Id, c.Asset.Name, c.Asset.RoomId),
-        c.CostBearer,
-        c.Images.OrderBy(i => i.Id).Select(i => new PhotoResponse(i.Id, i.Content, i.Kind)).ToList(),
-        c.History
-            .OrderBy(h => h.ChangedAt).ThenBy(h => h.Id)
-            .Select(h => new StatusChangeResponse(h.ChangedAt, h.FromStatus, h.ToStatus, ToPerson(h.ChangedBy), h.Reason))
-            .ToList(),
-        c.Assignments
-            .OrderBy(a => a.Id)
-            .Select(a => new AssignmentResponse(
-                ToPerson(a.Technician), ToPerson(a.AssignedBy), a.AssignedAt, a.Response, a.RespondedAt, a.DeclineReason))
-            .ToList(),
-        c.RootCause is not null && c.ActualHours is { } hours
-            ? new RepairReportResponse(c.RootCause, c.PartsUsed, hours)
-            : null,
-        c.RatingStars is { } stars && c.RatedAt is { } ratedAt ? new RatingResponse(stars, c.RatingComment, ratedAt) : null,
-        c.Status == CaseStatus.OnHold && c.HoldReason is { } reason && c.HoldUntil is { } until
-            ? new HoldResponse(reason, until)
-            : null,
-        allowedActions);
+    /// <summary>
+    /// Needs Images, History(ChangedBy), Rejections(Technician) and Asset loaded too.
+    /// <paramref name="photoUrls"/> maps CaseImages.Image (storage path) to a URL the browser can open.
+    /// </summary>
+    public static CaseDetailResponse ToDetail(
+        Case c, IReadOnlyList<CaseAction> allowedActions, IReadOnlyDictionary<string, string> photoUrls)
+    {
+        var history = c.History.OrderBy(h => h.ChangedAt).ThenBy(h => h.Id).ToList();
+        return new CaseDetailResponse(
+            c.Id,
+            Case.CodeOf(c.Id),
+            c.Title,
+            c.Status,
+            c.Priority.Code,
+            ServiceTypeName(c.Category),
+            ToLocation(c),
+            ToPersonOrNull(c.Customer),
+            ToPersonOrNull(c.Staff),
+            ToPersonOrNull(c.Technician),
+            c.SubmittedAt,
+            c.DueAt,
+            c.StartedAt,
+            c.CompletedAt,
+            IsEmergencyFlow(c),
+            c.Description,
+            c.CategoryId,
+            c.Asset is null ? null : new AssetResponse(c.Asset.Id, c.Asset.Name, c.Asset.RoomId),
+            c.CostBearer,
+            c.Images
+                .OrderBy(i => i.Id)
+                .Where(i => photoUrls.ContainsKey(i.Image))
+                .Select(i => new PhotoResponse(i.Id, photoUrls[i.Image], i.Kind))
+                .ToList(),
+            // The ERD keeps only the new status; the previous one is the row before.
+            history
+                .Select((h, i) => new StatusChangeResponse(
+                    h.ChangedAt, i == 0 ? null : history[i - 1].NewStatus, h.NewStatus, ToPerson(h.ChangedBy), h.Reason))
+                .ToList(),
+            c.Rejections
+                .OrderBy(r => r.RejectedAt)
+                .Select(r => new RejectionResponse(ToPerson(r.Technician), r.RejectedAt, r.Reason))
+                .ToList(),
+            c.RootCause is not null && c.ActualCompletionHours is { } hours
+                ? new RepairReportResponse(c.RootCause, c.PartsUsed, hours)
+                : null,
+            c.RatingStars is { } stars && c.RatedAt is { } ratedAt ? new RatingResponse(stars, c.RatingComment, ratedAt) : null,
+            c.Status == CaseStatus.OnHold && c.HoldReason is { } reason && c.HoldUntil is { } until
+                ? new HoldResponse(reason, until)
+                : null,
+            allowedActions);
+    }
 
     public static bool IsEmergencyFlow(Case c) => c.Priority.Code == CasePriority.Emergency;
 
     public static string ServiceTypeName(CaseCategory category) => $"{category.GroupName} · {category.Name}";
 
-    private static PersonResponse ToPerson(User user) => new(user.Id, user.FullName);
+    private static PersonResponse ToPerson(Account account) => new(account.Id, account.FullName);
+
+    private static PersonResponse? ToPersonOrNull(Account? account) => account is null ? null : ToPerson(account);
 
     private static LocationResponse ToLocation(Case c) => new(
-        c.Room.Floor.BuildingId, c.Room.Floor.Building.Name, c.Room.Floor.Name, c.RoomId, c.Room.Name);
+        c.Room.Floor.BuildingId, c.Room.Floor.Building.Name, c.Room.Floor.DisplayName, c.RoomId, c.Room.RoomNumber);
 }

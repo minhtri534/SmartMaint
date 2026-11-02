@@ -1,6 +1,6 @@
 import { Badge } from '@/shared/ui'
 import { formatDateTime } from '@/shared/utils/format'
-import { STATUS_LABELS, type Assignment, type CasePhoto, type StatusChange } from '../types'
+import { STATUS_LABELS, type CasePhoto, type Rejection, type StatusChange } from '../types'
 
 /** Status timeline, newest first: who changed what, when, and why. */
 export function StatusTimeline({ history }: { history: StatusChange[] }) {
@@ -35,27 +35,21 @@ export function StatusTimeline({ history }: { history: StatusChange[] }) {
   )
 }
 
-const RESPONSE_TONES = { waiting: 'warning', accepted: 'positive', declined: 'negative' } as const
-const RESPONSE_LABELS = { waiting: 'Waiting', accepted: 'Accepted', declined: 'Declined' } as const
-
-/** Every assignment, including declined ones (N10). Shown to the staff and the manager. */
-export function AssignmentList({ assignments }: { assignments: Assignment[] }) {
-  if (assignments.length === 0) return <p className="text-muted text-sm">Not assigned yet.</p>
+/** Technicians who declined this case (N10, ERD: TechnicianRejections). Shown to the staff and the manager. */
+export function RejectionList({ rejections }: { rejections: Rejection[] }) {
   return (
     <ul className="flex flex-col">
-      {assignments.map((a, i) => (
+      {rejections.map((r, i) => (
         <li
-          key={a.assignedAt + i}
+          key={r.rejectedAt + i}
           className="border-rule border-b py-2.5 first:pt-0 last:border-0 last:pb-0"
         >
           <div className="flex items-center justify-between gap-2">
-            <span className="text-sm font-medium">{a.technician.fullName}</span>
-            <Badge tone={RESPONSE_TONES[a.response]}>{RESPONSE_LABELS[a.response]}</Badge>
+            <span className="text-sm font-medium">{r.technician.fullName}</span>
+            <Badge tone="negative">Declined</Badge>
           </div>
-          <div className="text-muted text-xs tabular-nums">
-            by {a.assignedBy.fullName} · {formatDateTime(a.assignedAt)}
-          </div>
-          {a.declineReason && <p className="mt-1 text-sm">“{a.declineReason}”</p>}
+          <div className="text-muted text-xs tabular-nums">{formatDateTime(r.rejectedAt)}</div>
+          <p className="mt-1 text-sm">“{r.reason}”</p>
         </li>
       ))}
     </ul>

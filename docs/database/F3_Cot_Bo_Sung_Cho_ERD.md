@@ -1,5 +1,7 @@
 # F3 — Cột / bảng backend đã thêm so với ERD v5 (để họp với Hùng)
 
+> ⚠️ **Đã thay bằng `ERD_v5_Thay_Doi_Khi_Code.md` (02/11).** Từ 02/11 DB code theo đúng ERD Drive (bỏ `users`, `case_assignments`, trạng thái dạng text…). File này chỉ để tra lịch sử.
+
 > 28/10/2026. Backend Case (F3) đã chạy trên Postgres (migration `AddCasesAndRenameOfficerToStaff`). ERD v5 chưa đóng băng nên mọi thứ dưới đây là **đề xuất đang chạy thử**:
 > họp ERD chốt giữ / bỏ cái nào thì sửa đúng chỗ đó (entity ở `backend/src/SmartMaint.Api/Entities/Cases`, mỗi cột có chú thích `NOT IN ERD v5`).
 > Nguồn luồng: doc "Luồng Chính" (Drive, bản Leader sửa 28/10) + ERD Drive (`ERD_SmartMaint_v5`, sửa lần cuối 28/10 06:39: thêm `Assets.WarrantyEndDate`).

@@ -10,7 +10,7 @@ public enum RejectReason
     Duplicate,
 }
 
-/// <summary>EMP-02. Photos are data URLs for now (TODO(storage): Supabase Storage).</summary>
+/// <summary>EMP-02. Photos are image data URLs; the API stores them in Supabase Storage and keeps the path.</summary>
 public sealed record CreateCaseRequest(
     string Title,
     string Description,

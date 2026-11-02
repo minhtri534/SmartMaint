@@ -1,4 +1,4 @@
-using SmartMaint.Api.Entities.Users;
+using SmartMaint.Api.Entities.Accounts;
 
 namespace SmartMaint.Api.Common.Security;
 

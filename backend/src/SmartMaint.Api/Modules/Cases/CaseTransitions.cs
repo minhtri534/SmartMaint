@@ -1,5 +1,5 @@
 using SmartMaint.Api.Entities.Cases;
-using SmartMaint.Api.Entities.Users;
+using SmartMaint.Api.Entities.Accounts;
 
 namespace SmartMaint.Api.Modules.Cases;
 

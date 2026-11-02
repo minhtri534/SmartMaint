@@ -1,17 +1,20 @@
 using Microsoft.EntityFrameworkCore;
 using SmartMaint.Api.Common.Models;
 using SmartMaint.Api.Common.Security;
+using SmartMaint.Api.Common.Storage;
 using SmartMaint.Api.Data;
+using SmartMaint.Api.Entities.Accounts;
 using SmartMaint.Api.Entities.Cases;
-using SmartMaint.Api.Entities.Users;
 using SmartMaint.Api.Modules.Cases.Dtos;
 
 namespace SmartMaint.Api.Modules.Cases;
 
-internal sealed class CaseService(AppDbContext db, ICurrentUser currentUser, TimeProvider clock) : ICaseService
+internal sealed class CaseService(AppDbContext db, ICurrentUser currentUser, IFileStorage storage, TimeProvider clock) : ICaseService
 {
     /// <summary>The customer may report "not fixed" / the staff member may reopen a closed case for this long (F3 step 12).</summary>
     private static readonly TimeSpan ReopenWindow = TimeSpan.FromDays(7);
+
+    private const string PhotoFolder = "cases";
 
     private static readonly Dictionary<RejectReason, string> RejectLabels = new()
     {
@@ -50,7 +53,8 @@ internal sealed class CaseService(AppDbContext db, ICurrentUser currentUser, Tim
         var c = await Visible(WithDetail().AsNoTracking(), scope).SingleOrDefaultAsync(x => x.Id == id, cancellationToken)
             ?? throw CaseErrors.NotFound();
 
-        return CaseMapper.ToDetail(c, AllowedActions(c, scope, clock.GetUtcNow()));
+        var photoUrls = await storage.GetUrlsAsync(c.Images.Select(i => i.Image).ToList(), cancellationToken);
+        return CaseMapper.ToDetail(c, AllowedActions(c, scope, clock.GetUtcNow()), photoUrls);
     }
 
     // ----- create -----------------------------------------------------------------------------------------------
@@ -61,9 +65,18 @@ internal sealed class CaseService(AppDbContext db, ICurrentUser currentUser, Tim
             .SingleOrDefaultAsync(x => x.Id == request.ServiceTypeId, cancellationToken)
             ?? throw CaseErrors.UnknownServiceType();
 
-        if (!await db.Rooms.AnyAsync(r => r.Id == request.RoomId, cancellationToken))
+        var room = await db.Rooms.Include(r => r.Floor)
+            .SingleOrDefaultAsync(r => r.Id == request.RoomId, cancellationToken)
+            ?? throw CaseErrors.UnknownRoom();
+
+        // The customer reports in their own room or in a common area of their building (ERD review #11).
+        var home = await db.Customers.AsNoTracking()
+            .Where(x => x.Id == currentUser.Id)
+            .Select(x => new { x.RoomId, x.Room.Floor.BuildingId })
+            .SingleAsync(cancellationToken);
+        if (room.Id != home.RoomId && !(room.IsCommonArea && room.Floor.BuildingId == home.BuildingId))
         {
-            throw CaseErrors.UnknownRoom();
+            throw CaseErrors.RoomNotAllowed();
         }
 
         if (request.AssetId is { } assetId
@@ -87,7 +100,7 @@ internal sealed class CaseService(AppDbContext db, ICurrentUser currentUser, Tim
         var c = new Case
         {
             RequestingCustomerId = currentUser.Id,
-            RoomId = request.RoomId,
+            RoomId = room.Id,
             AssetId = request.AssetId,
             CategoryId = category.Id,
             Title = request.Title.Trim(),
@@ -97,11 +110,10 @@ internal sealed class CaseService(AppDbContext db, ICurrentUser currentUser, Tim
             CostBearer = category.DefaultCostBearer,
             SubmittedAt = now,
         };
-        c.Images.AddRange(photos.Select(p => new CaseImage { Kind = CaseImageKind.Report, Content = p }));
-        c.History.Add(new CaseStatusChange
+        await AddPhotosAsync(c, CaseImageKind.Report, photos, cancellationToken);
+        c.History.Add(new CaseStatusHistory
         {
-            FromStatus = null,
-            ToStatus = CaseStatus.Pending,
+            NewStatus = CaseStatus.Pending,
             ChangedById = currentUser.Id,
             ChangedAt = now,
             Reason = category.IsEmergency ? "Emergency service type, handed over to F4." : null,
@@ -137,42 +149,33 @@ internal sealed class CaseService(AppDbContext db, ICurrentUser currentUser, Tim
         }, cancellationToken);
 
     public Task<CaseDetailResponse> AssignAsync(long id, AssignCaseRequest request, CancellationToken cancellationToken) =>
-        ActAsync(id, CaseAction.Assign, async (c, now) =>
+        ActAsync(id, CaseAction.Assign, async (c, _) =>
         {
-            var technician = await db.Users.SingleOrDefaultAsync(
-                u => u.Id == request.TechnicianId && u.Role == UserRole.Technician && u.Status == UserStatus.Active,
-                cancellationToken) ?? throw CaseErrors.InvalidTechnician();
+            var technician = await db.Technicians.SingleOrDefaultAsync(
+                t => t.Id == request.TechnicianId && t.Status == UserStatus.Active, cancellationToken)
+                ?? throw CaseErrors.InvalidTechnician();
 
-            c.Assignments.Add(new CaseAssignment
-            {
-                TechnicianId = technician.Id,
-                AssignedById = currentUser.Id,
-                AssignedAt = now,
-                Response = AssignmentAnswer.Waiting,
-            });
             c.AssignedTechnicianId = technician.Id;
             c.Technician = technician;
             // TODO(notification): tell the technician.
-            return null;
+            // The ERD keeps only the last technician on the case, so the history row says who got it.
+            return $"Assigned to {technician.FullName}.";
         }, cancellationToken);
 
     public Task<CaseDetailResponse> AcceptAsync(long id, CancellationToken cancellationToken) =>
-        ActAsync(id, CaseAction.Accept, (c, now) =>
-        {
-            var assignment = WaitingAssignment(c);
-            assignment.Response = AssignmentAnswer.Accepted;
-            assignment.RespondedAt = now;
-            return Task.FromResult<string?>(null);
-        }, cancellationToken);
+        ActAsync(id, CaseAction.Accept, (_, _) => Task.FromResult<string?>(null), cancellationToken);
 
     public Task<CaseDetailResponse> DeclineAsync(long id, ReasonRequest request, CancellationToken cancellationToken) =>
         ActAsync(id, CaseAction.Decline, (c, now) =>
         {
-            var assignment = WaitingAssignment(c);
-            assignment.Response = AssignmentAnswer.Declined;
-            assignment.RespondedAt = now;
-            assignment.DeclineReason = request.Reason.Trim();
-            // Back to the staff member (status Approved) to assign someone else. The manager counts these declines (N10).
+            // ERD: TechnicianRejections. The manager counts these declines (N10).
+            c.Rejections.Add(new TechnicianRejection
+            {
+                TechnicianId = currentUser.Id,
+                RejectedAt = now,
+                Reason = request.Reason.Trim(),
+            });
+            // Back to the staff member (status Approved) to assign someone else.
             c.AssignedTechnicianId = null;
             c.Technician = null;
             return Task.FromResult<string?>(request.Reason.Trim());
@@ -209,42 +212,30 @@ internal sealed class CaseService(AppDbContext db, ICurrentUser currentUser, Tim
         }, cancellationToken);
 
     public Task<CaseDetailResponse> CompleteAsync(long id, CompleteWorkRequest request, CancellationToken cancellationToken) =>
-        ActAsync(id, CaseAction.Complete, (c, now) =>
+        ActAsync(id, CaseAction.Complete, async (c, now) =>
         {
             c.RootCause = request.RootCause.Trim();
             c.PartsUsed = string.IsNullOrWhiteSpace(request.PartsUsed) ? null : request.PartsUsed.Trim();
             c.CompletedAt = now;
             // Hours typed by the technician win; otherwise the system measures start to finish.
-            c.ActualHours = request.LaborHours ?? MeasuredHours(c.StartedAt, now);
-            c.Images.AddRange((request.BeforePhotos ?? []).Select(p => new CaseImage { Kind = CaseImageKind.Before, Content = p }));
-            c.Images.AddRange(request.AfterPhotos.Select(p => new CaseImage { Kind = CaseImageKind.After, Content = p }));
+            c.ActualCompletionHours = request.LaborHours ?? MeasuredHours(c.StartedAt, now);
+            await AddPhotosAsync(c, CaseImageKind.Before, request.BeforePhotos ?? [], cancellationToken);
+            await AddPhotosAsync(c, CaseImageKind.After, request.AfterPhotos, cancellationToken);
             // TODO(notification): tell the staff member there is work to verify.
-            return Task.FromResult<string?>(null);
+            return null;
         }, cancellationToken);
 
     public Task<CaseDetailResponse> CloseAsync(long id, CancellationToken cancellationToken) =>
         ActAsync(id, CaseAction.Close, (c, now) =>
         {
             c.ClosedAt = now;
-            // TODO(asset-history): write the repair into the asset's history (F1).
             return Task.FromResult<string?>(null);
         }, cancellationToken);
 
     public Task<CaseDetailResponse> ReopenAsync(long id, ReasonRequest request, CancellationToken cancellationToken) =>
-        ActAsync(id, CaseAction.Reopen, (c, now) =>
+        ActAsync(id, CaseAction.Reopen, (c, _) =>
         {
-            // BR-04: by default the same technician gets it back and must accept again.
-            if (c.AssignedTechnicianId is { } technicianId)
-            {
-                c.Assignments.Add(new CaseAssignment
-                {
-                    TechnicianId = technicianId,
-                    AssignedById = currentUser.Id,
-                    AssignedAt = now,
-                    Response = AssignmentAnswer.Waiting,
-                });
-            }
-
+            // BR-04: by default the same technician (still on the case) gets it back and must accept again.
             // The SLA starts over with the next "start"; the old times stay in the status history.
             c.StartedAt = null;
             c.DueAt = null;
@@ -275,8 +266,7 @@ internal sealed class CaseService(AppDbContext db, ICurrentUser currentUser, Tim
         CancellationToken cancellationToken)
     {
         var scope = await LoadScopeAsync(cancellationToken);
-        var c = await Visible(WithRefs().Include(x => x.Assignments), scope)
-            .SingleOrDefaultAsync(x => x.Id == id, cancellationToken)
+        var c = await Visible(WithRefs(), scope).SingleOrDefaultAsync(x => x.Id == id, cancellationToken)
             ?? throw CaseErrors.NotFound();
 
         var now = clock.GetUtcNow();
@@ -285,17 +275,15 @@ internal sealed class CaseService(AppDbContext db, ICurrentUser currentUser, Tim
             throw CaseErrors.InvalidTransition();
         }
 
-        var from = c.Status;
         var reason = await apply(c, now);
 
-        var to = CaseTransitions.Find(action, scope.Role, from)!.To;
+        var to = CaseTransitions.Find(action, scope.Role, c.Status)!.To;
         if (to is { } next)
         {
             c.Status = next;
-            c.History.Add(new CaseStatusChange
+            c.History.Add(new CaseStatusHistory
             {
-                FromStatus = from,
-                ToStatus = next,
+                NewStatus = next,
                 ChangedById = scope.UserId,
                 ChangedAt = now,
                 Reason = reason,
@@ -371,8 +359,9 @@ internal sealed class CaseService(AppDbContext db, ICurrentUser currentUser, Tim
         {
             UserRole.Customer => query.Where(c => c.RequestingCustomerId == userId),
             UserRole.Staff or UserRole.Manager => query.Where(c => buildingIds.Contains(c.Room.Floor.BuildingId)),
+            // A technician who declined still sees the case (read only), so the decline does not "lose" it.
             UserRole.Technician => query.Where(c =>
-                c.AssignedTechnicianId == userId || c.Assignments.Any(a => a.TechnicianId == userId)),
+                c.AssignedTechnicianId == userId || c.Rejections.Any(r => r.TechnicianId == userId)),
             _ => query.Where(_ => false),
         };
     }
@@ -389,16 +378,18 @@ internal sealed class CaseService(AppDbContext db, ICurrentUser currentUser, Tim
         .Include(c => c.Asset)
         .Include(c => c.Images)
         .Include(c => c.History).ThenInclude(h => h.ChangedBy)
-        .Include(c => c.Assignments).ThenInclude(a => a.Technician)
-        .Include(c => c.Assignments).ThenInclude(a => a.AssignedBy)
+        .Include(c => c.Rejections).ThenInclude(r => r.Technician)
         .AsSplitQuery();
 
-    private CaseAssignment WaitingAssignment(Case c) =>
-        c.Assignments
-            .Where(a => a.TechnicianId == currentUser.Id && a.Response == AssignmentAnswer.Waiting)
-            .OrderByDescending(a => a.Id)
-            .FirstOrDefault()
-        ?? throw CaseErrors.NoOpenAssignment();
+    /// <summary>Uploads each data URL to storage (validated already) and links it to the case.</summary>
+    private async Task AddPhotosAsync(Case c, CaseImageKind kind, IEnumerable<string> photos, CancellationToken cancellationToken)
+    {
+        foreach (var photo in photos)
+        {
+            var path = await storage.SaveAsync(PhotoFolder, DataUrl.ParseImage(photo), cancellationToken);
+            c.Images.Add(new CaseImage { Kind = kind, Image = path });
+        }
+    }
 
     private static decimal MeasuredHours(DateTimeOffset? started, DateTimeOffset now) =>
         started is null ? 0.01m : Math.Max(0.01m, Math.Round((decimal)(now - started.Value).TotalHours, 2));

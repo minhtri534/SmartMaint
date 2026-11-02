@@ -5,9 +5,9 @@ namespace SmartMaint.Api.Modules.Auth;
 /// <summary>Every error the Auth module can return. Codes are part of the API contract.</summary>
 internal static class AuthErrors
 {
-    // Never say which of email / password was wrong (AUTH-01).
+    // Never say which of username / password was wrong (AUTH-01).
     public static AppException InvalidCredentials() =>
-        new(ErrorKind.Unauthorized, "auth.invalid_credentials", "Email or password is incorrect.");
+        new(ErrorKind.Unauthorized, "auth.invalid_credentials", "Username or password is incorrect.");
 
     public static AppException AccountLocked(DateTimeOffset until) =>
         new(ErrorKind.Forbidden, "auth.account_locked",

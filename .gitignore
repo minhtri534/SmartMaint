@@ -65,3 +65,6 @@ desktop.ini
 
 # ===== taste skill working files (screenshots, dealt sheets) =====
 .taste-skill/
+
+# Local file storage (dev, when Supabase is not configured)
+backend/src/SmartMaint.Api/uploads/

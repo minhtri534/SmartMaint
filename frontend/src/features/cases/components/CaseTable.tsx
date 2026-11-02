@@ -64,7 +64,7 @@ export function CaseTable({ cases, showRequester, showTechnician, emptyText }: C
               </td>
               {showRequester && (
                 <td className="py-3 pr-4">
-                  <div className="whitespace-nowrap">{c.requester.fullName}</div>
+                  <div className="whitespace-nowrap">{c.requester?.fullName ?? '—'}</div>
                   <div className="text-muted mt-0.5 text-[13px]">
                     {formatRelative(c.submittedAt)}
                   </div>
