@@ -14,8 +14,8 @@ const WITH_TECHNICIANS: readonly CaseStatus[] = [
 ]
 
 // The staff's own steps in F3: review (④), assign (⑤), verify (⑩).
-const toReview = (c: CaseSummary) => c.status === 'pending' && !c.isEmergencyFlow
-const toAssign = (c: CaseSummary) => c.status === 'approved' && !c.isEmergencyFlow
+const toReview = (c: CaseSummary) => c.status === 'pending'
+const toAssign = (c: CaseSummary) => c.status === 'approved'
 const toVerify = (c: CaseSummary) => c.status === 'completed'
 /** Waiting for the staff, or past its deadline wherever it is. */
 const needsYou = (c: CaseSummary) => toReview(c) || toAssign(c) || toVerify(c) || isOverdue(c)

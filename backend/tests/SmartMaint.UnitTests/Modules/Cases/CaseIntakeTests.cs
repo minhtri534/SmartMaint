@@ -112,15 +112,15 @@ public sealed class CaseIntakeTests : CaseTestBase
 
     [Fact]
     [Trait(TestType.Key, TestType.Boundary)]
-    public async Task Create_EmergencyServiceType_IsEmergencyFlowAndOffersNoF3Action()
+    public async Task Create_EmergencyServiceType_SkipsPendingAndStartsTheClock()
     {
         var created = await NewCaseAsync(BurstPipe);
 
         Assert.True(created.IsEmergencyFlow);
-        Assert.Equal(CasePriority.Emergency, created.Urgency);
-        Assert.Empty(created.AllowedActions);
+        Assert.Equal(CaseStatus.Approved, created.Status);
+        Assert.Equal(Clock.Now.AddHours(2), created.DueAt);
+        Assert.Empty(created.AllowedActions); // the customer cannot cancel an emergency
         As(Staff);
-        Assert.Empty((await Sut.GetAsync(created.Id, default)).AllowedActions);
         Assert.Equal("case.invalid_transition",
             await ErrorCodeAsync(() => Sut.ApproveAsync(created.Id, new ApproveCaseRequest(CasePriority.Normal, CostBearer.Building), default)));
     }
@@ -295,7 +295,8 @@ public sealed class CaseIntakeTests : CaseTestBase
         var result = await Sut.ApproveAsync(id, new ApproveCaseRequest(CasePriority.Emergency, CostBearer.Building), default);
 
         Assert.True(result.IsEmergencyFlow);
-        Assert.Empty(result.AllowedActions);
+        Assert.Equal(Clock.Now.AddHours(2), result.DueAt);
+        Assert.NotNull(result.Emergency!.AcknowledgedAt); // the staff decided it, nobody to chase
         Assert.Contains("F4", result.History.Last().Reason);
     }
 

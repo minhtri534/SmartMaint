@@ -13,6 +13,10 @@ import type {
   CompleteChecklistRequest,
   CompleteWorkRequest,
   CreateCaseRequest,
+  DowngradeRequest,
+  EmergencyLogRequest,
+  IncidentReportRequest,
+  MergeCaseRequest,
   UpdateTaskRequest,
   HoldCaseRequest,
   RateCaseRequest,
@@ -106,6 +110,22 @@ export const casesApi = {
   /** POST /api/cases/{id}/complete-checklist — technician, every item has a result */
   completeChecklist: ({ id, ...body }: Id & CompleteChecklistRequest) =>
     post<CaseDetail>(`/cases/${id}/complete-checklist`, body),
+
+  // Part 6: emergency (F4)
+  /** POST /api/cases/{id}/acknowledge — staff, first response */
+  acknowledge: ({ id }: Id) => post<CaseDetail>(`/cases/${id}/acknowledge`),
+  /** POST /api/cases/{id}/downgrade — staff, back to F3 (K04) */
+  downgrade: ({ id, ...body }: Id & DowngradeRequest) =>
+    post<CaseDetail>(`/cases/${id}/downgrade`, body),
+  /** POST /api/cases/{id}/merge — staff, same incident (N5) */
+  merge: ({ id, ...body }: Id & MergeCaseRequest) => post<CaseDetail>(`/cases/${id}/merge`, body),
+  /** POST /api/cases/{id}/log — staff, emergency log line */
+  addLog: ({ id, ...body }: Id & EmergencyLogRequest) => post<CaseDetail>(`/cases/${id}/log`, body),
+  /** POST /api/cases/{id}/made-safe — technician (K06) */
+  markSafe: ({ id }: Id) => post<CaseDetail>(`/cases/${id}/made-safe`),
+  /** PUT /api/cases/{id}/incident-report — staff (K08) */
+  writeIncidentReport: ({ id, ...body }: Id & IncidentReportRequest) =>
+    apiClient.put<CaseDetail>(`/cases/${id}/incident-report`, body).then((r) => r.data),
 }
 
 /** Query keys of this feature, in one place so invalidation never misses one. */

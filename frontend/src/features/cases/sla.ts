@@ -3,7 +3,7 @@ import { FINAL_STATUSES, type CaseSummary } from './types'
 /*
  * The SLA clock of a case (N8, N16). It starts when the technician starts work (doc "Luồng Chính", 28/10) and runs to
  * the deadline = start + the urgency's SLA hours. It starts over after a reopen. The server wall-clock counts hours;
- * counting office hours is still open (BR-08, O04).
+ * counting office hours is still open (BR-08, O04). An emergency (F4) counts 24/7 from the report (slaStartedAt).
  */
 
 export type SlaState =
@@ -17,7 +17,7 @@ export type SlaState =
   | 'met'
   /** Technician reported done after the deadline. */
   | 'late'
-  /** No SLA: rejected, cancelled, or handled by the emergency flow F4. */
+  /** No SLA: rejected or cancelled (also a report merged into another case). */
   | 'none'
 
 export interface Sla {
@@ -33,7 +33,7 @@ export interface Sla {
 const NONE: Sla = { state: 'none', used: 0, window: 0, remaining: 0 }
 
 export function slaOf(c: CaseSummary, now = Date.now()): Sla {
-  if (c.isEmergencyFlow || c.status === 'rejected' || c.status === 'cancelled') return NONE
+  if (c.status === 'rejected' || c.status === 'cancelled') return NONE
   if (!c.dueAt) return { ...NONE, state: 'waiting' }
 
   const due = new Date(c.dueAt).getTime()

@@ -10,6 +10,8 @@ export const paths = {
   cases: '/cases',
   caseDetail: '/cases/:id',
   workOrders: '/work-orders',
+  // F4 — emergency board
+  emergencies: '/emergencies',
   // F1 — buildings and assets
   facilities: '/facilities',
   assets: '/assets',

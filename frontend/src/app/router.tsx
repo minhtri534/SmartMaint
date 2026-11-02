@@ -13,6 +13,7 @@ import { ChangePasswordPage, LoginPage, RequireAuth } from '@/features/auth'
 import {
   CaseDetailPage,
   CaseQueuePage,
+  EmergencyPage,
   MyRequestsPage,
   NewRequestPage,
   WorkOrdersPage,
@@ -83,6 +84,15 @@ export const router = createBrowserRouter([
             element: (
               <RequireAuth roles={['staff', 'manager']}>
                 <CaseQueuePage />
+              </RequireAuth>
+            ),
+          },
+          // F4 — emergency board (the actions are on the case page)
+          {
+            path: paths.emergencies,
+            element: (
+              <RequireAuth roles={['staff', 'manager']}>
+                <EmergencyPage />
               </RequireAuth>
             ),
           },

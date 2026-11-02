@@ -40,6 +40,8 @@ internal static class ModuleRegistration
         services.AddHostedService<SlaReminderJob>();
         services.AddScoped<IMaintenanceGenerator, MaintenanceGenerator>();
         services.AddHostedService<MaintenanceGeneratorJob>();
+        services.AddScoped<IEmergencyWatch, EmergencyWatch>();
+        services.AddHostedService<EmergencyWatchJob>();
 
         return services;
     }

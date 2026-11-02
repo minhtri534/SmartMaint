@@ -34,6 +34,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
     also: ['/cases/'],
     roles: ['staff', 'manager'],
   },
+  // F4
+  { label: 'Emergencies', to: paths.emergencies, icon: 'siren', roles: ['staff', 'manager'] },
   {
     label: 'My work orders',
     to: paths.workOrders,

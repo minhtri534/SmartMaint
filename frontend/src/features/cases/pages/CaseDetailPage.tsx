@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
-import { paths, planDetailPath, resubmitPath } from '@/app/paths'
+import { caseDetailPath, paths, planDetailPath, resubmitPath } from '@/app/paths'
 import type { Role } from '@/shared/types/role'
 import { Alert, Button, Card, CardHeader, Icon, LinkButton, PageHeader } from '@/shared/ui'
 import { formatDateTime, formatVnd } from '@/shared/utils/format'
@@ -8,12 +8,13 @@ import { useAuth } from '@/features/auth'
 import { CaseActions } from '../components/CaseActions'
 import { ChecklistCard } from '../components/ChecklistCard'
 import { UrgencyNote } from '../components/CaseBadges'
+import { EmergencyCard, IncidentReportCard } from '../components/EmergencyCard'
 import { PhotoGallery, RejectionList, StatusTimeline } from '../components/CaseHistory'
 import { SlaPanel } from '../components/SlaTrack'
 import { StarsView } from '../components/Stars'
 import { StatusPath } from '../components/StatusPath'
 import { useCase } from '../hooks'
-import { COST_BEARER_LABELS, HOLD_REASON_LABELS, URGENCY_LABELS } from '../types'
+import { COST_BEARER_LABELS, FINAL_STATUSES, HOLD_REASON_LABELS, URGENCY_LABELS } from '../types'
 
 const BACK: Partial<Record<Role, { to: string; label: string }>> = {
   customer: { to: paths.myRequests, label: 'My requests' },
@@ -77,11 +78,35 @@ export function CaseDetailPage() {
         <StatusPath c={c} />
       </div>
 
-      {c.isEmergencyFlow && (
-        <Alert>
-          Emergency case: handled by the emergency flow (F4), so F3 actions are off here.
+      {c.emergency?.mergedInto && (
+        <Alert tone="info">
+          Same incident as{' '}
+          <Link
+            to={caseDetailPath(c.emergency.mergedInto.id)}
+            className="font-mono underline underline-offset-2"
+          >
+            {c.emergency.mergedInto.code}
+          </Link>
+          {user?.role === 'customer'
+            ? ': it is being handled there and you will be told when it is fixed.'
+            : ': this report was merged into it.'}
         </Alert>
       )}
+      {c.isEmergencyFlow && user?.role === 'customer' && !FINAL_STATUSES.includes(c.status) && (
+        <Alert>
+          If anyone is in danger, call 114 (fire) or 115 (ambulance) and the building hotline first.
+          The building staff were alerted the moment you reported.
+        </Alert>
+      )}
+      {c.isEmergencyFlow &&
+        c.emergency &&
+        !c.emergency.acknowledgedAt &&
+        user?.role !== 'customer' && (
+          <Alert tone="notice">
+            Emergency: nobody has acknowledged it yet. The backup staff are alerted after 10
+            minutes, the manager after 30.
+          </Alert>
+        )}
       {c.status === 'rejected' && lastChange?.reason && (
         <Alert tone="info">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -181,6 +206,8 @@ export function CaseDetailPage() {
             </Card>
           )}
 
+          {c.incidentReport && <IncidentReportCard report={c.incidentReport} />}
+
           {c.rating && (
             <Card>
               <CardHeader title="Customer rating" aside={formatDateTime(c.rating.ratedAt)} />
@@ -194,6 +221,7 @@ export function CaseDetailPage() {
         </div>
 
         <div className="flex flex-col gap-6">
+          <EmergencyCard c={c} now={query.dataUpdatedAt} />
           <SlaPanel c={c} />
 
           <Card>

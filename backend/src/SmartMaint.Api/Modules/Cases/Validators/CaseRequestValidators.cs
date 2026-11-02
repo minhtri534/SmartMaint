@@ -204,3 +204,53 @@ public sealed class CompleteChecklistRequestValidator : AbstractValidator<Comple
         RuleFor(x => x.Parts).ValidCostLines();
     }
 }
+
+// ----- F4 emergency -------------------------------------------------------------------------------------------------
+
+public sealed class DowngradeRequestValidator : AbstractValidator<DowngradeRequest>
+{
+    public DowngradeRequestValidator()
+    {
+        RuleFor(x => x.Urgency).IsInEnum()
+            .NotEqual(Entities.Cases.CasePriority.Emergency).WithMessage("Choose High, Normal or Low.");
+        RuleFor(x => x.CostBearer).IsInEnum();
+        RuleFor(x => x.Reason).NotEmpty().Must(r => r.Trim().Length >= ReasonRequestValidator.MinLength)
+            .WithMessage($"At least {ReasonRequestValidator.MinLength} characters.").MaximumLength(ReasonRequestValidator.MaxLength);
+    }
+}
+
+public sealed class MergeCaseRequestValidator : AbstractValidator<MergeCaseRequest>
+{
+    public MergeCaseRequestValidator()
+    {
+        RuleFor(x => x.TargetCaseId).GreaterThan(0).WithMessage("Choose the case to merge into.");
+        RuleFor(x => x.Note).MaximumLength(ReasonRequestValidator.MaxLength);
+    }
+}
+
+public sealed class EmergencyLogRequestValidator : AbstractValidator<EmergencyLogRequest>
+{
+    public const int MinLength = 5;
+
+    public EmergencyLogRequestValidator()
+    {
+        RuleFor(x => x.Kind).IsInEnum();
+        RuleFor(x => x.Note).NotEmpty().Must(n => n.Trim().Length >= MinLength)
+            .WithMessage($"At least {MinLength} characters.").MaximumLength(ReasonRequestValidator.MaxLength);
+    }
+}
+
+public sealed class IncidentReportRequestValidator : AbstractValidator<IncidentReportRequest>
+{
+    public const int MinLength = 10;
+    public const int MaxLength = 1000;
+
+    public IncidentReportRequestValidator()
+    {
+        RuleFor(x => x.Damage).NotEmpty().Must(n => n.Trim().Length >= MinLength)
+            .WithMessage($"At least {MinLength} characters.").MaximumLength(MaxLength);
+        RuleFor(x => x.Lessons).NotEmpty().Must(n => n.Trim().Length >= MinLength)
+            .WithMessage($"At least {MinLength} characters.").MaximumLength(MaxLength);
+        RuleFor(x => x.FollowUp).IsInEnum();
+    }
+}

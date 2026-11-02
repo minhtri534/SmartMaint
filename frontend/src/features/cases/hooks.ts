@@ -3,8 +3,9 @@ import { caseKeys, casesApi } from './api'
 import { suggestServiceType } from './suggest'
 import type { ServiceType } from './types'
 
-export function useCases() {
-  return useQuery({ queryKey: caseKeys.list(), queryFn: casesApi.list })
+/** `refetchInterval` (ms): pages that watch live work (the emergency board) poll. */
+export function useCases(refetchInterval?: number) {
+  return useQuery({ queryKey: caseKeys.list(), queryFn: casesApi.list, refetchInterval })
 }
 
 export function useCase(id: number, enabled = true) {

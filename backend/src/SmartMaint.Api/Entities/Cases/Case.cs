@@ -106,6 +106,35 @@ public class Case : AuditableEntity
     public DateTimeOffset? SlaWarnedAt { get; set; }
     public DateTimeOffset? SlaOverdueNotifiedAt { get; set; }
 
+    // ----- F4 emergency (all NOT IN ERD v5) ---------------------------------------------------------------------
+
+    /// <summary>
+    /// When the case entered the emergency flow (made with an emergency service type, or raised to Emergency). The
+    /// 24/7 clock runs from here: DueAt = EmergencyAt + the emergency SLA hours. Cleared when the staff downgrades it to F3.
+    /// </summary>
+    public DateTimeOffset? EmergencyAt { get; set; }
+
+    /// <summary>A staff member pressed "Acknowledged" (first response, F4 step ②). Stops the escalation to backup / manager.</summary>
+    public DateTimeOffset? AcknowledgedAt { get; set; }
+
+    /// <summary>The technician made the site safe (F4 step ⑧, K06): the first of the two milestones.</summary>
+    public DateTimeOffset? MadeSafeAt { get; set; }
+
+    /// <summary>N5: this report was merged into another case of the same incident (status Cancelled, no KPI).</summary>
+    public long? MergedIntoCaseId { get; set; }
+    public Case? MergedInto { get; set; }
+
+    /// <summary>When the watch job told the backup staff / the managers that nobody acknowledged it, and reminded the technician to accept: once each.</summary>
+    public DateTimeOffset? BackupAlertedAt { get; set; }
+    public DateTimeOffset? ManagerAlertedAt { get; set; }
+    public DateTimeOffset? AcceptRemindedAt { get; set; }
+
+    /// <summary>F4 step ⑫ post-incident report, optional, written by the staff after closing (K08).</summary>
+    public string? IncidentDamage { get; set; }
+    public string? IncidentLessons { get; set; }
+    public IncidentFollowUp? IncidentFollowUp { get; set; }
+    public DateTimeOffset? IncidentReportedAt { get; set; }
+
     public List<CaseImage> Images { get; set; } = [];
     public List<CaseStatusHistory> History { get; set; } = [];
     public List<TechnicianRejection> Rejections { get; set; } = [];

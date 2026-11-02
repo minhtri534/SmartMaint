@@ -78,10 +78,11 @@ export function CaseTable({ cases, showRequester, showTechnician, emptyText }: C
               )}
               <td className="py-3 pr-4">
                 <div className="flex flex-col items-start gap-1">
-                  {c.isEmergencyFlow ? (
-                    <span className="text-negative text-xs font-medium">Emergency · F4</span>
-                  ) : (
-                    <StatusBadge status={c.status} />
+                  <StatusBadge status={c.status} />
+                  {c.emergency?.mergedInto && (
+                    <span className="text-muted text-xs">
+                      Merged into {c.emergency.mergedInto.code}
+                    </span>
                   )}
                   <UrgencyNote urgency={c.urgency} />
                 </div>

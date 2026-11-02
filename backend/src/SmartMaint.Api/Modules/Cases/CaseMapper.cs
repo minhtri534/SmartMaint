@@ -20,17 +20,22 @@ internal static class CaseMapper
         ToPersonOrNull(c.Technician),
         c.SubmittedAt,
         c.DueAt,
-        c.StartedAt,
+        SlaStartedAt(c),
         c.CompletedAt,
         IsEmergencyFlow(c),
-        c.IsPreventive);
+        c.IsPreventive,
+        ToEmergency(c));
 
     /// <summary>
     /// Needs Images, History(ChangedBy), Rejections(Technician) and Asset loaded too.
     /// <paramref name="photoUrls"/> maps CaseImages.Image (storage path) to a URL the browser can open.
     /// </summary>
     public static CaseDetailResponse ToDetail(
-        Case c, IReadOnlyList<CaseAction> allowedActions, IReadOnlyDictionary<string, string> photoUrls, bool showCosts)
+        Case c,
+        IReadOnlyList<CaseAction> allowedActions,
+        IReadOnlyDictionary<string, string> photoUrls,
+        bool showCosts,
+        IReadOnlyList<long> mergedCaseIds)
     {
         var history = c.History.OrderBy(h => h.ChangedAt).ThenBy(h => h.Id).ToList();
         return new CaseDetailResponse(
@@ -46,10 +51,11 @@ internal static class CaseMapper
             ToPersonOrNull(c.Technician),
             c.SubmittedAt,
             c.DueAt,
-            c.StartedAt,
+            SlaStartedAt(c),
             c.CompletedAt,
             IsEmergencyFlow(c),
             c.IsPreventive,
+            ToEmergency(c),
             c.Description,
             c.CategoryId,
             c.Asset is null ? null : new AssetResponse(c.Asset.Id, c.Asset.Name, c.Asset.RoomId),
@@ -84,10 +90,23 @@ internal static class CaseMapper
                 t.Notes.OrderBy(n => n.Id).Select(n => new TaskNoteResponse(n.Note, n.CreatedAt)).ToList(),
                 t.Images.OrderBy(i => i.Id).Where(i => photoUrls.ContainsKey(i.Image)).Select(i => photoUrls[i.Image]).ToList(),
                 t.RepairCaseId, t.RepairCaseId is { } r ? Case.CodeOf(r) : null)).ToList(),
+            mergedCaseIds.Select(ToRef).ToList(),
+            c.IncidentReportedAt is { } reportedOn && c.IncidentFollowUp is { } followUp
+                ? new IncidentReportResponse(c.IncidentDamage ?? string.Empty, c.IncidentLessons ?? string.Empty, followUp, reportedOn)
+                : null,
             allowedActions);
     }
 
     public static bool IsEmergencyFlow(Case c) => c.Priority.Code == CasePriority.Emergency;
+
+    /// <summary>F4 runs its clock from when the case became an emergency; F3 from when the technician started.</summary>
+    private static DateTimeOffset? SlaStartedAt(Case c) => c.EmergencyAt ?? c.StartedAt;
+
+    private static EmergencyResponse? ToEmergency(Case c) => c.EmergencyAt is { } since
+        ? new EmergencyResponse(since, c.AcknowledgedAt, c.MadeSafeAt, c.MergedIntoCaseId is { } m ? ToRef(m) : null)
+        : null;
+
+    private static CaseRefResponse ToRef(long id) => new(id, Case.CodeOf(id));
 
     public static string ServiceTypeName(CaseCategory category) => $"{category.GroupName} · {category.Name}";
 

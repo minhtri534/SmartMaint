@@ -9,7 +9,8 @@ namespace SmartMaint.Api.Modules.Cases;
 
 /// <summary>
 /// SRS 5.4.2 "Case close to its SLA target, or overdue": once per case, tell the staff of the building when 80% of the
-/// time is used, and the staff + managers of the building when the deadline passes. Emergency cases belong to F4.
+/// time is used, and the staff + managers of the building when the deadline passes. An emergency (F4) counts 24/7 from
+/// EmergencyAt, already at Approved; an F3 case from the start of work.
 /// Run by <see cref="SlaReminderJob"/> every few minutes; tests call <see cref="RunOnceAsync"/> directly.
 /// </summary>
 public interface ISlaReminder
@@ -34,8 +35,7 @@ internal sealed class SlaReminder(AppDbContext db, INotificationService notifica
         var cases = await db.Cases
             .Include(c => c.Room).ThenInclude(r => r.Floor)
             .Include(c => c.Priority)
-            .Where(c => c.DueAt != null && Running.Contains(c.Status)
-                        && c.Priority.Code != CasePriority.Emergency
+            .Where(c => c.DueAt != null && (Running.Contains(c.Status) || (c.Status == CaseStatus.Approved && c.EmergencyAt != null))
                         && (c.SlaWarnedAt == null || c.SlaOverdueNotifiedAt == null))
             .ToListAsync(cancellationToken);
 
@@ -59,7 +59,7 @@ internal sealed class SlaReminder(AppDbContext db, INotificationService notifica
                 reminded++;
             }
             // "Close to the deadline" needs a start (F3); a preventive work order (due day set, not started) only gets "overdue".
-            else if (now < due && c.SlaWarnedAt is null && c.StartedAt is { } started && due - now <= (due - started) * WarnWhenLeft)
+            else if (now < due && c.SlaWarnedAt is null && (c.EmergencyAt ?? c.StartedAt) is { } started && due - now <= (due - started) * WarnWhenLeft)
             {
                 notifications.Send(staff, $"{code} \"{c.Title}\" is close to its deadline ({due:yyyy-MM-dd HH:mm} UTC).");
                 c.SlaWarnedAt = now;
@@ -81,6 +81,9 @@ public sealed class JobOptions
 
     /// <summary>F2 work-order generation; safe to run often (each due day is made once).</summary>
     public int MaintenanceGeneratorMinutes { get; set; } = 60;
+
+    /// <summary>F4 escalation clocks (10 / 30 minutes): checked every minute.</summary>
+    public int EmergencyWatchMinutes { get; set; } = 1;
 }
 
 /// <summary>Runs <see cref="ISlaReminder"/> every Jobs:SlaReminderMinutes inside the API (no extra service).</summary>

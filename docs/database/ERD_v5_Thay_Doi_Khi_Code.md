@@ -45,6 +45,11 @@
 | Costs → `costs` (Phần 4) | theo ERD (Name, Description, Amount, Case) + `created_at` / `updated_at` | KTV ghi vật tư khi báo xong; hệ thống thêm dòng "Labour" = giờ × HourlyRate (E9, tính lúc ghi nên tăng lương không đổi chi phí cũ). Staff sửa được khi case đang Completed. Khách chỉ thấy chi phí khi khách là bên trả |
 | CaseStatusHistory (Phần 4) | Thao tác **không đổi trạng thái** (đổi ưu tiên, dời hạn, "chưa sửa xong", sửa chi phí) vẫn ghi 1 dòng với `new_status` = trạng thái hiện tại + lý do | ERD không có bảng dời hạn / đổi ưu tiên riêng |
 | | `requesting_customer_id` **cho phép trống** | Case sinh từ bảo trì định kỳ (F2) không có khách |
+| | `emergency_at` (Phần 6, F4) | Lúc case thành khẩn cấp (tạo với loại dịch vụ khẩn cấp, hoặc Staff nâng mức). Đồng hồ **24/7** tính từ đây: `due_at` = `emergency_at` + giờ SLA khẩn cấp. Xóa khi hạ mức về F3 |
+| | `acknowledged_at`, `made_safe_at` (Phần 6) | 2 mốc của K06: Staff bấm "Đã nhận" (phản hồi đầu), KTV bấm "Đã an toàn" (khống chế xong). Mốc thứ 3 "khắc phục xong" = `completed_at` có sẵn. Chỉ mốc khắc phục có hạn |
+| | `merged_into_case_id` (FK cases, Phần 6) | N5 gộp case khẩn cấp trùng: case gộp chuyển **Cancelled** + trỏ về case chính, không tính KPI; khách được báo khi case chính đóng |
+| | `backup_alerted_at`, `manager_alerted_at`, `accept_reminded_at` (Phần 6) | Job nền chỉ báo 1 lần: 10 phút chưa ai "Đã nhận" → Staff dự phòng; 30 phút → Manager; KTV 10 phút chưa nhận việc → nhắc KTV + Staff |
+| | `incident_damage`, `incident_lessons`, `incident_follow_up` (none / preventive_plan / replacement_review), `incident_reported_at` (Phần 6) | K08 báo cáo sau sự cố, **không bắt buộc**, Staff viết sau khi đóng; case khẩn cấp xong trễ hạn thì nhắc viết |
 | Assets → `assets` | `retired_at` (Phần 3) | BR-10: thiết bị có lịch sử thì chỉ **thanh lý**, không xóa. Thanh lý = ẩn khỏi form báo hỏng, QR hết hiệu lực, lịch sử giữ nguyên; chặn khi còn case mở. Chưa có case thì được xóa |
 | CaseImages → `case_images` | `kind` (report / before / after) | Ảnh lúc báo / trước / sau sửa |
 | | `Image` = **đường dẫn file** trong Supabase Storage (bucket private), không phải URL | Web nhận URL ký tạm 1 giờ |
@@ -76,6 +81,9 @@
 | Trigger – WorkOrderDetails là 1–N | Màn hình làm **1 checklist / 1 kế hoạch** (đúng 1 dòng detail) | ERD vẫn cho nhiều detail, chưa dùng |
 | MaintenanceTriggers không có cột tên | Tên kế hoạch hiển thị = "tên checklist · tên tòa" | Không thêm cột |
 | Lịch sử trạng thái của work order sinh tự động | `case_status_history.changed_by_id` bắt buộc → dòng "Assigned / Approved" do job ghi **đứng tên Staff lập kế hoạch** | — |
+| Không có bảng lịch trực (K02 / K05, Leader 02/11: không làm) | Case khẩn cấp báo **Staff chính** của tòa (`staff_building_assignments.is_primary`) ngay, 24/7; dự phòng sau 10 phút | Tòa không có Staff chính thì báo mọi Staff của tòa |
+| Nhật ký khẩn cấp (gọi bên thứ 3 N3, biện pháp tạm N2 / G2, cập nhật cho khách) không có bảng | Ghi thành **dòng lịch sử giữ nguyên trạng thái** (`case_status_history.reason` bắt đầu bằng loại dòng) | Bảng bên thứ 3 đầy đủ để F5 (Phần 7) |
+| Case khẩn cấp vào thẳng Approved | Dòng lịch sử đầu tiên là *Approved* do chính khách (người tạo) đứng tên, lý do "approved automatically" | `changed_by_id` bắt buộc |
 | Sửa kế hoạch đang chạy | Quay lại *Chờ duyệt* (Manager duyệt lại); thiết bị giữ nguyên thì giữ `last_due_date` nên không sinh trùng | — |
 
 ## 4. Bảng ERD chưa tạo
@@ -100,3 +108,4 @@ Tài khoản demo đăng nhập bằng **username** (`admin`, `staff`, `technici
 - 02/11 — Phần 3 (F1): `assets.retired_at`; thêm dòng bảng tra audit cho F1 (migration `AddAssetRetirementAndAuditTargets`).
 - 02/11 — Phần 4 (F3 còn lại): bảng `costs`, cột "chưa sửa xong" và nhắc SLA trên `cases` (migration `AddCostsNotFixedAndSlaReminders`).
 - 02/11 — Phần 5 (F2): 11 bảng bảo trì định kỳ + `cases.trigger_work_order_id`; cột thêm `lead_days`, `reject_reason`, `last_due_date`, `case_tasks.name/description/repair_case_id` (migration `AddPreventiveMaintenance`).
+- 02/11 — Phần 6 (F4): 11 cột khẩn cấp trên `cases` (mốc, gộp, nhắc, báo cáo sau sự cố) (migration `AddEmergencyFlow`; điền `emergency_at` cho case khẩn cấp cũ).

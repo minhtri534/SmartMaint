@@ -93,3 +93,31 @@ public sealed record UpdateTaskRequest(
 
 /// <summary>F2: every item has a result; report the preventive work order done.</summary>
 public sealed record CompleteChecklistRequest(string? Note, decimal? LaborHours, IReadOnlyList<CostLineRequest>? Parts);
+
+// ----- F4 emergency -------------------------------------------------------------------------------------------------
+
+/// <summary>K04: not an emergency after all — back to F3 with a normal urgency, who pays, and why (before a technician accepts).</summary>
+public sealed record DowngradeRequest(CasePriority Urgency, CostBearer CostBearer, string Reason);
+
+/// <summary>N5: this report is the same incident as <see cref="TargetCaseId"/> (open, same building).</summary>
+public sealed record MergeCaseRequest(long TargetCaseId, string? Note);
+
+/// <summary>What a line of the emergency log is about (N3 third party, N2 / G2 temporary measure).</summary>
+public enum EmergencyLogKind
+{
+    /// <summary>A contracted outside party was called: name, phone, when they come.</summary>
+    ThirdParty,
+
+    /// <summary>A temporary measure for the people affected (another room, a loaned device). Only written down.</summary>
+    Workaround,
+
+    /// <summary>News for the customer ("someone is on the way", "expected back at ...").</summary>
+    CustomerUpdate,
+
+    Other,
+}
+
+public sealed record EmergencyLogRequest(EmergencyLogKind Kind, string Note);
+
+/// <summary>F4 step ⑫ post-incident report (K08, optional): damage, lessons, what to do so it does not happen again.</summary>
+public sealed record IncidentReportRequest(string Damage, string Lessons, IncidentFollowUp FollowUp);

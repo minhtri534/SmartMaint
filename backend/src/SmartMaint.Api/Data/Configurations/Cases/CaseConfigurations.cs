@@ -47,6 +47,7 @@ internal sealed class CaseConfiguration : IEntityTypeConfiguration<Case>
         {
             t.HasEnumCheck<CostBearer>("cost_bearer");
             t.HasEnumCheck<HoldReason>("hold_reason");
+            t.HasEnumCheck<IncidentFollowUp>("incident_follow_up");
             t.HasCheckConstraint("ck_cases_rating_stars", "rating_stars IS NULL OR rating_stars BETWEEN 1 AND 5");
             t.HasCheckConstraint("ck_cases_estimated_completion_hours",
                 "estimated_completion_hours IS NULL OR estimated_completion_hours > 0");
@@ -68,6 +69,9 @@ internal sealed class CaseConfiguration : IEntityTypeConfiguration<Case>
         builder.Property(x => x.PartsUsed).HasMaxLength(500);
         builder.Property(x => x.RatingComment).HasMaxLength(500);
         builder.Property(x => x.NotFixedReason).HasMaxLength(500);
+        builder.Property(x => x.IncidentDamage).HasMaxLength(1000);
+        builder.Property(x => x.IncidentLessons).HasMaxLength(1000);
+        builder.Property(x => x.IncidentFollowUp).HasEnumText();
 
         builder.HasOne(x => x.Customer).WithMany().HasForeignKey(x => x.RequestingCustomerId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.Room).WithMany().HasForeignKey(x => x.RoomId).OnDelete(DeleteBehavior.Restrict);
@@ -77,12 +81,14 @@ internal sealed class CaseConfiguration : IEntityTypeConfiguration<Case>
         builder.HasOne(x => x.Staff).WithMany().HasForeignKey(x => x.StaffId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.Technician).WithMany().HasForeignKey(x => x.AssignedTechnicianId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.TriggerWorkOrder).WithMany().HasForeignKey(x => x.TriggerWorkOrderId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.MergedInto).WithMany().HasForeignKey(x => x.MergedIntoCaseId).OnDelete(DeleteBehavior.Restrict);
         builder.Ignore(x => x.IsPreventive);
 
         builder.HasIndex(x => x.RequestingCustomerId);
         builder.HasIndex(x => x.AssignedTechnicianId);
         builder.HasIndex(x => x.RoomId);
         builder.HasIndex(x => x.SubmittedAt);
+        builder.HasIndex(x => x.MergedIntoCaseId);
     }
 }
 

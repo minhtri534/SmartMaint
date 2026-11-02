@@ -1437,3 +1437,122 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102083411_AddEmergencyFlow') THEN
+    ALTER TABLE cases ADD accept_reminded_at timestamp with time zone;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102083411_AddEmergencyFlow') THEN
+    ALTER TABLE cases ADD acknowledged_at timestamp with time zone;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102083411_AddEmergencyFlow') THEN
+    ALTER TABLE cases ADD backup_alerted_at timestamp with time zone;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102083411_AddEmergencyFlow') THEN
+    ALTER TABLE cases ADD emergency_at timestamp with time zone;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102083411_AddEmergencyFlow') THEN
+    ALTER TABLE cases ADD incident_damage character varying(1000);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102083411_AddEmergencyFlow') THEN
+    ALTER TABLE cases ADD incident_follow_up character varying(32);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102083411_AddEmergencyFlow') THEN
+    ALTER TABLE cases ADD incident_lessons character varying(1000);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102083411_AddEmergencyFlow') THEN
+    ALTER TABLE cases ADD incident_reported_at timestamp with time zone;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102083411_AddEmergencyFlow') THEN
+    ALTER TABLE cases ADD made_safe_at timestamp with time zone;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102083411_AddEmergencyFlow') THEN
+    ALTER TABLE cases ADD manager_alerted_at timestamp with time zone;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102083411_AddEmergencyFlow') THEN
+    ALTER TABLE cases ADD merged_into_case_id bigint;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102083411_AddEmergencyFlow') THEN
+    CREATE INDEX ix_cases_merged_into_case_id ON cases (merged_into_case_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102083411_AddEmergencyFlow') THEN
+    ALTER TABLE cases ADD CONSTRAINT ck_cases_incident_follow_up CHECK (incident_follow_up IN ('none', 'preventive_plan', 'replacement_review'));
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102083411_AddEmergencyFlow') THEN
+    ALTER TABLE cases ADD CONSTRAINT fk_cases_cases_merged_into_case_id FOREIGN KEY (merged_into_case_id) REFERENCES cases (id) ON DELETE RESTRICT;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102083411_AddEmergencyFlow') THEN
+    UPDATE cases SET emergency_at = submitted_at, acknowledged_at = submitted_at
+    WHERE emergency_at IS NULL
+      AND priority_level_id = (SELECT id FROM priority_levels WHERE code = 'emergency')
+      AND status_id <> (SELECT id FROM case_statuses WHERE name = 'pending');
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102083411_AddEmergencyFlow') THEN
+    INSERT INTO __ef_migrations_history (migration_id, product_version)
+    VALUES ('20261102083411_AddEmergencyFlow', '10.0.13');
+    END IF;
+END $EF$;
+COMMIT;
+

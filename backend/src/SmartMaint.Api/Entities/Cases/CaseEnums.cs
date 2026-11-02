@@ -50,3 +50,15 @@ public enum CaseImageKind
     Before,
     After,
 }
+
+/// <summary>F4 step ⑫: what the post-incident report proposes so it does not happen again.</summary>
+public enum IncidentFollowUp
+{
+    None,
+
+    /// <summary>Make a preventive maintenance plan (F2).</summary>
+    PreventivePlan,
+
+    /// <summary>Consider replacing the asset (F5).</summary>
+    ReplacementReview,
+}

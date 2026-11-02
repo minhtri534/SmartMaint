@@ -572,6 +572,14 @@ namespace SmartMaint.Api.Data.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
 
+                    b.Property<DateTimeOffset?>("AcceptRemindedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("accept_reminded_at");
+
+                    b.Property<DateTimeOffset?>("AcknowledgedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("acknowledged_at");
+
                     b.Property<decimal?>("ActualCompletionHours")
                         .HasPrecision(6, 2)
                         .HasColumnType("numeric(6,2)")
@@ -584,6 +592,10 @@ namespace SmartMaint.Api.Data.Migrations
                     b.Property<long?>("AssignedTechnicianId")
                         .HasColumnType("bigint")
                         .HasColumnName("assigned_technician_id");
+
+                    b.Property<DateTimeOffset?>("BackupAlertedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("backup_alerted_at");
 
                     b.Property<long>("CategoryId")
                         .HasColumnType("bigint")
@@ -619,6 +631,10 @@ namespace SmartMaint.Api.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("due_at");
 
+                    b.Property<DateTimeOffset?>("EmergencyAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("emergency_at");
+
                     b.Property<decimal?>("EstimatedCompletionHours")
                         .HasPrecision(6, 2)
                         .HasColumnType("numeric(6,2)")
@@ -632,6 +648,37 @@ namespace SmartMaint.Api.Data.Migrations
                     b.Property<DateOnly?>("HoldUntil")
                         .HasColumnType("date")
                         .HasColumnName("hold_until");
+
+                    b.Property<string>("IncidentDamage")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("incident_damage");
+
+                    b.Property<string>("IncidentFollowUp")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("incident_follow_up");
+
+                    b.Property<string>("IncidentLessons")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("incident_lessons");
+
+                    b.Property<DateTimeOffset?>("IncidentReportedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("incident_reported_at");
+
+                    b.Property<DateTimeOffset?>("MadeSafeAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("made_safe_at");
+
+                    b.Property<DateTimeOffset?>("ManagerAlertedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("manager_alerted_at");
+
+                    b.Property<long?>("MergedIntoCaseId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("merged_into_case_id");
 
                     b.Property<DateTimeOffset?>("NotFixedAt")
                         .HasColumnType("timestamp with time zone")
@@ -733,6 +780,9 @@ namespace SmartMaint.Api.Data.Migrations
                     b.HasIndex("CategoryId")
                         .HasDatabaseName("ix_cases_category_id");
 
+                    b.HasIndex("MergedIntoCaseId")
+                        .HasDatabaseName("ix_cases_merged_into_case_id");
+
                     b.HasIndex("PriorityLevelId")
                         .HasDatabaseName("ix_cases_priority_level_id");
 
@@ -763,6 +813,8 @@ namespace SmartMaint.Api.Data.Migrations
                             t.HasCheckConstraint("ck_cases_estimated_completion_hours", "estimated_completion_hours IS NULL OR estimated_completion_hours > 0");
 
                             t.HasCheckConstraint("ck_cases_hold_reason", "hold_reason IN ('waiting_parts', 'waiting_customer', 'waiting_staff_decision', 'waiting_third_party')");
+
+                            t.HasCheckConstraint("ck_cases_incident_follow_up", "incident_follow_up IN ('none', 'preventive_plan', 'replacement_review')");
 
                             t.HasCheckConstraint("ck_cases_rating_stars", "rating_stars IS NULL OR rating_stars BETWEEN 1 AND 5");
                         });
@@ -2300,6 +2352,12 @@ namespace SmartMaint.Api.Data.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_cases_case_categories_category_id");
 
+                    b.HasOne("SmartMaint.Api.Entities.Cases.Case", "MergedInto")
+                        .WithMany()
+                        .HasForeignKey("MergedIntoCaseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_cases_cases_merged_into_case_id");
+
                     b.HasOne("SmartMaint.Api.Entities.Cases.PriorityLevel", "Priority")
                         .WithMany()
                         .HasForeignKey("PriorityLevelId")
@@ -2344,6 +2402,8 @@ namespace SmartMaint.Api.Data.Migrations
                     b.Navigation("Category");
 
                     b.Navigation("Customer");
+
+                    b.Navigation("MergedInto");
 
                     b.Navigation("Priority");
 

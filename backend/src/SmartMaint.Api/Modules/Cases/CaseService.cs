@@ -11,7 +11,7 @@ using SmartMaint.Api.Modules.Notifications;
 
 namespace SmartMaint.Api.Modules.Cases;
 
-internal sealed class CaseService(
+internal sealed partial class CaseService(
     AppDbContext db,
     ICurrentUser currentUser,
     IFileStorage storage,
@@ -72,7 +72,9 @@ internal sealed class CaseService(
             [.. c.Images.Select(i => i.Image), .. c.Tasks.SelectMany(t => t.Images).Select(i => i.Image)], cancellationToken);
         // Costs: staff, managers and the technician; the customer only when the customer pays.
         var showCosts = scope.Role != UserRole.Customer || c.CostBearer == CostBearer.Customer;
-        return CaseMapper.ToDetail(c, AllowedActions(c, scope, clock.GetUtcNow()), photoUrls, showCosts);
+        var mergedCaseIds = await db.Cases.Where(x => x.MergedIntoCaseId == c.Id).OrderBy(x => x.Id).Select(x => x.Id)
+            .ToListAsync(cancellationToken);
+        return CaseMapper.ToDetail(c, AllowedActions(c, scope, clock.GetUtcNow()), photoUrls, showCosts, mergedCaseIds);
     }
 
     // ----- create -----------------------------------------------------------------------------------------------
@@ -124,28 +126,43 @@ internal sealed class CaseService(
             CategoryId = category.Id,
             Title = request.Title.Trim(),
             Description = request.Description.Trim(),
-            Status = CaseStatus.Pending,
+            // F4 page 1 ①: an emergency skips Pending, the system approves it and starts the 24/7 clock.
+            Status = category.IsEmergency ? CaseStatus.Approved : CaseStatus.Pending,
             PriorityLevelId = priority.Id,
             CostBearer = category.DefaultCostBearer,
             SubmittedAt = now,
         };
+        if (category.IsEmergency)
+        {
+            EnterEmergency(c, priority, now, acknowledged: false);
+        }
+
         await AddPhotosAsync(c, CaseImageKind.Report, photos, cancellationToken);
         c.History.Add(new CaseStatusHistory
         {
-            NewStatus = CaseStatus.Pending,
+            NewStatus = c.Status,
             ChangedById = currentUser.Id,
             ChangedAt = now,
-            Reason = category.IsEmergency ? "Emergency service type, handed over to F4." : null,
+            Reason = category.IsEmergency ? "Emergency service type: approved automatically, handled by F4." : null,
         });
 
         db.Cases.Add(c);
         await db.SaveChangesAsync(cancellationToken);
 
-        // 5.4.2: every staff member of the building (N11). The code exists only after the first save.
-        var kind = category.IsEmergency ? "Emergency request" : "New request";
-        notifications.Send(
-            await StaffOfBuildingAsync(room.Floor.BuildingId, cancellationToken),
-            $"{kind} {Case.CodeOf(c.Id)} \"{c.Title}\" in {room.Floor.DisplayName}, {room.RoomNumber}.");
+        // The code exists only after the first save.
+        var where = $"{room.Floor.DisplayName}, {room.RoomNumber}";
+        if (category.IsEmergency)
+        {
+            await NotifyNewEmergencyAsync(c, room.Floor.BuildingId, where, cancellationToken);
+        }
+        else
+        {
+            // 5.4.2: every staff member of the building (N11).
+            notifications.Send(
+                await StaffOfBuildingAsync(room.Floor.BuildingId, cancellationToken),
+                $"New request {Case.CodeOf(c.Id)} \"{c.Title}\" in {where}.");
+        }
+
         await db.SaveChangesAsync(cancellationToken);
         return await GetAsync(c.Id, cancellationToken);
     }
@@ -156,14 +173,21 @@ internal sealed class CaseService(
         ActAsync(id, CaseAction.Cancel, (_, _) => Task.FromResult<string?>(request.Reason.Trim()), cancellationToken);
 
     public Task<CaseDetailResponse> ApproveAsync(long id, ApproveCaseRequest request, CancellationToken cancellationToken) =>
-        ActAsync(id, CaseAction.Approve, async (c, _) =>
+        ActAsync(id, CaseAction.Approve, async (c, now) =>
         {
             var priority = await db.PriorityLevels.SingleAsync(p => p.Code == request.Urgency, cancellationToken);
             c.PriorityLevelId = priority.Id;
             c.Priority = priority;
             c.CostBearer = request.CostBearer;
             c.StaffId ??= currentUser.Id;
-            return request.Urgency == CasePriority.Emergency ? "Escalated to Emergency, handed over to F4." : null;
+            if (request.Urgency != CasePriority.Emergency)
+            {
+                return null;
+            }
+
+            // F3 page 1: the staff member decides it is an emergency → F4, already acknowledged (it is their decision).
+            EnterEmergency(c, priority, now, acknowledged: true);
+            return "Escalated to Emergency, handed over to F4.";
         }, cancellationToken);
 
     public Task<CaseDetailResponse> RejectAsync(long id, RejectCaseRequest request, CancellationToken cancellationToken) =>
@@ -181,6 +205,7 @@ internal sealed class CaseService(
                 ?? throw CaseErrors.InvalidTechnician();
 
             c.AssignedTechnicianId = technician.Id;
+            c.AcceptRemindedAt = null;
             c.Technician = technician;
             // The ERD keeps only the last technician on the case, so the history row says who got it.
             return $"Assigned to {technician.FullName}.";
@@ -284,6 +309,7 @@ internal sealed class CaseService(
 
             // BR-07: a repair case from the failed item — F3 at Approved for the staff to assign, F4 when dangerous.
             var urgency = request.Dangerous ? CasePriority.Emergency : CasePriority.Normal;
+            var priority = await db.PriorityLevels.SingleAsync(p => p.Code == urgency, cancellationToken);
             var repair = new Case
             {
                 RoomId = c.RoomId,
@@ -292,11 +318,16 @@ internal sealed class CaseService(
                 Title = $"Repair: {task.Name}",
                 Description = $"{request.Note?.Trim()}\nFound during preventive work order {Case.CodeOf(c.Id)}.",
                 Status = CaseStatus.Approved,
-                PriorityLevelId = (await db.PriorityLevels.SingleAsync(p => p.Code == urgency, cancellationToken)).Id,
+                PriorityLevelId = priority.Id,
                 CostBearer = CostBearer.Building,
                 StaffId = c.StaffId,
                 SubmittedAt = now,
             };
+            if (request.Dangerous)
+            {
+                // The staff still has to acknowledge it: the watch job escalates if nobody does.
+                EnterEmergency(repair, priority, now, acknowledged: false);
+            }
             repair.History.Add(new CaseStatusHistory
             {
                 NewStatus = CaseStatus.Approved,
@@ -348,17 +379,18 @@ internal sealed class CaseService(
         }, cancellationToken);
 
     public Task<CaseDetailResponse> ReopenAsync(long id, ReasonRequest request, CancellationToken cancellationToken) =>
-        ActAsync(id, CaseAction.Reopen, (c, _) =>
+        ActAsync(id, CaseAction.Reopen, (c, now) =>
         {
-            ClearForReopen(c);
+            ClearForReopen(c, now);
             return Task.FromResult<string?>(request.Reason.Trim());
         }, cancellationToken);
 
     /// <summary>
     /// BR-04: by default the same technician (still on the case) gets it back and must accept again.
     /// The SLA starts over with the next "start"; the old times stay in the status history.
+    /// An emergency keeps counting 24/7: its clock restarts now (F4 page 4, back to step ⑦).
     /// </summary>
-    private static void ClearForReopen(Case c)
+    private static void ClearForReopen(Case c, DateTimeOffset now)
     {
         c.StartedAt = null;
         c.DueAt = null;
@@ -368,6 +400,12 @@ internal sealed class CaseService(
         c.NotFixedAt = null;
         c.SlaWarnedAt = null;
         c.SlaOverdueNotifiedAt = null;
+        c.AcceptRemindedAt = null;
+        if (c.EmergencyAt is not null)
+        {
+            c.MadeSafeAt = null;
+            EnterEmergency(c, c.Priority, now, acknowledged: true);
+        }
     }
 
     private static Cost ToCost(CostLineRequest line) =>
@@ -388,13 +426,14 @@ internal sealed class CaseService(
 
             var previous = c.Technician?.FullName ?? "nobody";
             c.AssignedTechnicianId = technician.Id;
+            c.AcceptRemindedAt = null;
             c.Technician = technician;
             // The SLA clock keeps running: StartedAt / DueAt stay (Start does not reset them).
             return $"Reassigned from {previous} to {technician.FullName}: {request.Reason.Trim()}";
         }, cancellationToken);
 
     public Task<CaseDetailResponse> ChangeUrgencyAsync(long id, ChangeUrgencyRequest request, CancellationToken cancellationToken) =>
-        ActAsync(id, CaseAction.ChangeUrgency, async (c, _) =>
+        ActAsync(id, CaseAction.ChangeUrgency, async (c, now) =>
         {
             if (c.Priority.Code == request.Urgency)
             {
@@ -405,7 +444,12 @@ internal sealed class CaseService(
             var priority = await db.PriorityLevels.SingleAsync(p => p.Code == request.Urgency, cancellationToken);
             c.PriorityLevelId = priority.Id;
             c.Priority = priority;
-            if (c.StartedAt is { } started)
+            if (request.Urgency == CasePriority.Emergency)
+            {
+                // F4 counts 24/7 from now, not from the start of work.
+                EnterEmergency(c, priority, now, acknowledged: true);
+            }
+            else if (c.StartedAt is { } started)
             {
                 // O08: the deadline follows the new level, counted from the start of work.
                 c.DueAt = started.AddHours(priority.SlaHours);
@@ -442,10 +486,10 @@ internal sealed class CaseService(
         }, cancellationToken);
 
     public Task<CaseDetailResponse> AcceptNotFixedAsync(long id, CancellationToken cancellationToken) =>
-        ActAsync(id, CaseAction.AcceptNotFixed, (c, _) =>
+        ActAsync(id, CaseAction.AcceptNotFixed, (c, now) =>
         {
             var reason = $"Not-fixed report accepted: {c.NotFixedReason}";
-            ClearForReopen(c);
+            ClearForReopen(c, now);
             return Task.FromResult<string?>(reason);
         }, cancellationToken);
 
@@ -540,7 +584,9 @@ internal sealed class CaseService(
                 notifications.Send(customer, $"{code} \"{c.Title}\" was rejected. {reason}");
                 break;
             case CaseAction.Assign:
-                notifications.Send(technician, $"{code} \"{c.Title}\" was assigned to you.");
+                notifications.Send(technician, CaseMapper.IsEmergencyFlow(c)
+                    ? $"EMERGENCY {code} \"{c.Title}\" in {c.Room.Floor.DisplayName}, {c.Room.RoomNumber} was assigned to you. Accept it now."
+                    : $"{code} \"{c.Title}\" was assigned to you.");
                 break;
             case CaseAction.Accept:
                 // 5.4.2: the staff member who assigned it (the last "assigned" row of the history).
@@ -561,6 +607,7 @@ internal sealed class CaseService(
                 break;
             case CaseAction.Close:
                 notifications.Send(customer, $"{code} \"{c.Title}\" was closed. Please rate the repair.");
+                await NotifyEmergencyClosedAsync(c, staffOfBuilding, cancellationToken);
                 break;
             case CaseAction.Reopen or CaseAction.AcceptNotFixed:
                 notifications.Send([.. technician, .. customer], $"{code} \"{c.Title}\" was reopened: {reason}");
@@ -582,6 +629,9 @@ internal sealed class CaseService(
                 long[] involved = [.. customer, .. (c.StaffId is { } staffId ? new[] { staffId } : []), .. (technicianBefore is { } t ? new[] { t } : [])];
                 notifications.Send(involved, $"{code} \"{c.Title}\" was cancelled: {reason}");
                 break;
+            default:
+                NotifyEmergency(c, action, reason, technicianBefore, staffOfBuilding);
+                break;
         }
     }
 
@@ -602,12 +652,7 @@ internal sealed class CaseService(
             return false;
         }
 
-        // Emergency cases belong to F4 (Tùng); F3 offers no action on them.
-        if (CaseMapper.IsEmergencyFlow(c))
-        {
-            return false;
-        }
-
+        var emergency = CaseMapper.IsEmergencyFlow(c);
         var involved = scope.Role switch
         {
             UserRole.Customer => c.RequestingCustomerId == scope.UserId,
@@ -632,6 +677,12 @@ internal sealed class CaseService(
             CaseAction.ReportNotFixed => c.NotFixedAt is null && c.ClosedAt is { } closedAt && now - closedAt <= ReopenWindow,
             CaseAction.AcceptNotFixed or CaseAction.DeclineNotFixed => c.NotFixedAt is not null,
             CaseAction.Reopen when c.Status == CaseStatus.Closed => c.ClosedAt is { } closed && now - closed <= ReopenWindow,
+            // F4: an emergency leaves its level only through "downgrade" (K04), which needs a cost bearer.
+            CaseAction.ChangeUrgency => !emergency,
+            CaseAction.Acknowledge => emergency && c.AcknowledgedAt is null,
+            CaseAction.Downgrade or CaseAction.Merge or CaseAction.AddLog => emergency,
+            CaseAction.MarkSafe => emergency && c.MadeSafeAt is null,
+            CaseAction.WriteIncidentReport => emergency && c.EmergencyAt is not null,
             _ => true,
         };
     }

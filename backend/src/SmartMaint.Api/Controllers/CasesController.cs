@@ -158,6 +158,44 @@ public sealed class CasesController(ICaseService cases) : ControllerBase
     public Task<CaseDetailResponse> CompleteChecklist(long id, CompleteChecklistRequest request, CancellationToken cancellationToken) =>
         cases.CompleteChecklistAsync(id, request, cancellationToken);
 
+    // ----- F4 emergency -----
+
+    /// <summary>F4 step ②: first response.</summary>
+    [HttpPost("{id:long}/acknowledge")]
+    [AuthorizeRoles(UserRole.Staff)]
+    public Task<CaseDetailResponse> Acknowledge(long id, CancellationToken cancellationToken) =>
+        cases.AcknowledgeAsync(id, cancellationToken);
+
+    /// <summary>K04: not an emergency, back to F3.</summary>
+    [HttpPost("{id:long}/downgrade")]
+    [AuthorizeRoles(UserRole.Staff)]
+    public Task<CaseDetailResponse> Downgrade(long id, DowngradeRequest request, CancellationToken cancellationToken) =>
+        cases.DowngradeAsync(id, request, cancellationToken);
+
+    /// <summary>N5: merge into the case of the same incident.</summary>
+    [HttpPost("{id:long}/merge")]
+    [AuthorizeRoles(UserRole.Staff)]
+    public Task<CaseDetailResponse> Merge(long id, MergeCaseRequest request, CancellationToken cancellationToken) =>
+        cases.MergeAsync(id, request, cancellationToken);
+
+    /// <summary>Emergency log line (third party, temporary measure, customer update).</summary>
+    [HttpPost("{id:long}/log")]
+    [AuthorizeRoles(UserRole.Staff)]
+    public Task<CaseDetailResponse> AddLog(long id, EmergencyLogRequest request, CancellationToken cancellationToken) =>
+        cases.AddLogAsync(id, request, cancellationToken);
+
+    /// <summary>K06: the danger is under control.</summary>
+    [HttpPost("{id:long}/made-safe")]
+    [AuthorizeRoles(UserRole.Technician)]
+    public Task<CaseDetailResponse> MarkSafe(long id, CancellationToken cancellationToken) =>
+        cases.MarkSafeAsync(id, cancellationToken);
+
+    /// <summary>K08: post-incident report of a closed emergency.</summary>
+    [HttpPut("{id:long}/incident-report")]
+    [AuthorizeRoles(UserRole.Staff)]
+    public Task<CaseDetailResponse> WriteIncidentReport(long id, IncidentReportRequest request, CancellationToken cancellationToken) =>
+        cases.WriteIncidentReportAsync(id, request, cancellationToken);
+
     [HttpPut("{id:long}/costs")]
     [AuthorizeRoles(UserRole.Staff)]
     public Task<CaseDetailResponse> UpdateCosts(long id, UpdateCostsRequest request, CancellationToken cancellationToken) =>

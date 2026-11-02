@@ -32,6 +32,14 @@ public enum CaseAction
     // Part 5 (F2): preventive work orders
     UpdateTask,
     CompleteChecklist,
+
+    // Part 6 (F4): emergency
+    Acknowledge,
+    Downgrade,
+    Merge,
+    AddLog,
+    MarkSafe,
+    WriteIncidentReport,
 }
 
 /// <summary>One arrow of the F3 state machine (docs/flows/F3_Su_Co_Thong_Thuong/F3_Trang5.png): who, from where, to where.</summary>
@@ -95,6 +103,15 @@ internal static class CaseTransitions
         // F2: the technician marks checklist items, then reports the preventive work order done
         new(CaseAction.UpdateTask, UserRole.Technician, [CaseStatus.InProgress], null),
         new(CaseAction.CompleteChecklist, UserRole.Technician, [CaseStatus.InProgress], CaseStatus.Completed),
+
+        // F4 (docs/flows/F4_Khan_Cap/F4_Trang5.png): an emergency starts at Approved (no Pending, no Rejected) and then
+        // uses the arrows above. These are the extra steps; CaseService.IsAllowed keeps them to emergency cases.
+        new(CaseAction.Acknowledge, UserRole.Staff, Handling, null),
+        new(CaseAction.Downgrade, UserRole.Staff, [CaseStatus.Approved, CaseStatus.Assigned], null),
+        new(CaseAction.Merge, UserRole.Staff, [CaseStatus.Approved, CaseStatus.Assigned], CaseStatus.Cancelled),
+        new(CaseAction.AddLog, UserRole.Staff, [.. Handling, CaseStatus.Completed], null),
+        new(CaseAction.MarkSafe, UserRole.Technician, [CaseStatus.InProgress, CaseStatus.OnHold], null),
+        new(CaseAction.WriteIncidentReport, UserRole.Staff, [CaseStatus.Closed], null),
     ];
 
     public static TransitionRule? Find(CaseAction action, UserRole role, CaseStatus status) =>

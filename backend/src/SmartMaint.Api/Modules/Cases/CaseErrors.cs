@@ -43,4 +43,8 @@ internal static class CaseErrors
 
     public static AppException InvalidTechnician() =>
         new(ErrorKind.BadRequest, "case.invalid_technician", "Choose an active technician.");
+
+    public static AppException InvalidMergeTarget() =>
+        new(ErrorKind.BadRequest, "case.invalid_merge_target",
+            "Merge into another open incident of the same building that is not merged itself.");
 }

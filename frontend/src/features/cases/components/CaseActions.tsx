@@ -9,8 +9,12 @@ import { AssignDialog } from './dialogs/AssignDialog'
 import { CompleteChecklistDialog } from './dialogs/CompleteChecklistDialog'
 import { CompleteWorkDialog } from './dialogs/CompleteWorkDialog'
 import { CostsDialog } from './dialogs/CostsDialog'
+import { DowngradeDialog } from './dialogs/DowngradeDialog'
+import { EmergencyLogDialog } from './dialogs/EmergencyLogDialog'
 import { ExtendDueDialog } from './dialogs/ExtendDueDialog'
 import { HoldDialog } from './dialogs/HoldDialog'
+import { IncidentReportDialog } from './dialogs/IncidentReportDialog'
+import { MergeDialog } from './dialogs/MergeDialog'
 import { RateDialog } from './dialogs/RateDialog'
 import { ReassignDialog } from './dialogs/ReassignDialog'
 import { ReasonDialog } from './dialogs/ReasonDialog'
@@ -47,6 +51,13 @@ const BUTTONS: Record<CaseAction, { label: string; variant: 'primary' | 'seconda
     // Part 5: F2 checklist. "update_task" is pressed per item in the checklist card, not here.
     update_task: { label: 'Update checklist', variant: 'secondary' },
     complete_checklist: { label: 'Report maintenance done', variant: 'primary' },
+    // Part 6: F4 emergency
+    merge: { label: 'Merge', variant: 'secondary' },
+    downgrade: { label: 'Not an emergency', variant: 'secondary' },
+    add_log: { label: 'Add to log', variant: 'secondary' },
+    mark_safe: { label: 'Made safe', variant: 'secondary' },
+    write_incident_report: { label: 'Post-incident report', variant: 'secondary' },
+    acknowledge: { label: 'Acknowledge', variant: 'primary' },
   }
 const ORDER: CaseAction[] = (Object.keys(BUTTONS) as CaseAction[]).filter(
   (a) => a !== 'update_task',
@@ -64,6 +75,8 @@ export function CaseActions({ caseDetail }: { caseDetail: CaseDetail }) {
   const resume = useCaseMutation(casesApi.resume)
   const close = useCaseMutation(casesApi.close)
   const acceptNotFixed = useCaseMutation(casesApi.acceptNotFixed)
+  const acknowledge = useCaseMutation(casesApi.acknowledge)
+  const markSafe = useCaseMutation(casesApi.markSafe)
 
   const actions = caseDetail.allowedActions.filter((a) => ORDER.includes(a))
   if (actions.length === 0) return null
@@ -75,13 +88,18 @@ export function CaseActions({ caseDetail }: { caseDetail: CaseDetail }) {
     accept: () => accept.mutate({ id }),
     start: () => start.mutate({ id }),
     resume: () => resume.mutate({ id }),
+    acknowledge: () => acknowledge.mutate({ id }),
+    mark_safe: () => markSafe.mutate({ id }),
   }
   const pending: Partial<Record<CaseAction, boolean>> = {
     accept: accept.isPending,
     start: start.isPending,
     resume: resume.isPending,
+    acknowledge: acknowledge.isPending,
+    mark_safe: markSafe.isPending,
   }
-  const directError = accept.error ?? start.error ?? resume.error
+  const directError =
+    accept.error ?? start.error ?? resume.error ?? acknowledge.error ?? markSafe.error
   const label = (action: CaseAction) =>
     action === 'resume' && user?.role === 'staff'
       ? 'Let technician continue'
@@ -93,7 +111,12 @@ export function CaseActions({ caseDetail }: { caseDetail: CaseDetail }) {
         {ORDER.filter((a) => actions.includes(a)).map((action) => (
           <Button
             key={action}
-            variant={BUTTONS[action].variant}
+            variant={
+              // One primary at a time: an unacknowledged emergency is acknowledged first.
+              action === 'assign' && actions.includes('acknowledge')
+                ? 'secondary'
+                : BUTTONS[action].variant
+            }
             loading={pending[action]}
             onClick={direct[action] ?? (() => setOpen(action))}
           >
@@ -152,6 +175,14 @@ export function CaseActions({ caseDetail }: { caseDetail: CaseDetail }) {
       <UrgencyDialog caseDetail={caseDetail} open={open === 'change_urgency'} onClose={onClose} />
       <ExtendDueDialog caseDetail={caseDetail} open={open === 'extend_due'} onClose={onClose} />
       <CostsDialog caseDetail={caseDetail} open={open === 'update_costs'} onClose={onClose} />
+      <DowngradeDialog caseDetail={caseDetail} open={open === 'downgrade'} onClose={onClose} />
+      <MergeDialog caseDetail={caseDetail} open={open === 'merge'} onClose={onClose} />
+      <EmergencyLogDialog caseId={id} open={open === 'add_log'} onClose={onClose} />
+      <IncidentReportDialog
+        caseDetail={caseDetail}
+        open={open === 'write_incident_report'}
+        onClose={onClose}
+      />
       <ReasonDialog
         caseId={id}
         open={open === 'report_not_fixed'}

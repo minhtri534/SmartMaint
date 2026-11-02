@@ -140,6 +140,36 @@ export const completeChecklistSchema = z.object({
 })
 export type CompleteChecklistFormValues = z.infer<typeof completeChecklistSchema>
 
+/** F4 K04: back to F3. */
+export const downgradeSchema = z.object({
+  urgency: z.enum(['high', 'normal', 'low']),
+  costBearer: z.enum(COST_BEARERS),
+  reason: z.string().trim().min(10, 'At least 10 characters.').max(500),
+})
+export type DowngradeFormValues = z.infer<typeof downgradeSchema>
+
+/** F4 N5: the case of the same incident. */
+export const mergeSchema = z.object({
+  targetCaseId: requiredId('Choose the case of the same incident.'),
+  note: z.string().trim().max(500),
+})
+export type MergeFormValues = z.infer<typeof mergeSchema>
+
+/** F4 emergency log line. */
+export const emergencyLogSchema = z.object({
+  kind: z.enum(['third_party', 'workaround', 'customer_update', 'other']),
+  note: z.string().trim().min(5, 'At least 5 characters.').max(500),
+})
+export type EmergencyLogFormValues = z.infer<typeof emergencyLogSchema>
+
+/** F4 step ⑫ post-incident report. */
+export const incidentReportSchema = z.object({
+  damage: z.string().trim().min(10, 'At least 10 characters.').max(1000),
+  lessons: z.string().trim().min(10, 'At least 10 characters.').max(1000),
+  followUp: z.enum(['none', 'preventive_plan', 'replacement_review']),
+})
+export type IncidentReportFormValues = z.infer<typeof incidentReportSchema>
+
 /** Staff corrects the cost lines before closing. */
 export const costsSchema = z.object({ lines: z.array(costLineSchema).max(20) })
 export type CostsFormValues = z.infer<typeof costsSchema>

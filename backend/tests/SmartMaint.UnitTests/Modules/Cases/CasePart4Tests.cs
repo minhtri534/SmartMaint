@@ -91,7 +91,8 @@ public sealed class CasePart4Tests : CaseTestBase
         var result = await Sut.ChangeUrgencyAsync(id, new ChangeUrgencyRequest(CasePriority.Emergency, "Sparks from the socket"), default);
 
         Assert.True(result.IsEmergencyFlow);
-        Assert.Empty(result.AllowedActions);
+        Assert.Equal(Clock.Now.AddHours(2), result.DueAt); // 24/7 from now, not from the start of work
+        Assert.Contains(CaseAction.Downgrade, result.AllowedActions);
     }
 
     // ----- Extend the deadline -----

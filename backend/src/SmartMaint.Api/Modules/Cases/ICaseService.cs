@@ -73,4 +73,24 @@ public interface ICaseService
 
     /// <summary>F2: every item has a result -> Completed (the staff verify as in F3).</summary>
     Task<CaseDetailResponse> CompleteChecklistAsync(long id, CompleteChecklistRequest request, CancellationToken cancellationToken);
+
+    // ----- F4 emergency ---------------------------------------------------------------------------------------------
+
+    /// <summary>Staff, F4 step ②: first response; stops the escalation to the backup staff and the manager.</summary>
+    Task<CaseDetailResponse> AcknowledgeAsync(long id, CancellationToken cancellationToken);
+
+    /// <summary>Staff, K04: not an emergency — back to F3 with an urgency, who pays and why (before a technician accepts).</summary>
+    Task<CaseDetailResponse> DowngradeAsync(long id, DowngradeRequest request, CancellationToken cancellationToken);
+
+    /// <summary>Staff, N5: same incident as another open case of the building; this one is closed as merged.</summary>
+    Task<CaseDetailResponse> MergeAsync(long id, MergeCaseRequest request, CancellationToken cancellationToken);
+
+    /// <summary>Staff: a line of the emergency log (third party called, temporary measure, news for the customer).</summary>
+    Task<CaseDetailResponse> AddLogAsync(long id, EmergencyLogRequest request, CancellationToken cancellationToken);
+
+    /// <summary>Technician, K06: the danger is under control (first milestone).</summary>
+    Task<CaseDetailResponse> MarkSafeAsync(long id, CancellationToken cancellationToken);
+
+    /// <summary>Staff, K08: optional post-incident report of a closed emergency.</summary>
+    Task<CaseDetailResponse> WriteIncidentReportAsync(long id, IncidentReportRequest request, CancellationToken cancellationToken);
 }

@@ -62,7 +62,8 @@ public record CaseSummaryResponse(
     DateTimeOffset? SlaStartedAt,
     DateTimeOffset? CompletedAt,
     bool IsEmergencyFlow,
-    bool IsPreventive);
+    bool IsPreventive,
+    EmergencyResponse? Emergency);
 
 /// <summary>
 /// A whole case. <see cref="AllowedActions"/> is computed by the server for the caller (state machine + their role
@@ -85,6 +86,7 @@ public sealed record CaseDetailResponse(
     DateTimeOffset? CompletedAt,
     bool IsEmergencyFlow,
     bool IsPreventive,
+    EmergencyResponse? Emergency,
     string Description,
     long ServiceTypeId,
     AssetResponse? Asset,
@@ -100,7 +102,22 @@ public sealed record CaseDetailResponse(
     NotFixedResponse? NotFixed,
     long? PlanId,
     IReadOnlyList<CaseTaskResponse> Tasks,
+    IReadOnlyList<CaseRefResponse> MergedCases,
+    IncidentReportResponse? IncidentReport,
     IReadOnlyList<CaseAction> AllowedActions)
     : CaseSummaryResponse(
         Id, Code, Title, Status, Urgency, ServiceTypeName, Location, Requester, Staff, Technician,
-        SubmittedAt, DueAt, SlaStartedAt, CompletedAt, IsEmergencyFlow, IsPreventive);
+        SubmittedAt, DueAt, SlaStartedAt, CompletedAt, IsEmergencyFlow, IsPreventive, Emergency);
+
+/// <summary>A link to another case.</summary>
+public sealed record CaseRefResponse(long Id, string Code);
+
+/// <summary>
+/// F4: the 24/7 clock started at <see cref="StartedAt"/>; first response (acknowledged) and "made safe" are the two
+/// milestones before "fixed" (Completed). <see cref="MergedInto"/>: this report was merged into that case (N5).
+/// </summary>
+public sealed record EmergencyResponse(
+    DateTimeOffset StartedAt, DateTimeOffset? AcknowledgedAt, DateTimeOffset? MadeSafeAt, CaseRefResponse? MergedInto);
+
+/// <summary>F4 step ⑫ post-incident report.</summary>
+public sealed record IncidentReportResponse(string Damage, string Lessons, IncidentFollowUp FollowUp, DateTimeOffset ReportedAt);

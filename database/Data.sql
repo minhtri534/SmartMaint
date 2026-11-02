@@ -417,3 +417,75 @@ BEGIN
     END IF;
 END
 $$;
+
+-- ---------------------------------------------------------------------------
+-- Emergency cases  (owner: Tùng — F4)
+-- One just reported and not acknowledged yet (the watch job alerts the backup staff after 10 minutes), and one
+-- closed elevator incident with both milestones, ready for a post-incident report.
+-- ---------------------------------------------------------------------------
+DO $$
+DECLARE
+    stf   bigint := (SELECT id FROM accounts WHERE username = 'staff');
+    tech  bigint := (SELECT id FROM accounts WHERE username = 'long');
+    bao   bigint := (SELECT id FROM accounts WHERE username = 'bao');
+    cust  bigint := (SELECT id FROM accounts WHERE username = 'customer');
+    emerg record;
+    cid   bigint;
+    t0    timestamptz;
+    st    text;
+BEGIN
+    SELECT id, sla_hours INTO emerg FROM priority_levels WHERE code = 'emergency';
+
+    IF NOT EXISTS (SELECT 1 FROM cases WHERE title = 'Water pouring from a burst pipe') THEN
+        t0 := now() - interval '4 minutes';
+        INSERT INTO cases (requesting_customer_id, room_id, category_id, title, description, status_id, priority_level_id,
+                           cost_bearer, submitted_at, emergency_at, due_at)
+        SELECT bao, r.id, c.id, 'Water pouring from a burst pipe',
+               'Water is pouring from the wall behind the washbasins and spreading into the corridor.',
+               (SELECT id FROM case_statuses WHERE name = 'approved'), emerg.id, 'building', t0, t0,
+               t0 + make_interval(hours => emerg.sla_hours)
+        FROM rooms r JOIN floors f ON f.id = r.floor_id JOIN buildings b ON b.id = f.building_id,
+             case_categories c
+        WHERE b.name = 'SmartMaint Tower A' AND r.room_number = 'Restroom G'
+          AND c.group_name = 'Water' AND c.name = 'Burst pipe or flooding'
+        RETURNING id INTO cid;
+        INSERT INTO case_status_history (case_id, new_status_id, changed_by_id, reason, changed_at)
+        VALUES (cid, (SELECT id FROM case_statuses WHERE name = 'approved'), bao,
+                'Emergency service type: approved automatically, handled by F4.', t0);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM cases WHERE title = 'Two people stuck in elevator 1') THEN
+        t0 := now() - interval '30 hours';
+        INSERT INTO cases (requesting_customer_id, room_id, asset_id, category_id, title, description, status_id,
+                           priority_level_id, cost_bearer, staff_id, assigned_technician_id, submitted_at, emergency_at,
+                           acknowledged_at, started_at, made_safe_at, due_at, completed_at, closed_at,
+                           actual_completion_hours, root_cause, parts_used)
+        SELECT cust, r.id, a.id, c.id, 'Two people stuck in elevator 1',
+               'The elevator stopped between floor 3 and 4, two people inside, the alarm button works.',
+               (SELECT id FROM case_statuses WHERE name = 'closed'), emerg.id, 'building', stf, tech, t0, t0,
+               t0 + interval '3 minutes', t0 + interval '20 minutes', t0 + interval '35 minutes',
+               t0 + make_interval(hours => emerg.sla_hours), t0 + interval '90 minutes', t0 + interval '150 minutes',
+               1.25, 'Door lock sensor of floor 4 failed; the contractor replaced it (demo data)', NULL
+        FROM rooms r JOIN floors f ON f.id = r.floor_id JOIN buildings b ON b.id = f.building_id
+             JOIN assets a ON a.room_id = r.id AND a.name = 'Passenger elevator 1 (#EV-01)',
+             case_categories c
+        WHERE b.name = 'SmartMaint Tower A' AND r.room_number = 'Lobby'
+          AND c.group_name = 'Elevator' AND c.name = 'Person stuck in elevator'
+        RETURNING id INTO cid;
+
+        INSERT INTO case_status_history (case_id, new_status_id, changed_by_id, reason, changed_at)
+        SELECT cid, (SELECT id FROM case_statuses WHERE name = s.status), s.who, s.reason, t0 + s.after
+        FROM (VALUES
+            ('approved',    cust,  'Emergency service type: approved automatically, handled by F4.', interval '0 minutes'),
+            ('approved',    stf,   'Emergency acknowledged after 3 min.',                             interval '3 minutes'),
+            ('approved',    stf,   'Third party called: Elevator contractor, 0901 234 567, on site in 30 min.', interval '4 minutes'),
+            ('assigned',    stf,   'Assigned to Vo Thanh Long.',                                      interval '5 minutes'),
+            ('accepted',    tech,  NULL,                                                              interval '8 minutes'),
+            ('in_progress', tech,  NULL,                                                              interval '20 minutes'),
+            ('in_progress', tech,  'Made safe 35 min after the report.',                              interval '35 minutes'),
+            ('completed',   tech,  NULL,                                                              interval '90 minutes'),
+            ('closed',      stf,   NULL,                                                              interval '150 minutes')
+        ) AS s(status, who, reason, after);
+    END IF;
+END
+$$;
