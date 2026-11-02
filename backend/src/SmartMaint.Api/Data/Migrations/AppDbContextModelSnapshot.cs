@@ -205,6 +205,10 @@ namespace SmartMaint.Api.Data.Migrations
                         .HasColumnType("character varying(150)")
                         .HasColumnName("name");
 
+                    b.Property<DateTimeOffset?>("RetiredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("retired_at");
+
                     b.Property<long>("RoomId")
                         .HasColumnType("bigint")
                         .HasColumnName("room_id");
@@ -1339,6 +1343,21 @@ namespace SmartMaint.Api.Data.Migrations
                         {
                             Id = 8L,
                             Name = "unlock"
+                        },
+                        new
+                        {
+                            Id = 9L,
+                            Name = "delete"
+                        },
+                        new
+                        {
+                            Id = 10L,
+                            Name = "retire"
+                        },
+                        new
+                        {
+                            Id = 11L,
+                            Name = "import"
                         });
                 });
 
@@ -1373,6 +1392,51 @@ namespace SmartMaint.Api.Data.Migrations
                         {
                             Id = 2L,
                             Name = "priority_level"
+                        },
+                        new
+                        {
+                            Id = 3L,
+                            Name = "building"
+                        },
+                        new
+                        {
+                            Id = 4L,
+                            Name = "floor"
+                        },
+                        new
+                        {
+                            Id = 5L,
+                            Name = "room"
+                        },
+                        new
+                        {
+                            Id = 6L,
+                            Name = "asset"
+                        },
+                        new
+                        {
+                            Id = 7L,
+                            Name = "case_category"
+                        },
+                        new
+                        {
+                            Id = 8L,
+                            Name = "asset_category"
+                        },
+                        new
+                        {
+                            Id = 9L,
+                            Name = "asset_type"
+                        },
+                        new
+                        {
+                            Id = 10L,
+                            Name = "manufacturer"
+                        },
+                        new
+                        {
+                            Id = 11L,
+                            Name = "specialty"
                         });
                 });
 

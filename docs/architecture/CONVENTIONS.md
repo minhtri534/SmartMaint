@@ -15,6 +15,7 @@
 | Node.js | ≥ 24 | `frontend/package.json` → `engines` |
 | React / Vite / TypeScript | 19 / 8 / 7 | `frontend/package-lock.json` |
 | Router / data / form | react-router 8, TanStack Query 5, axios, react-hook-form 7 + zod 4 | như trên |
+| QR (nhãn thiết bị F1) | qrcode 1.5.4 (Leader đồng ý 02/11) | như trên |
 | CSS | Tailwind CSS 4 | như trên |
 | Font | IBM Plex Sans + Plex Mono (`@fontsource/*` 5.3, OFL) — tự host | như trên |
 

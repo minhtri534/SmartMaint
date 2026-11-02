@@ -922,3 +922,57 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102035151_AddAssetRetirementAndAuditTargets') THEN
+    ALTER TABLE assets ADD retired_at timestamp with time zone;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102035151_AddAssetRetirementAndAuditTargets') THEN
+    INSERT INTO audit_log_target_operations (id, name)
+    VALUES (9, 'delete');
+    INSERT INTO audit_log_target_operations (id, name)
+    VALUES (10, 'retire');
+    INSERT INTO audit_log_target_operations (id, name)
+    VALUES (11, 'import');
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102035151_AddAssetRetirementAndAuditTargets') THEN
+    INSERT INTO audit_log_target_types (id, name)
+    VALUES (3, 'building');
+    INSERT INTO audit_log_target_types (id, name)
+    VALUES (4, 'floor');
+    INSERT INTO audit_log_target_types (id, name)
+    VALUES (5, 'room');
+    INSERT INTO audit_log_target_types (id, name)
+    VALUES (6, 'asset');
+    INSERT INTO audit_log_target_types (id, name)
+    VALUES (7, 'case_category');
+    INSERT INTO audit_log_target_types (id, name)
+    VALUES (8, 'asset_category');
+    INSERT INTO audit_log_target_types (id, name)
+    VALUES (9, 'asset_type');
+    INSERT INTO audit_log_target_types (id, name)
+    VALUES (10, 'manufacturer');
+    INSERT INTO audit_log_target_types (id, name)
+    VALUES (11, 'specialty');
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102035151_AddAssetRetirementAndAuditTargets') THEN
+    INSERT INTO __ef_migrations_history (migration_id, product_version)
+    VALUES ('20261102035151_AddAssetRetirementAndAuditTargets', '10.0.13');
+    END IF;
+END $EF$;
+COMMIT;
+

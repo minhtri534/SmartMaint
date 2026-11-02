@@ -18,4 +18,7 @@ public interface ICatalogService
     Task<IReadOnlyList<TechnicianOptionResponse>> GetTechniciansAsync(CancellationToken cancellationToken);
 
     Task<IReadOnlyList<SpecialtyOptionResponse>> GetSpecialtiesAsync(CancellationToken cancellationToken);
+
+    /// <summary>For the asset filters and the asset form.</summary>
+    Task<IReadOnlyList<AssetTypeOptionResponse>> GetAssetTypesAsync(CancellationToken cancellationToken);
 }

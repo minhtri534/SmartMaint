@@ -43,6 +43,21 @@ export const NAV_ITEMS: readonly NavItem[] = [
   },
   // Core — Administrator
   { label: 'Home', to: paths.home, icon: 'home', roles: ['admin'] },
+  // F1 — buildings and assets (read for staff / manager, edit for admin)
+  {
+    label: 'Buildings',
+    to: paths.facilities,
+    icon: 'building',
+    roles: ['staff', 'manager', 'admin'],
+  },
+  {
+    label: 'Assets',
+    to: paths.assets,
+    icon: 'box',
+    also: ['/assets/'],
+    roles: ['staff', 'manager', 'admin'],
+  },
+  { label: 'Catalog', to: paths.catalog, icon: 'list', roles: ['admin'] },
   {
     label: 'Accounts',
     to: paths.accounts,

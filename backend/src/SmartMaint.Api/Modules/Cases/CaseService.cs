@@ -86,7 +86,8 @@ internal sealed class CaseService(
         }
 
         if (request.AssetId is { } assetId
-            && !await db.Assets.AnyAsync(a => a.Id == assetId && a.RoomId == request.RoomId, cancellationToken))
+            && !await db.Assets.AnyAsync(
+                a => a.Id == assetId && a.RoomId == request.RoomId && a.RetiredAt == null, cancellationToken))
         {
             throw CaseErrors.AssetNotInRoom();
         }

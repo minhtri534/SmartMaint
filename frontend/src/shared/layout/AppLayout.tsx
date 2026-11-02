@@ -22,7 +22,7 @@ export function AppLayout() {
 
   return (
     <div className="min-h-full lg:grid lg:grid-cols-[228px_minmax(0,1fr)]">
-      <header className="bg-frame sticky top-0 z-20 flex h-12 items-center gap-3 px-4 lg:hidden">
+      <header className="bg-frame sticky top-0 z-20 flex h-12 items-center gap-3 px-4 lg:hidden print:hidden">
         <button
           type="button"
           onClick={() => setMenuOpen(true)}
@@ -36,7 +36,7 @@ export function AppLayout() {
 
       <aside
         className={cn(
-          'bg-frame fixed inset-0 z-30 flex flex-col px-3 pt-4 pb-3 transition-transform duration-200',
+          'bg-frame fixed inset-0 z-30 flex flex-col px-3 pt-4 pb-3 transition-transform duration-200 print:hidden',
           'lg:sticky lg:top-0 lg:z-auto lg:h-screen lg:translate-x-0',
           menuOpen ? 'translate-x-0' : '-translate-x-full',
         )}

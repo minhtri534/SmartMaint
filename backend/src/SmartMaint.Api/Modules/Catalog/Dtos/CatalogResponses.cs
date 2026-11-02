@@ -24,3 +24,5 @@ public sealed record AssetOptionResponse(long Id, string Name, long RoomId);
 public sealed record TechnicianOptionResponse(long Id, string FullName, int OpenCases);
 
 public sealed record SpecialtyOptionResponse(long Id, string Name);
+
+public sealed record AssetTypeOptionResponse(long Id, string Name, long CategoryId, string CategoryName);

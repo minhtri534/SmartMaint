@@ -33,6 +33,17 @@ public enum AuditTarget
 {
     Account = 1,
     PriorityLevel = 2,
+
+    // F1 (Administrator keeps places, assets and lists)
+    Building = 3,
+    Floor = 4,
+    Room = 5,
+    Asset = 6,
+    CaseCategory = 7,
+    AssetCategory = 8,
+    AssetType = 9,
+    Manufacturer = 10,
+    Specialty = 11,
 }
 
 /// <summary>ERD: AuditLogTargetOperation(ID, Name) — what was done.</summary>
@@ -46,4 +57,7 @@ public enum AuditOperation
     Reactivate = 6,
     ResetPassword = 7,
     Unlock = 8,
+    Delete = 9,
+    Retire = 10,
+    Import = 11,
 }

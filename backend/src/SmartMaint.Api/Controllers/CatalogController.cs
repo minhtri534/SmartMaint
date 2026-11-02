@@ -31,6 +31,12 @@ public sealed class CatalogController(ICatalogService catalog) : ControllerBase
     public Task<IReadOnlyList<TechnicianOptionResponse>> Technicians(CancellationToken cancellationToken) =>
         catalog.GetTechniciansAsync(cancellationToken);
 
+    /// <summary>Asset types, for the asset filters and form (F1).</summary>
+    [HttpGet("asset-types")]
+    [AuthorizeRoles(UserRole.Staff, UserRole.Manager, UserRole.Admin)]
+    public Task<IReadOnlyList<AssetTypeOptionResponse>> AssetTypes(CancellationToken cancellationToken) =>
+        catalog.GetAssetTypesAsync(cancellationToken);
+
     /// <summary>Technician specialties, for the account form (ADM-03).</summary>
     [HttpGet("specialties")]
     [AuthorizeRoles(UserRole.Admin, UserRole.Staff)]

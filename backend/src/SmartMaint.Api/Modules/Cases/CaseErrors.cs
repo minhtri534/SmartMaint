@@ -24,7 +24,7 @@ internal static class CaseErrors
             "You can report problems in your own room or in the common areas of your building.");
 
     public static AppException AssetNotInRoom() =>
-        new(ErrorKind.BadRequest, "case.asset_not_in_room", "That asset is not in the chosen room.");
+        new(ErrorKind.BadRequest, "case.asset_not_in_room", "That asset is not in the chosen room, or it was retired.");
 
     public static AppException PhotoRequired(string serviceType) =>
         new(ErrorKind.BadRequest, "case.photo_required", $"\"{serviceType}\" needs at least one photo.");

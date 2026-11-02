@@ -3,7 +3,10 @@ using SmartMaint.Api.Modules.Accounts;
 using SmartMaint.Api.Modules.Audit;
 using SmartMaint.Api.Modules.Auth;
 using SmartMaint.Api.Modules.Cases;
+using SmartMaint.Api.Modules.Assets;
 using SmartMaint.Api.Modules.Catalog;
+using SmartMaint.Api.Modules.CatalogAdmin;
+using SmartMaint.Api.Modules.Facilities;
 using SmartMaint.Api.Modules.Notifications;
 using SmartMaint.Api.Modules.PriorityLevels;
 
@@ -23,6 +26,10 @@ internal static class ModuleRegistration
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<IAccountService, AccountService>();
         services.AddScoped<IPriorityLevelService, PriorityLevelService>();
+        services.AddScoped<IBuildingScope, BuildingScope>();
+        services.AddScoped<IFacilityService, FacilityService>();
+        services.AddScoped<IAssetService, AssetService>();
+        services.AddScoped<ICatalogAdminService, CatalogAdminService>();
 
         return services;
     }

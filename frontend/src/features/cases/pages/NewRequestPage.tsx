@@ -42,12 +42,15 @@ const EMPTY: NewRequestFormValues = {
 
 /**
  * EMP-02 New request (F3 step ①). With ?from=<id> it is the "Submit again" form after a rejection (N6):
- * the old content is filled in and a NEW case is created.
- * TODO: limit buildings / rooms to the customer's leased area (ERD review #11).
+ * the old content is filled in and a NEW case is created. With ?roomId=&assetId= (QR label, AST-07) the place and the
+ * asset are filled in. The server only offers the customer's own room and the common areas of their building.
  */
 export function NewRequestPage() {
   const navigate = useNavigate()
-  const fromId = Number(useSearchParams()[0].get('from')) || 0
+  const [params] = useSearchParams()
+  const fromId = Number(params.get('from')) || 0
+  const qrRoomId = Number(params.get('roomId')) || 0
+  const qrAssetId = Number(params.get('assetId')) || 0
   const source = useCase(fromId, fromId > 0)
   const serviceTypes = useServiceTypes()
   const buildings = useBuildings()
@@ -88,6 +91,21 @@ export function NewRequestPage() {
     })
     prefilled.current = true
   }, [source.data, buildings.data, serviceTypes.data, reset])
+
+  // QR label: the place (and asset) of the scanned label.
+  useEffect(() => {
+    if (prefilled.current || fromId > 0 || qrRoomId === 0 || !buildings.data) return
+    const place = findRoom(buildings.data, qrRoomId)
+    if (!place) return
+    reset({
+      ...EMPTY,
+      buildingId: String(place.buildingId),
+      floorId: String(place.floorId),
+      roomId: String(qrRoomId),
+      assetId: qrAssetId ? String(qrAssetId) : '',
+    })
+    prefilled.current = true
+  }, [fromId, qrRoomId, qrAssetId, buildings.data, reset])
 
   // Selects whose options depend on another field also get value={...}: their options appear one render
   // later, so the DOM must re-apply the form value then (AI "Use this", "Submit again" pre-fill).

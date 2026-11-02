@@ -41,6 +41,7 @@
 | | `hold_reason`, `hold_until` | On Hold phải có lý do + ngày dự kiến tiếp tục (N13) |
 | | `rating_stars`, `rating_comment`, `rated_at` | Khách đánh giá 1 lần / case |
 | | `requesting_customer_id` **cho phép trống** | Case sinh từ bảo trì định kỳ (F2) không có khách |
+| Assets → `assets` | `retired_at` (Phần 3) | BR-10: thiết bị có lịch sử thì chỉ **thanh lý**, không xóa. Thanh lý = ẩn khỏi form báo hỏng, QR hết hiệu lực, lịch sử giữ nguyên; chặn khi còn case mở. Chưa có case thì được xóa |
 | CaseImages → `case_images` | `kind` (report / before / after) | Ảnh lúc báo / trước / sau sửa |
 | | `Image` = **đường dẫn file** trong Supabase Storage (bucket private), không phải URL | Web nhận URL ký tạm 1 giờ |
 | CaseStatusHistory → `case_status_history` | `changed_by_id` (FK accounts), `reason` | Không có thì không biết ai duyệt / đóng / hủy / tạm dừng và vì sao (bản soát điểm 2). Trạng thái **trước** lấy từ dòng liền trước, không lưu cột |
@@ -57,7 +58,9 @@
 | Khóa chính các bảng con | Tên ràng buộc là `PK_customers`, `PK_staff`… (EF không cho đặt tên kiểu `pk_` cho TPT) | Chỉ là tên, không ảnh hưởng |
 | **Đổi role** (Leader 02/11: cho đổi, nhưng chỉ khi tài khoản chưa có lịch sử) | Mỗi role là 1 bảng con nên không "chuyển" được dòng: code xóa tài khoản cũ rồi tạo lại ở bảng role mới, cùng username + mật khẩu → **id đổi** | "Có lịch sử" = có case / dòng lịch sử trạng thái / lần từ chối / dòng audit. Có rồi thì phải khóa TK cũ, tạo TK mới |
 | AuditLog chỉ FK `AdminID`, không có `TargetID` (bản soát điểm 1) | Chỉ ghi được hành động của **Admin**: tạo / sửa / đổi role / khóa / mở / reset mật khẩu / mở khóa tài khoản, sửa giờ SLA, Admin đăng nhập. Không ghi được Staff duyệt, KTV làm… | Bản ghi bị sửa nằm trong JSON `old_value` / `new_value` (có id) |
-| AuditLog `Time` | `occurred_at`; bảng tra `audit_log_target_types` (account, priority_level) và `audit_log_target_operations` (sign_in, create, update, change_role, deactivate, reactivate, reset_password, unlock) | Dữ liệu bảng tra do migration ghi |
+| AuditLog `Time` | `occurred_at`; bảng tra `audit_log_target_types` (account, priority_level, building, floor, room, asset, case_category, asset_category, asset_type, manufacturer, specialty) và `audit_log_target_operations` (sign_in, create, update, change_role, deactivate, reactivate, reset_password, unlock, delete, retire, import) | Dữ liệu bảng tra do migration ghi |
+| CaseCategories không gắn tòa (A03) | Danh mục dịch vụ **dùng chung mọi tòa** | ADM-06 |
+| Trạng thái thiết bị của Screen Catalog (Active / Under repair / Out of service do Officer đổi) | Không làm: ERD không có cột; Leader 02/11 chỉ cho Admin sửa thiết bị. "Đang hỏng" hiện ra từ số case mở của thiết bị | — |
 | Notifications(UserID, Details, TimeSent) — không IsRead, không trỏ case (bản soát điểm 12) | Trang Thông báo không có "chưa đọc", không bấm mở case được; mã case nằm trong chữ | `TimeSent` → `sent_at`; chỉ trong app, không email; giữ 90 ngày |
 | AIConversation – Account 1–1, AIConversation – AIMessage 1–1 (bản soát điểm 5) | Đã tạo đúng 1–1 (`user_id` / `conversation_id` unique) → mỗi người chỉ 1 hội thoại, 1 tin nhắn | Chưa có tính năng AI; sửa ERD trước khi làm (AI chỉ cho Technician + Customer) |
 
@@ -81,3 +84,4 @@ Tài khoản demo đăng nhập bằng **username** (`admin`, `staff`, `technici
 ## Lịch sử
 - 02/11 — Phần 1: tạo bảng theo ERD (mục 2–4), chuyển Auth + F3 sang schema mới, ảnh lên Supabase Storage.
 - 02/11 — Phần 2: AuditLog, Notifications, bảng AI; Admin quản lý tài khoản, sửa giờ SLA; thông báo trong app ở các mốc F3.
+- 02/11 — Phần 3 (F1): `assets.retired_at`; thêm dòng bảng tra audit cho F1 (migration `AddAssetRetirementAndAuditTargets`).

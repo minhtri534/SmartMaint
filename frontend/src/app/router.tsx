@@ -1,5 +1,13 @@
 import { createBrowserRouter } from 'react-router'
 import { AccountDetailPage, AccountFormPage, AccountListPage, RolesPage } from '@/features/accounts'
+import {
+  AssetDetailPage,
+  AssetFormPage,
+  AssetImportPage,
+  AssetListPage,
+  QrLabelsPage,
+  QrLandingPage,
+} from '@/features/assets'
 import { AuditLogPage } from '@/features/audit'
 import { ChangePasswordPage, LoginPage, RequireAuth } from '@/features/auth'
 import {
@@ -9,7 +17,9 @@ import {
   NewRequestPage,
   WorkOrdersPage,
 } from '@/features/cases'
+import { CatalogPage } from '@/features/catalog'
 import { ForbiddenPage, NotFoundPage, RouteErrorPage } from '@/features/errors/pages/ErrorPages'
+import { FacilityTreePage } from '@/features/facilities'
 import { HomePage } from '@/features/home/pages/HomePage'
 import { NotificationsPage } from '@/features/notifications'
 import { SlaSettingsPage } from '@/features/settings'
@@ -91,6 +101,29 @@ export const router = createBrowserRouter([
               </RequireAuth>
             ),
           },
+          // F1 — buildings and assets (FacilitiesController, AssetsController: read Staff/Manager/Admin, write Admin)
+          ...[
+            { path: paths.facilities, element: <FacilityTreePage /> },
+            { path: paths.assets, element: <AssetListPage /> },
+            { path: paths.assetDetail, element: <AssetDetailPage /> },
+            { path: paths.qrLabels, element: <QrLabelsPage /> },
+          ].map((route) => ({
+            ...route,
+            element: (
+              <RequireAuth roles={['staff', 'manager', 'admin']}>{route.element}</RequireAuth>
+            ),
+          })),
+          ...[
+            { path: paths.assetNew, element: <AssetFormPage mode="create" /> },
+            { path: paths.assetEdit, element: <AssetFormPage mode="edit" /> },
+            { path: paths.assetImport, element: <AssetImportPage /> },
+            { path: paths.catalog, element: <CatalogPage /> },
+          ].map((route) => ({
+            ...route,
+            element: <RequireAuth roles={['admin']}>{route.element}</RequireAuth>,
+          })),
+          // AST-07: every role may scan a label
+          { path: paths.qrLanding, element: <QrLandingPage /> },
           // Core — every role (NotificationsController)
           { path: paths.notifications, element: <NotificationsPage /> },
           // Core — Administrator (AccountsController, AuditLogsController, PriorityLevelsController: Admin)

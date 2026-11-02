@@ -83,4 +83,12 @@ public class Asset : AuditableEntity
     public bool HasCopyright { get; set; }
 
     public DateOnly? WarrantyEndDate { get; set; }
+
+    /// <summary>
+    /// NOT IN ERD v5 (BR-10, Leader 02/11): an asset with history is never deleted, only retired. A retired asset is
+    /// hidden from the report form and the QR label stops working; its history stays.
+    /// </summary>
+    public DateTimeOffset? RetiredAt { get; set; }
+
+    public bool IsRetired => RetiredAt is not null;
 }
