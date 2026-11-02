@@ -51,7 +51,7 @@ internal sealed partial class CaseService(
     public async Task<PagedResult<CaseSummaryResponse>> ListAsync(PageRequest page, CancellationToken cancellationToken)
     {
         var scope = await LoadScopeAsync(cancellationToken);
-        var query = Visible(WithRefs().AsNoTracking(), scope);
+        var query = Visible(WithRefs().AsNoTracking().AsSplitQuery(), scope);
 
         var total = await query.CountAsync(cancellationToken);
         var rows = await query
@@ -69,12 +69,21 @@ internal sealed partial class CaseService(
             ?? throw CaseErrors.NotFound();
 
         var photoUrls = await storage.GetUrlsAsync(
-            [.. c.Images.Select(i => i.Image), .. c.Tasks.SelectMany(t => t.Images).Select(i => i.Image)], cancellationToken);
+            [
+                .. c.Images.Select(i => i.Image),
+                .. c.Tasks.SelectMany(t => t.Images).Select(i => i.Image),
+                .. c.ThirdParties.Where(t => t.EvidenceImage != null).Select(t => t.EvidenceImage!),
+            ],
+            cancellationToken);
         // Costs: staff, managers and the technician; the customer only when the customer pays.
         var showCosts = scope.Role != UserRole.Customer || c.CostBearer == CostBearer.Customer;
         var mergedCaseIds = await db.Cases.Where(x => x.MergedIntoCaseId == c.Id).OrderBy(x => x.Id).Select(x => x.Id)
             .ToListAsync(cancellationToken);
-        return CaseMapper.ToDetail(c, AllowedActions(c, scope, clock.GetUtcNow()), photoUrls, showCosts, mergedCaseIds);
+        var extras = new CaseMapper.DetailExtras(
+            mergedCaseIds,
+            scope.Role is UserRole.Staff or UserRole.Manager ? await DecisionInfoAsync(c, cancellationToken) : null,
+            await db.AssetReplacementRequests.AsNoTracking().SingleOrDefaultAsync(r => r.CaseId == c.Id, cancellationToken));
+        return CaseMapper.ToDetail(c, AllowedActions(c, scope, clock.GetUtcNow()), photoUrls, showCosts, extras);
     }
 
     // ----- create -----------------------------------------------------------------------------------------------
@@ -170,7 +179,11 @@ internal sealed partial class CaseService(
     // ----- status changes (one method per arrow of the state machine) ---------------------------------------------
 
     public Task<CaseDetailResponse> CancelAsync(long id, ReasonRequest request, CancellationToken cancellationToken) =>
-        ActAsync(id, CaseAction.Cancel, (_, _) => Task.FromResult<string?>(request.Reason.Trim()), cancellationToken);
+        ActAsync(id, CaseAction.Cancel, (c, now) =>
+        {
+            StopThirdParties(c, now);
+            return Task.FromResult<string?>(request.Reason.Trim());
+        }, cancellationToken);
 
     public Task<CaseDetailResponse> ApproveAsync(long id, ApproveCaseRequest request, CancellationToken cancellationToken) =>
         ActAsync(id, CaseAction.Approve, async (c, now) =>
@@ -254,11 +267,16 @@ internal sealed partial class CaseService(
         }, cancellationToken);
 
     public Task<CaseDetailResponse> ResumeAsync(long id, CancellationToken cancellationToken) =>
-        ActAsync(id, CaseAction.Resume, (c, _) =>
+        ActAsync(id, CaseAction.Resume, (c, now) =>
         {
+            var decided = c.HoldReason is HoldReason.WaitingStaffDecision or HoldReason.WaitingThirdParty;
             c.HoldReason = null;
             c.HoldUntil = null;
-            return Task.FromResult<string?>(null);
+            // F5 step ⑤ "the technician continues": the staff drop any outside party still on the case.
+            var stopped = StopThirdParties(c, now);
+            return Task.FromResult(decided && currentUser.Role == UserRole.Staff
+                ? $"Decision: the technician continues the repair.{(stopped > 0 ? " Outside party stopped." : string.Empty)}"
+                : null);
         }, cancellationToken);
 
     public Task<CaseDetailResponse> CompleteAsync(long id, CompleteWorkRequest request, CancellationToken cancellationToken) =>
@@ -269,6 +287,18 @@ internal sealed partial class CaseService(
             c.CompletedAt = now;
             // Hours typed by the technician win; otherwise the system measures start to finish.
             c.ActualCompletionHours = request.LaborHours ?? MeasuredHours(c.StartedAt, now);
+            // F5 step ⑨: an outside party replaced the asset → the new model goes to the replacement request.
+            if (c.ThirdParties.Any(t => t.Status == OutsideWorkStatus.Done && t.Job == OutsideWorkJob.Replace))
+            {
+                if (string.IsNullOrWhiteSpace(request.ReplacementModel))
+                {
+                    throw CaseErrors.ReplacementModelRequired();
+                }
+
+                c.ReplacementModel = request.ReplacementModel.Trim();
+                c.ReplacementSerial = string.IsNullOrWhiteSpace(request.ReplacementSerial) ? null : request.ReplacementSerial.Trim();
+            }
+
             await AddPhotosAsync(c, CaseImageKind.Before, request.BeforePhotos ?? [], cancellationToken);
             await AddPhotosAsync(c, CaseImageKind.After, request.AfterPhotos, cancellationToken);
             AddCosts(c, request.Parts);
@@ -372,10 +402,11 @@ internal sealed partial class CaseService(
     }
 
     public Task<CaseDetailResponse> CloseAsync(long id, CancellationToken cancellationToken) =>
-        ActAsync(id, CaseAction.Close, (c, now) =>
+        ActAsync(id, CaseAction.Close, async (c, now) =>
         {
             c.ClosedAt = now;
-            return Task.FromResult<string?>(null);
+            await AddReplacementRequestAsync(c, cancellationToken);
+            return null;
         }, cancellationToken);
 
     public Task<CaseDetailResponse> ReopenAsync(long id, ReasonRequest request, CancellationToken cancellationToken) =>
@@ -469,7 +500,7 @@ internal sealed partial class CaseService(
                 throw CaseErrors.DueNotLater();
             }
 
-            c.DueAt = request.NewDueAt;
+            c.DueAt = request.NewDueAt.ToUniversalTime();
             c.SlaWarnedAt = null;
             c.SlaOverdueNotifiedAt = null;
             var note = string.IsNullOrWhiteSpace(request.Note) ? string.Empty : $" {request.Note.Trim()}";
@@ -540,13 +571,14 @@ internal sealed partial class CaseService(
             throw CaseErrors.InvalidTransition();
         }
 
-        // Read before apply: a decline clears the technician.
+        // Read before apply: a decline clears the technician, a passed outside-work check moves the status itself.
         var technicianBefore = c.AssignedTechnicianId;
+        var rule = CaseTransitions.Find(action, scope.Role, c.Status)!;
         var reason = await apply(c, now);
 
         // A status change always writes a history row; an action that keeps the status (urgency, deadline, "not fixed",
         // costs) writes one with the same status when it has a reason, so the timeline shows who did it and why.
-        var to = CaseTransitions.Find(action, scope.Role, c.Status)!.To;
+        var to = rule.To;
         if (to is not null || reason is not null)
         {
             c.Status = to ?? c.Status;
@@ -677,6 +709,17 @@ internal sealed partial class CaseService(
             CaseAction.ReportNotFixed => c.NotFixedAt is null && c.ClosedAt is { } closedAt && now - closedAt <= ReopenWindow,
             CaseAction.AcceptNotFixed or CaseAction.DeclineNotFixed => c.NotFixedAt is not null,
             CaseAction.Reopen when c.Status == CaseStatus.Closed => c.ClosedAt is { } closed && now - closed <= ReopenWindow,
+            // F5: while the case waits for the staff's decision or an outside party, the technician does not resume it.
+            CaseAction.Resume when scope.Role == UserRole.Technician =>
+                c.HoldReason is not (HoldReason.WaitingStaffDecision or HoldReason.WaitingThirdParty),
+            CaseAction.RequestDecision => !c.IsPreventive,
+            CaseAction.Outsource => !c.IsPreventive && !c.ThirdParties.Any(t => t.Status is
+                OutsideWorkStatus.Quoting or OutsideWorkStatus.AwaitingDecision or OutsideWorkStatus.Working),
+            CaseAction.RecordQuote => ActiveThirdParty(c)?.Status == OutsideWorkStatus.Quoting,
+            CaseAction.DecideQuote => ActiveThirdParty(c)?.Status == OutsideWorkStatus.AwaitingDecision,
+            CaseAction.OutsideDeclined => ActiveThirdParty(c)?.Status is OutsideWorkStatus.Quoting or OutsideWorkStatus.Working,
+            CaseAction.CheckOutsideWork => ActiveThirdParty(c)?.Status == OutsideWorkStatus.Working,
+            CaseAction.RedoOutsideWork => ActiveThirdParty(c)?.Status == OutsideWorkStatus.FailedCheck,
             // F4: an emergency leaves its level only through "downgrade" (K04), which needs a cost bearer.
             CaseAction.ChangeUrgency => !emergency,
             CaseAction.Acknowledge => emergency && c.AcknowledgedAt is null,
@@ -731,7 +774,8 @@ internal sealed partial class CaseService(
         .Include(c => c.Staff)
         .Include(c => c.Technician)
         .Include(c => c.TriggerWorkOrder)
-        .Include(c => c.Tasks);
+        .Include(c => c.Tasks)
+        .Include(c => c.ThirdParties);
 
     private IQueryable<Case> WithDetail() => WithRefs()
         .Include(c => c.Asset)

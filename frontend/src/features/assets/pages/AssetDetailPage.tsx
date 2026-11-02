@@ -1,8 +1,9 @@
 import { useState, type ComponentProps, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
-import { assetEditPath, caseDetailPath, paths, qrLandingPath } from '@/app/paths'
+import { assetDetailPath, assetEditPath, caseDetailPath, paths, qrLandingPath } from '@/app/paths'
 import { StatusBadge } from '@/features/cases'
 import {
+  Badge,
   Button,
   Card,
   CardHeader,
@@ -20,6 +21,7 @@ import { qrUrl } from '../qr-url'
 import { useAsset, useAssetMutation } from '../hooks'
 import type { AssetDetail } from '../types'
 import { AssetStatus } from '../components/AssetStatus'
+import { SurveyDialog } from '../components/SurveyDialog'
 
 /** AST-03 Asset detail: what it is, where, its warranty and its repair history (G5). */
 export function AssetDetailPage() {
@@ -39,7 +41,7 @@ export function AssetDetailPage() {
 
 function AssetView({ a }: { a: AssetDetail }) {
   const navigate = useNavigate()
-  const [confirm, setConfirm] = useState<'retire' | 'delete' | null>(null)
+  const [confirm, setConfirm] = useState<'retire' | 'delete' | 'survey' | null>(null)
   const retire = useAssetMutation(assetsApi.retire)
   const remove = useAssetMutation(assetsApi.remove)
   const can = (x: AssetDetail['allowedActions'][number]) => a.allowedActions.includes(x)
@@ -49,6 +51,7 @@ function AssetView({ a }: { a: AssetDetail }) {
     a.retiredAt ? `retired on ${formatDate(a.retiredAt)}` : null,
     `${repairs} ${repairs === 1 ? 'case' : 'cases'} so far`,
     a.openCases > 0 ? `${a.openCases} still open` : null,
+    a.frequentFailure ? `${a.repairsLast12Months} repairs in 12 months` : null,
     a.warrantyEndDate
       ? a.underWarranty
         ? `under warranty until ${formatDate(a.warrantyEndDate)}`
@@ -68,6 +71,11 @@ function AssetView({ a }: { a: AssetDetail }) {
         description={`${a.typeName}: ${finding.join(', ')}.`}
         actions={
           <>
+            {can('open_survey') && (
+              <Button variant="secondary" onClick={() => setConfirm('survey')}>
+                Open survey
+              </Button>
+            )}
             {can('delete') && (
               <Button variant="danger" onClick={() => setConfirm('delete')}>
                 Delete
@@ -106,6 +114,26 @@ function AssetView({ a }: { a: AssetDetail }) {
               {a.location.floorName} · {a.location.roomName}
             </Row>
             <Row label="Added">{formatDateTime(a.createdAt)}</Row>
+            <Row label="Normal life">
+              {a.expectedLifeYears ? `${a.expectedLifeYears} years` : <Dash />}
+            </Row>
+            {a.replaces && (
+              <Row label="Replaces">
+                <Link to={assetDetailPath(a.replaces.id)} className="underline underline-offset-2">
+                  {a.replaces.name}
+                </Link>
+              </Row>
+            )}
+            {a.replacedBy && (
+              <Row label="Replaced by">
+                <Link
+                  to={assetDetailPath(a.replacedBy.id)}
+                  className="underline underline-offset-2"
+                >
+                  {a.replacedBy.name}
+                </Link>
+              </Row>
+            )}
           </dl>
         </Card>
         <Card>
@@ -127,7 +155,16 @@ function AssetView({ a }: { a: AssetDetail }) {
       </div>
 
       <Card>
-        <CardHeader title="Repair history" aside={`${a.caseCount} in total`} />
+        <CardHeader
+          title="Repair history"
+          aside={
+            a.frequentFailure ? (
+              <Badge tone="warning">Fails often</Badge>
+            ) : (
+              `${a.caseCount} in total`
+            )
+          }
+        />
         {a.history === null ? (
           <p className="text-muted text-sm">Case content is not shown to the Administrator.</p>
         ) : a.history.length === 0 ? (
@@ -159,6 +196,7 @@ function AssetView({ a }: { a: AssetDetail }) {
         )}
       </Card>
 
+      {confirm === 'survey' && <SurveyDialog asset={a} onClose={() => setConfirm(null)} />}
       {confirm === 'retire' && (
         <ConfirmDialog
           open

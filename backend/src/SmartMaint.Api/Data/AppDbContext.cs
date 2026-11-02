@@ -46,6 +46,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<TechnicianRejection> TechnicianRejections => Set<TechnicianRejection>();
     public DbSet<Cost> Costs => Set<Cost>();
 
+    // Repair or replace (F5)
+    public DbSet<CaseThirdParty> CaseThirdParties => Set<CaseThirdParty>();
+    public DbSet<AssetReplacementRequest> AssetReplacementRequests => Set<AssetReplacementRequest>();
+
     // Preventive maintenance (F2)
     public DbSet<CaseChecklist> CaseChecklists => Set<CaseChecklist>();
     public DbSet<ChecklistTask> ChecklistTasks => Set<ChecklistTask>();

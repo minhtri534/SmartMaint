@@ -93,7 +93,8 @@ internal sealed class CatalogAdminService(AppDbContext db, IAuditService audit) 
         await db.AssetTypes.AsNoTracking()
             .OrderBy(t => t.Category.CategoryName).ThenBy(t => t.Name)
             .Select(t => new AssetTypeResponse(
-                t.Id, t.CategoryId, t.Category.CategoryName, t.Code, t.Name, t.Description, db.Assets.Count(a => a.TypeId == t.Id)))
+                t.Id, t.CategoryId, t.Category.CategoryName, t.Code, t.Name, t.Description, t.ExpectedLifeYears,
+                db.Assets.Count(a => a.TypeId == t.Id)))
             .ToListAsync(cancellationToken);
 
     public async Task<AssetTypeResponse> SaveAssetTypeAsync(long? id, AssetTypeRequest request, CancellationToken cancellationToken)
@@ -113,8 +114,9 @@ internal sealed class CatalogAdminService(AppDbContext db, IAuditService audit) 
                 t.Code = code;
                 t.Name = request.Name.Trim();
                 t.Description = Blank(request.Description);
+                t.ExpectedLifeYears = request.ExpectedLifeYears;
             },
-            t => new { t.Id, t.CategoryId, t.Code, t.Name, t.Description },
+            t => new { t.Id, t.CategoryId, t.Code, t.Name, t.Description, t.ExpectedLifeYears },
             cancellationToken);
         return (await ListAssetTypesAsync(cancellationToken)).Single(t => t.Id == type.Id);
     }

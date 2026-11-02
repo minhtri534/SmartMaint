@@ -31,6 +31,7 @@ internal static class ModuleRegistration
         services.AddScoped<IBuildingScope, BuildingScope>();
         services.AddScoped<IFacilityService, FacilityService>();
         services.AddScoped<IAssetService, AssetService>();
+        services.AddScoped<IReplacementService, ReplacementService>();
         services.AddScoped<ICatalogAdminService, CatalogAdminService>();
         services.AddScoped<IChecklistService, ChecklistService>();
         services.AddScoped<IMaintenancePlanService, MaintenancePlanService>();

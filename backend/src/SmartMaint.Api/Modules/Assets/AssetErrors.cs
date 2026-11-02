@@ -27,6 +27,9 @@ internal static class AssetErrors
     public static AppException HasHistory() =>
         new(ErrorKind.Conflict, "asset.has_history", "This asset has a repair history: retire it instead of deleting it.");
 
+    public static AppException ReplacementNotFound() =>
+        new(ErrorKind.NotFound, "asset.replacement_not_found", "Replacement request not found.");
+
     public static AppException ActionNotAllowed() =>
         new(ErrorKind.Conflict, "asset.action_not_allowed", "This action is not possible for this asset any more. Reload the page.");
 }

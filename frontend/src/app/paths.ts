@@ -12,6 +12,8 @@ export const paths = {
   workOrders: '/work-orders',
   // F4 — emergency board
   emergencies: '/emergencies',
+  // F5 — repair or replace, outside party
+  outsideWork: '/outside-work',
   // F1 — buildings and assets
   facilities: '/facilities',
   assets: '/assets',
@@ -39,6 +41,7 @@ export const paths = {
   roles: '/admin/roles',
   auditLog: '/admin/audit-log',
   slaSettings: '/admin/sla',
+  replacements: '/admin/replacements',
 } as const
 
 export const caseDetailPath = (id: number) => `/cases/${id}`

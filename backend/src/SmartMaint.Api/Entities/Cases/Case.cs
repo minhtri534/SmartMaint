@@ -135,6 +135,23 @@ public class Case : AuditableEntity
     public IncidentFollowUp? IncidentFollowUp { get; set; }
     public DateTimeOffset? IncidentReportedAt { get; set; }
 
+    // ----- F5 repair or replace (all NOT IN ERD v5) -------------------------------------------------------------
+
+    /// <summary>F5 step ①: the technician's assessment when the job is beyond them (photos: CaseImages kind Assessment).</summary>
+    public string? AssessmentCondition { get; set; }
+    public string? AssessmentCause { get; set; }
+    public TechnicianRecommendation? AssessmentRecommendation { get; set; }
+    public DateTimeOffset? AssessedAt { get; set; }
+
+    /// <summary>F5 way 2: a survey the staff opened for an asset that fails often (no customer, not in the KPI).</summary>
+    public bool IsSurvey { get; set; }
+
+    /// <summary>Step ⑨: the new asset an outside party installed, from the repair record; feeds the replacement request.</summary>
+    public string? ReplacementModel { get; set; }
+    public string? ReplacementSerial { get; set; }
+
+    public List<CaseThirdParty> ThirdParties { get; set; } = [];
+
     public List<CaseImage> Images { get; set; } = [];
     public List<CaseStatusHistory> History { get; set; } = [];
     public List<TechnicianRejection> Rejections { get; set; } = [];

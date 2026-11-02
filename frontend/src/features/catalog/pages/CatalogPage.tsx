@@ -404,8 +404,23 @@ function AssetCategoryForm({ item, onDone }: { item: AssetCategory | null; onDon
   )
 }
 
+/** The category select keeps its saved value only if its options exist when the form mounts: load them first. */
 function AssetTypeForm({ item, onDone }: { item: AssetType | null; onDone: () => void }) {
   const categories = useCatalogList<AssetCategory>('asset-categories')
+  if (categories.error) return <Alert>{categories.error.message}</Alert>
+  if (!categories.data) return <LoadingBlock rows={4} />
+  return <AssetTypeFields item={item} categories={categories.data} onDone={onDone} />
+}
+
+function AssetTypeFields({
+  item,
+  categories,
+  onDone,
+}: {
+  item: AssetType | null
+  categories: AssetCategory[]
+  onDone: () => void
+}) {
   const { save, form } = useCatalogForm<AssetTypeValues>(
     'asset-types',
     zodResolver(assetTypeSchema),
@@ -414,6 +429,7 @@ function AssetTypeForm({ item, onDone }: { item: AssetType | null; onDone: () =>
       code: item?.code ?? '',
       name: item?.name ?? '',
       description: item?.description ?? '',
+      expectedLifeYears: item?.expectedLifeYears ? String(item.expectedLifeYears) : '',
     },
   )
   const { register, handleSubmit, formState } = form
@@ -423,7 +439,12 @@ function AssetTypeForm({ item, onDone }: { item: AssetType | null; onDone: () =>
         save.mutate(
           {
             id: item?.id ?? null,
-            body: { ...v, categoryId: Number(v.categoryId), description: v.description || null },
+            body: {
+              ...v,
+              categoryId: Number(v.categoryId),
+              description: v.description || null,
+              expectedLifeYears: v.expectedLifeYears ? Number(v.expectedLifeYears) : null,
+            },
           },
           { onSuccess: onDone },
         ),
@@ -438,7 +459,7 @@ function AssetTypeForm({ item, onDone }: { item: AssetType | null; onDone: () =>
         error={formState.errors.categoryId?.message}
         {...register('categoryId')}
       >
-        {categories.data?.map((c) => (
+        {categories.map((c) => (
           <option key={c.id} value={c.id}>
             {c.categoryName}
           </option>
@@ -452,6 +473,16 @@ function AssetTypeForm({ item, onDone }: { item: AssetType | null; onDone: () =>
       />
       <TextField label="Name" error={formState.errors.name?.message} {...register('name')} />
       <TextField label="Description" hint="Optional" {...register('description')} />
+      <TextField
+        label="Normal life (years)"
+        hint="Optional. Shown when the staff decide to repair or replace (F5)."
+        type="number"
+        min="1"
+        max="100"
+        inputMode="numeric"
+        error={formState.errors.expectedLifeYears?.message}
+        {...register('expectedLifeYears')}
+      />
     </FormShell>
   )
 }

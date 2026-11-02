@@ -33,6 +33,8 @@ export interface AssetType {
   code: string
   name: string
   description: string | null
+  /** NOT IN ERD v5 (F5 R03): normal life in years. */
+  expectedLifeYears: number | null
   usedBy: number
 }
 

@@ -1556,3 +1556,216 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102142403_AddRepairOrReplace') THEN
+    ALTER TABLE case_images DROP CONSTRAINT ck_case_images_kind;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102142403_AddRepairOrReplace') THEN
+    ALTER TABLE cases ADD assessed_at timestamp with time zone;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102142403_AddRepairOrReplace') THEN
+    ALTER TABLE cases ADD assessment_cause character varying(1000);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102142403_AddRepairOrReplace') THEN
+    ALTER TABLE cases ADD assessment_condition character varying(1000);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102142403_AddRepairOrReplace') THEN
+    ALTER TABLE cases ADD assessment_recommendation character varying(32);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102142403_AddRepairOrReplace') THEN
+    ALTER TABLE cases ADD is_survey boolean NOT NULL DEFAULT FALSE;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102142403_AddRepairOrReplace') THEN
+    ALTER TABLE cases ADD replacement_model character varying(150);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102142403_AddRepairOrReplace') THEN
+    ALTER TABLE cases ADD replacement_serial character varying(100);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102142403_AddRepairOrReplace') THEN
+    ALTER TABLE assets ADD replaces_asset_id bigint;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102142403_AddRepairOrReplace') THEN
+    ALTER TABLE asset_types ADD expected_life_years integer;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102142403_AddRepairOrReplace') THEN
+    CREATE TABLE asset_replacement_requests (
+        id bigint GENERATED ALWAYS AS IDENTITY,
+        case_id bigint NOT NULL,
+        old_asset_id bigint NOT NULL,
+        new_model character varying(150) NOT NULL,
+        new_serial character varying(100),
+        requested_by_id bigint NOT NULL,
+        status character varying(32) NOT NULL,
+        new_asset_id bigint,
+        finished_at timestamp with time zone,
+        dismiss_reason character varying(500),
+        created_at timestamp with time zone NOT NULL DEFAULT (now()),
+        updated_at timestamp with time zone NOT NULL DEFAULT (now()),
+        CONSTRAINT pk_asset_replacement_requests PRIMARY KEY (id),
+        CONSTRAINT ck_asset_replacement_requests_status CHECK (status IN ('open', 'done', 'dismissed')),
+        CONSTRAINT fk_asset_replacement_requests_assets_new_asset_id FOREIGN KEY (new_asset_id) REFERENCES assets (id) ON DELETE RESTRICT,
+        CONSTRAINT fk_asset_replacement_requests_assets_old_asset_id FOREIGN KEY (old_asset_id) REFERENCES assets (id) ON DELETE RESTRICT,
+        CONSTRAINT fk_asset_replacement_requests_cases_case_id FOREIGN KEY (case_id) REFERENCES cases (id) ON DELETE RESTRICT,
+        CONSTRAINT fk_asset_replacement_requests_staff_requested_by_id FOREIGN KEY (requested_by_id) REFERENCES staff (id) ON DELETE RESTRICT
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102142403_AddRepairOrReplace') THEN
+    CREATE TABLE case_third_parties (
+        id bigint GENERATED ALWAYS AS IDENTITY,
+        case_id bigint NOT NULL,
+        kind character varying(32) NOT NULL,
+        job character varying(32) NOT NULL,
+        status character varying(32) NOT NULL,
+        company_name character varying(150) NOT NULL,
+        contact character varying(150) NOT NULL,
+        appointment_at timestamp with time zone,
+        note character varying(500),
+        redo_count integer NOT NULL,
+        quote_bearer character varying(32),
+        quote_sent_to character varying(150),
+        quote_sent_at timestamp with time zone,
+        quote_reminded_at timestamp with time zone,
+        decision_go boolean,
+        decided_by character varying(150),
+        decided_at timestamp with time zone,
+        evidence_image character varying(300),
+        finished_at timestamp with time zone,
+        created_at timestamp with time zone NOT NULL DEFAULT (now()),
+        updated_at timestamp with time zone NOT NULL DEFAULT (now()),
+        CONSTRAINT pk_case_third_parties PRIMARY KEY (id),
+        CONSTRAINT ck_case_third_parties_job CHECK (job IN ('repair', 'replace')),
+        CONSTRAINT ck_case_third_parties_kind CHECK (kind IN ('warranty', 'contract', 'quote')),
+        CONSTRAINT ck_case_third_parties_quote_bearer CHECK (quote_bearer IN ('building', 'customer')),
+        CONSTRAINT ck_case_third_parties_redo_count CHECK (redo_count >= 0),
+        CONSTRAINT ck_case_third_parties_status CHECK (status IN ('quoting', 'awaiting_decision', 'working', 'failed_check', 'declined', 'done', 'cancelled')),
+        CONSTRAINT fk_case_third_parties_cases_case_id FOREIGN KEY (case_id) REFERENCES cases (id) ON DELETE CASCADE
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102142403_AddRepairOrReplace') THEN
+    ALTER TABLE cases ADD CONSTRAINT ck_cases_assessment_recommendation CHECK (assessment_recommendation IN ('repairable', 'replace', 'specialist'));
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102142403_AddRepairOrReplace') THEN
+    ALTER TABLE case_images ADD CONSTRAINT ck_case_images_kind CHECK (kind IN ('report', 'before', 'after', 'assessment'));
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102142403_AddRepairOrReplace') THEN
+    CREATE INDEX ix_assets_replaces_asset_id ON assets (replaces_asset_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102142403_AddRepairOrReplace') THEN
+    ALTER TABLE asset_types ADD CONSTRAINT ck_asset_types_expected_life_years CHECK (expected_life_years IS NULL OR expected_life_years BETWEEN 1 AND 100);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102142403_AddRepairOrReplace') THEN
+    CREATE UNIQUE INDEX ix_asset_replacement_requests_case_id ON asset_replacement_requests (case_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102142403_AddRepairOrReplace') THEN
+    CREATE INDEX ix_asset_replacement_requests_new_asset_id ON asset_replacement_requests (new_asset_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102142403_AddRepairOrReplace') THEN
+    CREATE INDEX ix_asset_replacement_requests_old_asset_id ON asset_replacement_requests (old_asset_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102142403_AddRepairOrReplace') THEN
+    CREATE INDEX ix_asset_replacement_requests_requested_by_id ON asset_replacement_requests (requested_by_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102142403_AddRepairOrReplace') THEN
+    CREATE INDEX ix_case_third_parties_case_id ON case_third_parties (case_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102142403_AddRepairOrReplace') THEN
+    ALTER TABLE assets ADD CONSTRAINT fk_assets_assets_replaces_asset_id FOREIGN KEY (replaces_asset_id) REFERENCES assets (id) ON DELETE RESTRICT;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261102142403_AddRepairOrReplace') THEN
+    INSERT INTO __ef_migrations_history (migration_id, product_version)
+    VALUES ('20261102142403_AddRepairOrReplace', '10.0.13');
+    END IF;
+END $EF$;
+COMMIT;
+

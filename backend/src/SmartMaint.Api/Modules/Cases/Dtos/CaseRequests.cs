@@ -37,6 +37,7 @@ public sealed record HoldCaseRequest(HoldReason Reason, DateOnly ExpectedResumeO
 /// <summary>
 /// DLG-11: the repair record. LaborHours empty = the system measures start to finish (doc "Luồng Chính").
 /// Parts = what the technician bought (cost lines); the labour line is added by the system.
+/// F5: when an outside party replaced the asset, the new model (and serial) is required.
 /// </summary>
 public sealed record CompleteWorkRequest(
     string RootCause,
@@ -44,7 +45,9 @@ public sealed record CompleteWorkRequest(
     decimal? LaborHours,
     IReadOnlyList<string>? BeforePhotos,
     IReadOnlyList<string> AfterPhotos,
-    IReadOnlyList<CostLineRequest>? Parts = null);
+    IReadOnlyList<CostLineRequest>? Parts = null,
+    string? ReplacementModel = null,
+    string? ReplacementSerial = null);
 
 /// <summary>DLG-14.</summary>
 public sealed record RateCaseRequest(int Stars, string? Comment);
@@ -121,3 +124,28 @@ public sealed record EmergencyLogRequest(EmergencyLogKind Kind, string Note);
 
 /// <summary>F4 step ⑫ post-incident report (K08, optional): damage, lessons, what to do so it does not happen again.</summary>
 public sealed record IncidentReportRequest(string Damage, string Lessons, IncidentFollowUp FollowUp);
+
+// ----- F5 repair or replace -----------------------------------------------------------------------------------------
+
+/// <summary>Step ①–②: the technician cannot finish alone. An assessment with at least one photo; the case waits for the staff.</summary>
+public sealed record RequestDecisionRequest(
+    string Condition, string Cause, TechnicianRecommendation Recommendation, IReadOnlyList<string> Photos);
+
+/// <summary>Steps ④–⑤: hand the job to the manufacturer (warranty) or a contractor (package contract, or a quote first).</summary>
+public sealed record OutsourceRequest(
+    OutsideWorkKind Kind, OutsideWorkJob Job, string CompanyName, string Contact, DateTimeOffset? AppointmentAt, string? Note);
+
+/// <summary>The contractor's quote arrived: who pays it; for the customer, to whom it was forwarded (R04, no amount stored).</summary>
+public sealed record RecordQuoteRequest(CostBearer Bearer, string? SentTo, string? Note);
+
+/// <summary>Step ⑥: the payer's decision and its evidence (a photo of the email or the signed paper, data URL).</summary>
+public sealed record QuoteDecisionRequest(bool Go, string DecidedBy, string? Note, string? Evidence);
+
+/// <summary>Step ⑧: the technician checked what the outside party did.</summary>
+public sealed record CheckOutsideWorkRequest(bool Passed, string? Note);
+
+/// <summary>The check failed: the staff asked the party to do it again.</summary>
+public sealed record RedoOutsideWorkRequest(DateTimeOffset? AppointmentAt, string Reason);
+
+/// <summary>F5 way 2: a survey of an asset that fails often, assigned like any case.</summary>
+public sealed record OpenSurveyRequest(long AssetId, long ServiceTypeId, string? Note);

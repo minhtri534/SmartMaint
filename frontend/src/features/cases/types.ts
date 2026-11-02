@@ -75,13 +75,15 @@ export const REJECT_REASON_LABELS: Record<RejectReason, string> = {
 }
 
 /** Why a technician pauses work (N13). "waiting_third_party" is set by the staff decision (F5), not offered here. */
-export const HOLD_REASONS = ['waiting_parts', 'waiting_customer', 'waiting_staff_decision'] as const
-export type HoldReason = (typeof HOLD_REASONS)[number] | 'waiting_third_party'
+/** What the technician picks in "Put on hold". The two F5 reasons come from "Needs the staff's decision" and the staff's hand-over. */
+export const HOLD_REASONS = ['waiting_parts', 'waiting_customer'] as const
+export type HoldReason =
+  (typeof HOLD_REASONS)[number] | 'waiting_staff_decision' | 'waiting_third_party'
 
 export const HOLD_REASON_LABELS: Record<HoldReason, string> = {
   waiting_parts: 'Waiting for parts',
   waiting_customer: 'Waiting for the customer (access, appointment)',
-  waiting_staff_decision: 'Beyond my ability, waiting for the staff’s decision',
+  waiting_staff_decision: 'Waiting for the staff’s decision (repair or replace)',
   waiting_third_party: 'Waiting for an outside party',
 }
 
@@ -118,6 +120,14 @@ export type CaseAction =
   | 'add_log'
   | 'mark_safe'
   | 'write_incident_report'
+  // Part 7: repair or replace, outside party (F5)
+  | 'request_decision'
+  | 'outsource'
+  | 'record_quote'
+  | 'decide_quote'
+  | 'outside_declined'
+  | 'check_outside_work'
+  | 'redo_outside_work'
 
 /** O09: why a deadline moves (a fixed list, counted in the statistics). */
 export const EXTEND_REASONS = [
@@ -236,6 +246,99 @@ export interface CaseSummary {
   isPreventive: boolean
   /** F4: set while (and after) the case is an emergency; empty for F2 / F3 and after a downgrade. NOT IN ERD v5. */
   emergency: EmergencyInfo | null
+  /** Why it is on hold (only while On Hold). */
+  holdReason: HoldReason | null
+  /** F5 way 2: a survey the staff opened for an asset that fails often (no customer, not in the KPI). */
+  isSurvey: boolean
+  /** F5: the latest outside party of the case. */
+  outsideWork: OutsideWorkBrief | null
+}
+
+// ---------------------------------------------------------------------------
+// F5 repair or replace / outside party. All NOT IN ERD v5 (only Cases.TimeOutsourced).
+// ---------------------------------------------------------------------------
+
+export type TechnicianRecommendation = 'repairable' | 'replace' | 'specialist'
+export const RECOMMENDATION_LABELS: Record<TechnicianRecommendation, string> = {
+  repairable: 'Repairable, with more time or parts',
+  replace: 'Replace the asset',
+  specialist: 'Needs an outside specialist',
+}
+
+export type OutsideWorkKind = 'warranty' | 'contract' | 'quote'
+export const OUTSIDE_KIND_LABELS: Record<OutsideWorkKind, string> = {
+  warranty: 'Manufacturer, under warranty',
+  contract: 'Contractor with a maintenance contract',
+  quote: 'Contractor quoting for this job',
+}
+
+export type OutsideWorkJob = 'repair' | 'replace'
+
+export type OutsideWorkStatus =
+  'quoting' | 'awaiting_decision' | 'working' | 'failed_check' | 'declined' | 'done' | 'cancelled'
+export const OUTSIDE_STATUS_LABELS: Record<OutsideWorkStatus, string> = {
+  quoting: 'Preparing a quote',
+  awaiting_decision: 'Quote waits for a decision',
+  working: 'Working',
+  failed_check: 'Check failed',
+  declined: 'Declined',
+  done: 'Done',
+  cancelled: 'Stopped',
+}
+
+export interface OutsideWorkBrief {
+  kind: OutsideWorkKind
+  job: OutsideWorkJob
+  status: OutsideWorkStatus
+  companyName: string
+  appointmentAt: string | null
+}
+
+export interface ThirdParty extends OutsideWorkBrief {
+  id: number
+  contact: string
+  note: string | null
+  redoCount: number
+  quoteBearer: CostBearer | null
+  quoteSentTo: string | null
+  quoteSentAt: string | null
+  decisionGo: boolean | null
+  decidedBy: string | null
+  decidedAt: string | null
+  evidenceUrl: string | null
+  /** The outside phase, reported separately in F6 (N16). */
+  startedAt: string
+  finishedAt: string | null
+}
+
+export interface Assessment {
+  condition: string
+  cause: string
+  recommendation: TechnicianRecommendation
+  assessedAt: string
+}
+
+/** F5 step ③: facts for the staff's decision (no money). The staff decide; `suggestReplace` is only a hint. */
+export interface DecisionInfo {
+  repairsLast12Months: number
+  reopensLast12Months: number
+  assetAgeYears: number
+  expectedLifeYears: number | null
+  warrantyEndDate: string | null
+  underWarranty: boolean
+  manufacturerOnly: boolean
+  manufacturerName: string | null
+  manufacturerPhone: string | null
+  recommendation: TechnicianRecommendation | null
+  suggestReplace: boolean
+  reasons: string[]
+}
+
+export interface Replacement {
+  model: string
+  serial: string | null
+  requestStatus: 'open' | 'done' | 'dismissed' | null
+  newAssetId: number | null
 }
 
 /** A link to another case. */
@@ -309,7 +412,7 @@ export interface CaseTask {
 export interface CasePhoto {
   id: number
   url: string
-  kind: 'report' | 'before' | 'after'
+  kind: 'report' | 'before' | 'after' | 'assessment'
 }
 
 /** One status change. ERD: CaseStatusHistory(NewStatus, Case, TimeChanged). NOT IN ERD v5: from, by, reason. */
@@ -351,7 +454,7 @@ export interface Rating {
 export interface Hold {
   reason: HoldReason
   /** yyyy-MM-dd */
-  expectedResumeOn: string
+  expectedResumeOn: string | null
 }
 
 export interface CaseDetail extends CaseSummary {
@@ -381,6 +484,14 @@ export interface CaseDetail extends CaseSummary {
   mergedCases: CaseRef[]
   /** F4 step ⑫: the post-incident report, once written. */
   incidentReport: IncidentReport | null
+  /** F5: the technician's assessment when the job is beyond them. */
+  assessment: Assessment | null
+  /** F5: every outside party called on this case. */
+  thirdParties: ThirdParty[]
+  /** F5: the decision board (staff and managers only). */
+  decisionInfo: DecisionInfo | null
+  /** F5: the new asset an outside party installed. */
+  replacement: Replacement | null
   /** What the signed-in user may do right now (state machine + role + data scope, decided by the server). */
   allowedActions: CaseAction[]
 }
@@ -447,6 +558,9 @@ export interface CompleteWorkRequest {
   afterPhotos: string[]
   /** Parts bought; the labour line is added by the server (hours × hourly rate). */
   parts: CostLine[]
+  /** F5: required when an outside party replaced the asset. */
+  replacementModel?: string | null
+  replacementSerial?: string | null
 }
 
 export interface ReassignCaseRequest {
@@ -485,6 +599,54 @@ export interface CompleteChecklistRequest {
   note: string | null
   laborHours: number | null
   parts: CostLine[]
+}
+
+export interface RequestDecisionRequest {
+  condition: string
+  cause: string
+  recommendation: TechnicianRecommendation
+  photos: string[]
+}
+
+export interface OutsourceRequest {
+  kind: OutsideWorkKind
+  job: OutsideWorkJob
+  companyName: string
+  contact: string
+  /** ISO date-time */
+  appointmentAt: string | null
+  note: string | null
+}
+
+export interface RecordQuoteRequest {
+  bearer: CostBearer
+  /** Required when the customer pays: the contract representative it was forwarded to. */
+  sentTo: string | null
+  note: string | null
+}
+
+export interface QuoteDecisionRequest {
+  go: boolean
+  decidedBy: string
+  note: string | null
+  /** Data URL of the email / signed paper. */
+  evidence: string | null
+}
+
+export interface CheckOutsideWorkRequest {
+  passed: boolean
+  note: string | null
+}
+
+export interface RedoOutsideWorkRequest {
+  appointmentAt: string | null
+  reason: string
+}
+
+export interface OpenSurveyRequest {
+  assetId: number
+  serviceTypeId: number
+  note: string | null
 }
 
 /** K04: not an emergency after all. */

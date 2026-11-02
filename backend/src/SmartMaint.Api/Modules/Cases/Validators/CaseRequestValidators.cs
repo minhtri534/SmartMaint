@@ -83,7 +83,10 @@ public sealed class HoldCaseRequestValidator : AbstractValidator<HoldCaseRequest
 {
     public HoldCaseRequestValidator(TimeProvider clock)
     {
-        RuleFor(x => x.Reason).IsInEnum();
+        RuleFor(x => x.Reason).IsInEnum()
+            // F5: these come from "Needs the staff's decision" and the staff's hand-over, not from a plain hold.
+            .Must(r => r is not (Entities.Cases.HoldReason.WaitingStaffDecision or Entities.Cases.HoldReason.WaitingThirdParty))
+            .WithMessage("Use \"Needs the staff's decision\" for this.");
         // The day it should continue is required (N13); today is fine, the past is not.
         RuleFor(x => x.ExpectedResumeOn)
             .Must(d => d >= DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime))
@@ -106,6 +109,8 @@ public sealed class CompleteWorkRequestValidator : AbstractValidator<CompleteWor
         RuleFor(x => (IReadOnlyList<string>?)x.BeforePhotos).ValidPhotos();
         RuleFor(x => (IReadOnlyList<string>?)x.AfterPhotos).NotEmpty().WithMessage("Add at least one photo after the repair.").ValidPhotos();
         RuleFor(x => x.Parts).ValidCostLines();
+        RuleFor(x => x.ReplacementModel).MaximumLength(150);
+        RuleFor(x => x.ReplacementSerial).MaximumLength(100);
     }
 }
 
@@ -252,5 +257,84 @@ public sealed class IncidentReportRequestValidator : AbstractValidator<IncidentR
         RuleFor(x => x.Lessons).NotEmpty().Must(n => n.Trim().Length >= MinLength)
             .WithMessage($"At least {MinLength} characters.").MaximumLength(MaxLength);
         RuleFor(x => x.FollowUp).IsInEnum();
+    }
+}
+
+// ----- F5 repair or replace -----------------------------------------------------------------------------------------
+
+internal static class TextRules
+{
+    public static IRuleBuilderOptions<T, string> Text<T>(this IRuleBuilder<T, string> rule, int min, int max) =>
+        rule.NotEmpty().Must(s => s is not null && s.Trim().Length >= min).WithMessage($"At least {min} characters.").MaximumLength(max);
+}
+
+public sealed class RequestDecisionRequestValidator : AbstractValidator<RequestDecisionRequest>
+{
+    public RequestDecisionRequestValidator()
+    {
+        RuleFor(x => x.Condition).Text(10, 1000);
+        RuleFor(x => x.Cause).Text(5, 1000);
+        RuleFor(x => x.Recommendation).IsInEnum();
+        RuleFor(x => x.Photos).NotEmpty().WithMessage("Add at least one photo.");
+        RuleFor(x => x.Photos).ValidPhotos();
+    }
+}
+
+public sealed class OutsourceRequestValidator : AbstractValidator<OutsourceRequest>
+{
+    public OutsourceRequestValidator()
+    {
+        RuleFor(x => x.Kind).IsInEnum();
+        RuleFor(x => x.Job).IsInEnum();
+        RuleFor(x => x.CompanyName).Text(2, 150);
+        RuleFor(x => x.Contact).Text(5, 150);
+        RuleFor(x => x.Note).MaximumLength(500);
+    }
+}
+
+public sealed class RecordQuoteRequestValidator : AbstractValidator<RecordQuoteRequest>
+{
+    public RecordQuoteRequestValidator()
+    {
+        RuleFor(x => x.Bearer).IsInEnum();
+        RuleFor(x => x.SentTo!).Text(3, 150).When(x => x.Bearer == Entities.Cases.CostBearer.Customer)
+            .WithName("Sent to");
+        RuleFor(x => x.Note).MaximumLength(500);
+    }
+}
+
+public sealed class QuoteDecisionRequestValidator : AbstractValidator<QuoteDecisionRequest>
+{
+    public QuoteDecisionRequestValidator()
+    {
+        RuleFor(x => x.DecidedBy).Text(3, 150);
+        RuleFor(x => x.Note).MaximumLength(500);
+        RuleFor(x => x.Evidence)
+            .Must(e => e is null || (e.Length <= PhotoRules.MaxLength && DataUrl.IsImage(e)))
+            .WithMessage("The evidence must be a JPEG, PNG or WebP image of reasonable size.");
+    }
+}
+
+public sealed class CheckOutsideWorkRequestValidator : AbstractValidator<CheckOutsideWorkRequest>
+{
+    public CheckOutsideWorkRequestValidator()
+    {
+        RuleFor(x => x.Note).MaximumLength(500);
+        RuleFor(x => x.Note!).Text(5, 500).When(x => !x.Passed).WithMessage("Say what is not OK (at least 5 characters).");
+    }
+}
+
+public sealed class RedoOutsideWorkRequestValidator : AbstractValidator<RedoOutsideWorkRequest>
+{
+    public RedoOutsideWorkRequestValidator() => RuleFor(x => x.Reason).Text(5, 500);
+}
+
+public sealed class OpenSurveyRequestValidator : AbstractValidator<OpenSurveyRequest>
+{
+    public OpenSurveyRequestValidator()
+    {
+        RuleFor(x => x.AssetId).GreaterThan(0);
+        RuleFor(x => x.ServiceTypeId).GreaterThan(0).WithMessage("Choose the service type.");
+        RuleFor(x => x.Note).MaximumLength(CreateCaseRequestValidator.DescriptionMaxLength);
     }
 }

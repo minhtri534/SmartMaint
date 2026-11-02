@@ -62,7 +62,8 @@ internal sealed class AssetTypeConfiguration : IEntityTypeConfiguration<AssetTyp
 {
     public void Configure(EntityTypeBuilder<AssetType> builder)
     {
-        builder.ToTable("asset_types");
+        builder.ToTable("asset_types", t => t.HasCheckConstraint(
+            "ck_asset_types_expected_life_years", "expected_life_years IS NULL OR expected_life_years BETWEEN 1 AND 100"));
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).UseIdentityAlwaysColumn();
         builder.Property(x => x.Code).HasMaxLength(20);
@@ -99,6 +100,7 @@ internal sealed class AssetConfiguration : IEntityTypeConfiguration<Asset>
         builder.HasOne(x => x.Room).WithMany().HasForeignKey(x => x.RoomId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.Type).WithMany().HasForeignKey(x => x.TypeId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.Manufacturer).WithMany().HasForeignKey(x => x.ManufacturerId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.ReplacesAsset).WithMany().HasForeignKey(x => x.ReplacesAssetId).OnDelete(DeleteBehavior.Restrict);
         builder.HasIndex(x => new { x.RoomId, x.Name }).IsUnique();
     }
 }

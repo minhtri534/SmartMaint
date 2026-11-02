@@ -32,9 +32,10 @@ public sealed record AssetCategoryRequest(string Code, string CategoryName, stri
 
 /// <summary>ERD: AssetType(CategoryID, Code, Name, Description).</summary>
 public sealed record AssetTypeResponse(
-    long Id, long CategoryId, string CategoryName, string Code, string Name, string? Description, int UsedBy);
+    long Id, long CategoryId, string CategoryName, string Code, string Name, string? Description, int? ExpectedLifeYears, int UsedBy);
 
-public sealed record AssetTypeRequest(long CategoryId, string Code, string Name, string? Description);
+/// <summary>ExpectedLifeYears: NOT IN ERD v5 (F5 R03), optional.</summary>
+public sealed record AssetTypeRequest(long CategoryId, string Code, string Name, string? Description, int? ExpectedLifeYears = null);
 
 /// <summary>ERD: Manufacturers(Name, PhoneNumber, Email).</summary>
 public sealed record ManufacturerResponse(long Id, string Name, string? PhoneNumber, string? Email, int UsedBy);

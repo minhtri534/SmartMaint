@@ -9,6 +9,7 @@ using SmartMaint.Api.Entities.Cases;
 using SmartMaint.Api.Entities.Core;
 using SmartMaint.Api.Modules.Assets.Dtos;
 using SmartMaint.Api.Modules.Audit;
+using SmartMaint.Api.Modules.Cases;
 using SmartMaint.Api.Modules.Facilities;
 
 namespace SmartMaint.Api.Modules.Assets;
@@ -72,12 +73,30 @@ internal sealed class AssetService(
                 .ToList();
         }
 
+        // F1 page 3 / F5 way 2: how often it broke, and the replacement links (A07).
+        var repairs = await AssetRepairStats.RepairsSinceAsync(db, id, clock.GetUtcNow() - AssetRepairStats.Window, cancellationToken);
+        var frequent = repairs >= AssetRepairStats.FrequentFailureThreshold;
+        var replaces = asset.ReplacesAssetId is { } oldId
+            ? await db.Assets.AsNoTracking().Where(a => a.Id == oldId).Select(a => new AssetRefResponse(a.Id, a.Name))
+                .SingleOrDefaultAsync(cancellationToken)
+            : null;
+        var replacedBy = await db.Assets.AsNoTracking().Where(a => a.ReplacesAssetId == id)
+            .Select(a => new AssetRefResponse(a.Id, a.Name)).FirstOrDefaultAsync(cancellationToken);
+        var openSurvey = await cases.AnyAsync(
+            c => c.IsSurvey && c.Status != CaseStatus.Closed && c.Status != CaseStatus.Cancelled, cancellationToken);
+
         var summary = ToSummary(asset, openCases);
+        var actions = AllowedActions(asset, caseCount, openCases).ToList();
+        if (currentUser.Role == UserRole.Staff && frequent && !asset.IsRetired && !openSurvey)
+        {
+            actions.Add(AssetAction.OpenSurvey);
+        }
+
         return new AssetDetailResponse(
             summary.Id, summary.Name, summary.TypeId, summary.TypeName, summary.CategoryName, summary.ManufacturerName,
             summary.Location, summary.WarrantyEndDate, summary.UnderWarranty, summary.HasCopyright, summary.RetiredAt,
             openCases, asset.ManufacturerId, asset.CreatedAt, caseCount, history,
-            AllowedActions(asset, caseCount, openCases));
+            repairs, frequent, asset.Type.ExpectedLifeYears, replaces, replacedBy, actions);
     }
 
     public async Task<QrTargetResponse> GetQrTargetAsync(long id, CancellationToken cancellationToken)

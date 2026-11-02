@@ -24,7 +24,8 @@ public sealed record RepairReportResponse(string RootCause, string? PartsUsed, d
 
 public sealed record RatingResponse(int Stars, string? Comment, DateTimeOffset RatedAt);
 
-public sealed record HoldResponse(HoldReason Reason, DateOnly ExpectedResumeOn);
+/// <summary>ExpectedResumeOn is empty while the case waits for the staff's decision or an outside party (F5).</summary>
+public sealed record HoldResponse(HoldReason Reason, DateOnly? ExpectedResumeOn);
 
 /// <summary>ERD: Costs. Shown to staff, managers and the technician; to the customer only when the customer pays.</summary>
 public sealed record CostResponse(long Id, string Name, string? Description, decimal Amount);
@@ -63,7 +64,10 @@ public record CaseSummaryResponse(
     DateTimeOffset? CompletedAt,
     bool IsEmergencyFlow,
     bool IsPreventive,
-    EmergencyResponse? Emergency);
+    EmergencyResponse? Emergency,
+    HoldReason? HoldReason,
+    bool IsSurvey,
+    OutsideWorkBriefResponse? OutsideWork);
 
 /// <summary>
 /// A whole case. <see cref="AllowedActions"/> is computed by the server for the caller (state machine + their role
@@ -87,6 +91,9 @@ public sealed record CaseDetailResponse(
     bool IsEmergencyFlow,
     bool IsPreventive,
     EmergencyResponse? Emergency,
+    HoldReason? HoldReason,
+    bool IsSurvey,
+    OutsideWorkBriefResponse? OutsideWork,
     string Description,
     long ServiceTypeId,
     AssetResponse? Asset,
@@ -104,10 +111,15 @@ public sealed record CaseDetailResponse(
     IReadOnlyList<CaseTaskResponse> Tasks,
     IReadOnlyList<CaseRefResponse> MergedCases,
     IncidentReportResponse? IncidentReport,
+    AssessmentResponse? Assessment,
+    IReadOnlyList<ThirdPartyResponse> ThirdParties,
+    DecisionInfoResponse? DecisionInfo,
+    ReplacementResponse? Replacement,
     IReadOnlyList<CaseAction> AllowedActions)
     : CaseSummaryResponse(
         Id, Code, Title, Status, Urgency, ServiceTypeName, Location, Requester, Staff, Technician,
-        SubmittedAt, DueAt, SlaStartedAt, CompletedAt, IsEmergencyFlow, IsPreventive, Emergency);
+        SubmittedAt, DueAt, SlaStartedAt, CompletedAt, IsEmergencyFlow, IsPreventive, Emergency,
+        HoldReason, IsSurvey, OutsideWork);
 
 /// <summary>A link to another case.</summary>
 public sealed record CaseRefResponse(long Id, string Code);
@@ -121,3 +133,54 @@ public sealed record EmergencyResponse(
 
 /// <summary>F4 step ⑫ post-incident report.</summary>
 public sealed record IncidentReportResponse(string Damage, string Lessons, IncidentFollowUp FollowUp, DateTimeOffset ReportedAt);
+
+// ----- F5 repair or replace -----------------------------------------------------------------------------------------
+
+public sealed record AssessmentResponse(
+    string Condition, string Cause, TechnicianRecommendation Recommendation, DateTimeOffset AssessedAt);
+
+/// <summary>The latest outside party of a case, for lists.</summary>
+public sealed record OutsideWorkBriefResponse(
+    OutsideWorkKind Kind, OutsideWorkJob Job, OutsideWorkStatus Status, string CompanyName, DateTimeOffset? AppointmentAt);
+
+/// <summary>One call to an outside party. StartedAt → FinishedAt is the outside phase (N16).</summary>
+public sealed record ThirdPartyResponse(
+    long Id,
+    OutsideWorkKind Kind,
+    OutsideWorkJob Job,
+    OutsideWorkStatus Status,
+    string CompanyName,
+    string Contact,
+    DateTimeOffset? AppointmentAt,
+    string? Note,
+    int RedoCount,
+    CostBearer? QuoteBearer,
+    string? QuoteSentTo,
+    DateTimeOffset? QuoteSentAt,
+    bool? DecisionGo,
+    string? DecidedBy,
+    DateTimeOffset? DecidedAt,
+    string? EvidenceUrl,
+    DateTimeOffset StartedAt,
+    DateTimeOffset? FinishedAt);
+
+/// <summary>
+/// F5 step ③ decision board (G4, G5): facts only, no money. SuggestReplace is a hint, the staff decide (N22):
+/// warranty over AND (≥ 3 repairs in 12 months OR the technician recommends replacing OR past its normal life).
+/// </summary>
+public sealed record DecisionInfoResponse(
+    int RepairsLast12Months,
+    int ReopensLast12Months,
+    decimal AssetAgeYears,
+    int? ExpectedLifeYears,
+    DateOnly? WarrantyEndDate,
+    bool UnderWarranty,
+    bool ManufacturerOnly,
+    string? ManufacturerName,
+    string? ManufacturerPhone,
+    TechnicianRecommendation? Recommendation,
+    bool SuggestReplace,
+    IReadOnlyList<string> Reasons);
+
+/// <summary>The new asset written in the repair record, and where the replacement request stands.</summary>
+public sealed record ReplacementResponse(string Model, string? Serial, ReplacementStatus? RequestStatus, long? NewAssetId);

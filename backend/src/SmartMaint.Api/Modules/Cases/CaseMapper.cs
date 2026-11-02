@@ -24,7 +24,10 @@ internal static class CaseMapper
         c.CompletedAt,
         IsEmergencyFlow(c),
         c.IsPreventive,
-        ToEmergency(c));
+        ToEmergency(c),
+        c.Status == CaseStatus.OnHold ? c.HoldReason : null,
+        c.IsSurvey,
+        ToBrief(c));
 
     /// <summary>
     /// Needs Images, History(ChangedBy), Rejections(Technician) and Asset loaded too.
@@ -35,7 +38,7 @@ internal static class CaseMapper
         IReadOnlyList<CaseAction> allowedActions,
         IReadOnlyDictionary<string, string> photoUrls,
         bool showCosts,
-        IReadOnlyList<long> mergedCaseIds)
+        DetailExtras extras)
     {
         var history = c.History.OrderBy(h => h.ChangedAt).ThenBy(h => h.Id).ToList();
         return new CaseDetailResponse(
@@ -56,6 +59,9 @@ internal static class CaseMapper
             IsEmergencyFlow(c),
             c.IsPreventive,
             ToEmergency(c),
+            c.Status == CaseStatus.OnHold ? c.HoldReason : null,
+            c.IsSurvey,
+            ToBrief(c),
             c.Description,
             c.CategoryId,
             c.Asset is null ? null : new AssetResponse(c.Asset.Id, c.Asset.Name, c.Asset.RoomId),
@@ -78,8 +84,8 @@ internal static class CaseMapper
                 ? new RepairReportResponse(c.RootCause, c.PartsUsed, hours)
                 : null,
             c.RatingStars is { } stars && c.RatedAt is { } ratedAt ? new RatingResponse(stars, c.RatingComment, ratedAt) : null,
-            c.Status == CaseStatus.OnHold && c.HoldReason is { } reason && c.HoldUntil is { } until
-                ? new HoldResponse(reason, until)
+            c.Status == CaseStatus.OnHold && c.HoldReason is { } reason
+                ? new HoldResponse(reason, c.HoldUntil)
                 : null,
             showCosts ? c.Costs.OrderBy(x => x.Id).Select(x => new CostResponse(x.Id, x.Name, x.Description, x.Amount)).ToList() : null,
             showCosts && c.Costs.Count > 0 ? c.Costs.Sum(x => x.Amount) : null,
@@ -90,12 +96,34 @@ internal static class CaseMapper
                 t.Notes.OrderBy(n => n.Id).Select(n => new TaskNoteResponse(n.Note, n.CreatedAt)).ToList(),
                 t.Images.OrderBy(i => i.Id).Where(i => photoUrls.ContainsKey(i.Image)).Select(i => photoUrls[i.Image]).ToList(),
                 t.RepairCaseId, t.RepairCaseId is { } r ? Case.CodeOf(r) : null)).ToList(),
-            mergedCaseIds.Select(ToRef).ToList(),
+            extras.MergedCaseIds.Select(ToRef).ToList(),
             c.IncidentReportedAt is { } reportedOn && c.IncidentFollowUp is { } followUp
                 ? new IncidentReportResponse(c.IncidentDamage ?? string.Empty, c.IncidentLessons ?? string.Empty, followUp, reportedOn)
                 : null,
+            c.AssessedAt is { } assessedAt && c.AssessmentRecommendation is { } recommendation
+                ? new AssessmentResponse(c.AssessmentCondition ?? string.Empty, c.AssessmentCause ?? string.Empty, recommendation, assessedAt)
+                : null,
+            c.ThirdParties.OrderBy(t => t.Id).Select(t => new ThirdPartyResponse(
+                t.Id, t.Kind, t.Job, t.Status, t.CompanyName, t.Contact, t.AppointmentAt, t.Note, t.RedoCount,
+                t.QuoteBearer, t.QuoteSentTo, t.QuoteSentAt, t.DecisionGo, t.DecidedBy, t.DecidedAt,
+                t.EvidenceImage is { } e && photoUrls.TryGetValue(e, out var url) ? url : null,
+                t.CreatedAt, t.FinishedAt)).ToList(),
+            extras.DecisionInfo,
+            c.ReplacementModel is { } model
+                ? new ReplacementResponse(model, c.ReplacementSerial, extras.Replacement?.Status, extras.Replacement?.NewAssetId)
+                : null,
             allowedActions);
     }
+
+    /// <summary>What GetAsync loads besides the case itself.</summary>
+    public sealed record DetailExtras(
+        IReadOnlyList<long> MergedCaseIds, DecisionInfoResponse? DecisionInfo, AssetReplacementRequest? Replacement);
+
+    /// <summary>The latest outside party (lists and the F5 board).</summary>
+    private static OutsideWorkBriefResponse? ToBrief(Case c) =>
+        c.ThirdParties.OrderByDescending(t => t.Id).FirstOrDefault() is { } t
+            ? new OutsideWorkBriefResponse(t.Kind, t.Job, t.Status, t.CompanyName, t.AppointmentAt)
+            : null;
 
     public static bool IsEmergencyFlow(Case c) => c.Priority.Code == CasePriority.Emergency;
 

@@ -70,6 +70,7 @@ const KIND_LABELS: Record<CasePhoto['kind'], string> = {
   report: 'Reported',
   before: 'Before repair',
   after: 'After repair',
+  assessment: 'Assessment',
 }
 
 export function PhotoGallery({ photos }: { photos: CasePhoto[] }) {

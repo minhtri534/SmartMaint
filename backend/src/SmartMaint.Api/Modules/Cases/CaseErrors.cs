@@ -44,6 +44,14 @@ internal static class CaseErrors
     public static AppException InvalidTechnician() =>
         new(ErrorKind.BadRequest, "case.invalid_technician", "Choose an active technician.");
 
+    public static AppException ReplacementModelRequired() =>
+        new(ErrorKind.BadRequest, "case.replacement_model_required",
+            "The asset was replaced: write the model (and serial) of the new asset.");
+
+    public static AppException SurveyNotAllowed() =>
+        new(ErrorKind.BadRequest, "case.survey_not_allowed",
+            "Open a survey for an asset in use in one of your buildings that has no open survey yet.");
+
     public static AppException InvalidMergeTarget() =>
         new(ErrorKind.BadRequest, "case.invalid_merge_target",
             "Merge into another open incident of the same building that is not merged itself.");

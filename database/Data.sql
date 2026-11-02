@@ -489,3 +489,69 @@ BEGIN
     END IF;
 END
 $$;
+
+-- ---------------------------------------------------------------------------
+-- Repair or replace  (owner: Hùng — F5)
+-- Normal service life per asset type (R03), and the Panasonic AC of room 502 (warranty over) with a third repair in
+-- 12 months that the technician cannot finish: it waits for the staff's decision with the assessment.
+-- ---------------------------------------------------------------------------
+UPDATE asset_types t SET expected_life_years = v.years
+FROM (VALUES ('AC-SPLIT', 10), ('LIGHT', 8), ('DB', 25), ('HEATER', 8), ('ELEVATOR', 25)) AS v(code, years)
+WHERE t.code = v.code AND t.expected_life_years IS NULL;
+
+DO $$
+DECLARE
+    stf  bigint := (SELECT id FROM accounts WHERE username = 'staff');
+    tech bigint := (SELECT id FROM accounts WHERE username = 'technician');
+    bao  bigint := (SELECT id FROM accounts WHERE username = 'bao');
+    ac   record;
+    cat  record;
+    cid  bigint;
+    t0   timestamptz;
+BEGIN
+    SELECT a.id, a.room_id INTO ac FROM assets a WHERE a.name = 'Split AC Panasonic 1.5HP (#AC-502)';
+    SELECT c.id, c.default_priority_id, p.sla_hours INTO cat
+    FROM case_categories c JOIN priority_levels p ON p.id = c.default_priority_id
+    WHERE c.group_name = 'Air conditioning' AND c.name = 'Not cooling';
+
+    IF NOT EXISTS (SELECT 1 FROM cases WHERE title = 'AC in 502 stopped cooling again') THEN
+        t0 := now() - interval '70 days';
+        INSERT INTO cases (requesting_customer_id, room_id, asset_id, category_id, title, description, status_id,
+                           priority_level_id, cost_bearer, staff_id, assigned_technician_id, submitted_at, started_at,
+                           due_at, completed_at, closed_at, actual_completion_hours, root_cause)
+        VALUES (bao, ac.room_id, ac.id, cat.id, 'AC in 502 stopped cooling again', 'The AC blows air but it is not cold.',
+                (SELECT id FROM case_statuses WHERE name = 'closed'), cat.default_priority_id, 'building', stf, tech,
+                t0, t0 + interval '3 hours', t0 + interval '3 hours' + make_interval(hours => cat.sla_hours),
+                t0 + interval '5 hours', t0 + interval '1 day', 2, 'Gas leak at the flare nut, refilled (demo data)')
+        RETURNING id INTO cid;
+        INSERT INTO case_status_history (case_id, new_status_id, changed_by_id, reason, changed_at)
+        SELECT cid, (SELECT id FROM case_statuses WHERE name = s.status), s.who, s.reason, t0 + s.after
+        FROM (VALUES ('pending', bao, NULL, interval '0 hours'), ('approved', stf, NULL, interval '1 hour'),
+                     ('assigned', stf, 'Assigned to Demo Technician.', interval '1 hour'),
+                     ('accepted', tech, NULL, interval '2 hours'), ('in_progress', tech, NULL, interval '3 hours'),
+                     ('completed', tech, NULL, interval '5 hours'), ('closed', stf, NULL, interval '1 day')) AS s(status, who, reason, after);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM cases WHERE title = 'AC in 502 is loud and shuts down') THEN
+        t0 := now() - interval '26 hours';
+        INSERT INTO cases (requesting_customer_id, room_id, asset_id, category_id, title, description, status_id,
+                           priority_level_id, cost_bearer, staff_id, assigned_technician_id, submitted_at, started_at,
+                           due_at, hold_reason, assessment_condition, assessment_cause, assessment_recommendation, assessed_at)
+        VALUES (bao, ac.room_id, ac.id, cat.id, 'AC in 502 is loud and shuts down',
+                'The outdoor unit makes a loud grinding noise and the AC switches itself off after ten minutes.',
+                (SELECT id FROM case_statuses WHERE name = 'on_hold'), cat.default_priority_id, 'building', stf, tech,
+                t0, t0 + interval '2 hours', t0 + interval '2 hours' + make_interval(hours => cat.sla_hours),
+                'waiting_staff_decision',
+                'Compressor bearing is worn; the unit trips on overload after 10 minutes. Gas pressure is fine.',
+                'Wear: the unit is old and runs all day in summer.', 'replace', t0 + interval '3 hours')
+        RETURNING id INTO cid;
+        INSERT INTO case_status_history (case_id, new_status_id, changed_by_id, reason, changed_at)
+        SELECT cid, (SELECT id FROM case_statuses WHERE name = s.status), s.who, s.reason, t0 + s.after
+        FROM (VALUES ('pending', bao, NULL, interval '0 hours'), ('approved', stf, NULL, interval '30 minutes'),
+                     ('assigned', stf, 'Assigned to Demo Technician.', interval '30 minutes'),
+                     ('accepted', tech, NULL, interval '1 hour'), ('in_progress', tech, NULL, interval '2 hours'),
+                     ('on_hold', tech, 'Needs the staff''s decision (replace the asset): Compressor bearing is worn; the unit trips on overload after 10 minutes. Gas pressure is fine.', interval '3 hours')
+        ) AS s(status, who, reason, after);
+    END IF;
+END
+$$;

@@ -17,6 +17,13 @@ import type {
   EmergencyLogRequest,
   IncidentReportRequest,
   MergeCaseRequest,
+  CheckOutsideWorkRequest,
+  OpenSurveyRequest,
+  OutsourceRequest,
+  QuoteDecisionRequest,
+  RecordQuoteRequest,
+  RedoOutsideWorkRequest,
+  RequestDecisionRequest,
   UpdateTaskRequest,
   HoldCaseRequest,
   RateCaseRequest,
@@ -126,6 +133,31 @@ export const casesApi = {
   /** PUT /api/cases/{id}/incident-report — staff (K08) */
   writeIncidentReport: ({ id, ...body }: Id & IncidentReportRequest) =>
     apiClient.put<CaseDetail>(`/cases/${id}/incident-report`, body).then((r) => r.data),
+
+  // Part 7: repair or replace, outside party (F5)
+  /** POST /api/cases/{id}/request-decision — technician, steps ①–② */
+  requestDecision: ({ id, ...body }: Id & RequestDecisionRequest) =>
+    post<CaseDetail>(`/cases/${id}/request-decision`, body),
+  /** POST /api/cases/{id}/outsource — staff, steps ④–⑤ */
+  outsource: ({ id, ...body }: Id & OutsourceRequest) =>
+    post<CaseDetail>(`/cases/${id}/outsource`, body),
+  /** POST /api/cases/{id}/outside/quote — staff */
+  recordQuote: ({ id, ...body }: Id & RecordQuoteRequest) =>
+    post<CaseDetail>(`/cases/${id}/outside/quote`, body),
+  /** POST /api/cases/{id}/outside/decision — staff, step ⑥ */
+  decideQuote: ({ id, ...body }: Id & QuoteDecisionRequest) =>
+    post<CaseDetail>(`/cases/${id}/outside/decision`, body),
+  /** POST /api/cases/{id}/outside/declined — staff */
+  outsideDeclined: ({ id, ...body }: Id & ReasonRequest) =>
+    post<CaseDetail>(`/cases/${id}/outside/declined`, body),
+  /** POST /api/cases/{id}/outside/check — technician, step ⑧ */
+  checkOutsideWork: ({ id, ...body }: Id & CheckOutsideWorkRequest) =>
+    post<CaseDetail>(`/cases/${id}/outside/check`, body),
+  /** POST /api/cases/{id}/outside/redo — staff */
+  redoOutsideWork: ({ id, ...body }: Id & RedoOutsideWorkRequest) =>
+    post<CaseDetail>(`/cases/${id}/outside/redo`, body),
+  /** POST /api/cases/surveys — staff, F5 way 2 */
+  openSurvey: (body: OpenSurveyRequest) => post<CaseDetail>('/cases/surveys', body),
 }
 
 /** Query keys of this feature, in one place so invalidation never misses one. */

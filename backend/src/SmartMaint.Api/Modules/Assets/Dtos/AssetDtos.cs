@@ -41,6 +41,9 @@ public enum AssetAction
     Edit,
     Retire,
     Delete,
+
+    /// <summary>Staff, F5 way 2: open a survey case (the asset fails often).</summary>
+    OpenSurvey,
 }
 
 /// <summary>A case of this asset (G5 maintenance history). Never sent to the Administrator (BR-11).</summary>
@@ -74,6 +77,11 @@ public sealed record AssetDetailResponse(
     DateTimeOffset CreatedAt,
     int CaseCount,
     IReadOnlyList<AssetCaseResponse>? History,
+    int RepairsLast12Months,
+    bool FrequentFailure,
+    int? ExpectedLifeYears,
+    AssetRefResponse? Replaces,
+    AssetRefResponse? ReplacedBy,
     IReadOnlyList<AssetAction> AllowedActions)
     : AssetSummaryResponse(
         Id, Name, TypeId, TypeName, CategoryName, ManufacturerName, Location, WarrantyEndDate, UnderWarranty,

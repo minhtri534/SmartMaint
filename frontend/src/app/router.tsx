@@ -7,6 +7,7 @@ import {
   AssetListPage,
   QrLabelsPage,
   QrLandingPage,
+  ReplacementsPage,
 } from '@/features/assets'
 import { AuditLogPage } from '@/features/audit'
 import { ChangePasswordPage, LoginPage, RequireAuth } from '@/features/auth'
@@ -24,6 +25,7 @@ import { FacilityTreePage } from '@/features/facilities'
 import { HomePage } from '@/features/home/pages/HomePage'
 import { ChecklistsPage, PlanDetailPage, PlanFormPage, PlansPage } from '@/features/maintenance'
 import { NotificationsPage } from '@/features/notifications'
+import { OutsideWorkPage } from '@/features/outside-work'
 import { SlaSettingsPage } from '@/features/settings'
 import { AppLayout } from '@/shared/layout/AppLayout'
 import { AuthLayout } from '@/shared/layout/AuthLayout'
@@ -84,6 +86,15 @@ export const router = createBrowserRouter([
             element: (
               <RequireAuth roles={['staff', 'manager']}>
                 <CaseQueuePage />
+              </RequireAuth>
+            ),
+          },
+          // F5 — outside-work board (the actions are on the case page)
+          {
+            path: paths.outsideWork,
+            element: (
+              <RequireAuth roles={['staff', 'manager']}>
+                <OutsideWorkPage />
               </RequireAuth>
             ),
           },
@@ -170,6 +181,7 @@ export const router = createBrowserRouter([
             { path: paths.roles, element: <RolesPage /> },
             { path: paths.auditLog, element: <AuditLogPage /> },
             { path: paths.slaSettings, element: <SlaSettingsPage /> },
+            { path: paths.replacements, element: <ReplacementsPage /> },
           ].map((route) => ({
             ...route,
             element: <RequireAuth roles={['admin']}>{route.element}</RequireAuth>,

@@ -54,6 +54,9 @@ public class AssetType : AuditableEntity
     public string Code { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string? Description { get; set; }
+
+    /// <summary>NOT IN ERD v5 (F5 R03): normal service life in years, set by the Administrator; shown on the decision board.</summary>
+    public int? ExpectedLifeYears { get; set; }
 }
 
 /// <summary>ERD: Manufacturers(ID, Name, PhoneNumber, Email) — the maker only (E3).</summary>
@@ -89,6 +92,10 @@ public class Asset : AuditableEntity
     /// hidden from the report form and the QR label stops working; its history stays.
     /// </summary>
     public DateTimeOffset? RetiredAt { get; set; }
+
+    /// <summary>NOT IN ERD v5 (F1 A07, F5): this asset was installed in place of that one; the old one is retired.</summary>
+    public long? ReplacesAssetId { get; set; }
+    public Asset? ReplacesAsset { get; set; }
 
     public bool IsRetired => RetiredAt is not null;
 }

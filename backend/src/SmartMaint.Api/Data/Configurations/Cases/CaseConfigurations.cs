@@ -48,6 +48,7 @@ internal sealed class CaseConfiguration : IEntityTypeConfiguration<Case>
             t.HasEnumCheck<CostBearer>("cost_bearer");
             t.HasEnumCheck<HoldReason>("hold_reason");
             t.HasEnumCheck<IncidentFollowUp>("incident_follow_up");
+            t.HasEnumCheck<TechnicianRecommendation>("assessment_recommendation");
             t.HasCheckConstraint("ck_cases_rating_stars", "rating_stars IS NULL OR rating_stars BETWEEN 1 AND 5");
             t.HasCheckConstraint("ck_cases_estimated_completion_hours",
                 "estimated_completion_hours IS NULL OR estimated_completion_hours > 0");
@@ -72,6 +73,11 @@ internal sealed class CaseConfiguration : IEntityTypeConfiguration<Case>
         builder.Property(x => x.IncidentDamage).HasMaxLength(1000);
         builder.Property(x => x.IncidentLessons).HasMaxLength(1000);
         builder.Property(x => x.IncidentFollowUp).HasEnumText();
+        builder.Property(x => x.AssessmentCondition).HasMaxLength(1000);
+        builder.Property(x => x.AssessmentCause).HasMaxLength(1000);
+        builder.Property(x => x.AssessmentRecommendation).HasEnumText();
+        builder.Property(x => x.ReplacementModel).HasMaxLength(150);
+        builder.Property(x => x.ReplacementSerial).HasMaxLength(100);
 
         builder.HasOne(x => x.Customer).WithMany().HasForeignKey(x => x.RequestingCustomerId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.Room).WithMany().HasForeignKey(x => x.RoomId).OnDelete(DeleteBehavior.Restrict);
@@ -147,5 +153,55 @@ internal sealed class TechnicianRejectionConfiguration : IEntityTypeConfiguratio
         builder.HasOne(x => x.Case).WithMany(x => x.Rejections).HasForeignKey(x => x.CaseId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne(x => x.Technician).WithMany().HasForeignKey(x => x.TechnicianId).OnDelete(DeleteBehavior.Restrict);
         builder.HasIndex(x => x.TechnicianId);
+    }
+}
+
+internal sealed class CaseThirdPartyConfiguration : IEntityTypeConfiguration<CaseThirdParty>
+{
+    public void Configure(EntityTypeBuilder<CaseThirdParty> builder)
+    {
+        builder.ToTable("case_third_parties", t =>
+        {
+            t.HasEnumCheck<OutsideWorkKind>("kind");
+            t.HasEnumCheck<OutsideWorkJob>("job");
+            t.HasEnumCheck<OutsideWorkStatus>("status");
+            t.HasEnumCheck<CostBearer>("quote_bearer");
+            t.HasCheckConstraint("ck_case_third_parties_redo_count", "redo_count >= 0");
+        });
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Id).UseIdentityAlwaysColumn();
+        builder.Property(x => x.Kind).HasEnumText();
+        builder.Property(x => x.Job).HasEnumText();
+        builder.Property(x => x.Status).HasEnumText();
+        builder.Property(x => x.QuoteBearer).HasEnumText();
+        builder.Property(x => x.CompanyName).HasMaxLength(150);
+        builder.Property(x => x.Contact).HasMaxLength(150);
+        builder.Property(x => x.Note).HasMaxLength(500);
+        builder.Property(x => x.QuoteSentTo).HasMaxLength(150);
+        builder.Property(x => x.DecidedBy).HasMaxLength(150);
+        builder.Property(x => x.EvidenceImage).HasMaxLength(300);
+        builder.Ignore(x => x.IsActive);
+        builder.HasOne(x => x.Case).WithMany(x => x.ThirdParties).HasForeignKey(x => x.CaseId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasIndex(x => x.CaseId);
+    }
+}
+
+internal sealed class AssetReplacementRequestConfiguration : IEntityTypeConfiguration<AssetReplacementRequest>
+{
+    public void Configure(EntityTypeBuilder<AssetReplacementRequest> builder)
+    {
+        builder.ToTable("asset_replacement_requests", t => t.HasEnumCheck<ReplacementStatus>("status"));
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Id).UseIdentityAlwaysColumn();
+        builder.Property(x => x.Status).HasEnumText();
+        builder.Property(x => x.NewModel).HasMaxLength(150);
+        builder.Property(x => x.NewSerial).HasMaxLength(100);
+        builder.Property(x => x.DismissReason).HasMaxLength(500);
+        builder.HasOne(x => x.Case).WithMany().HasForeignKey(x => x.CaseId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.OldAsset).WithMany().HasForeignKey(x => x.OldAssetId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.NewAsset).WithMany().HasForeignKey(x => x.NewAssetId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.RequestedBy).WithMany().HasForeignKey(x => x.RequestedById).OnDelete(DeleteBehavior.Restrict);
+        // One replacement per case.
+        builder.HasIndex(x => x.CaseId).IsUnique();
     }
 }

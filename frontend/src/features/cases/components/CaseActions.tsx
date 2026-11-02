@@ -13,6 +13,10 @@ import { DowngradeDialog } from './dialogs/DowngradeDialog'
 import { EmergencyLogDialog } from './dialogs/EmergencyLogDialog'
 import { ExtendDueDialog } from './dialogs/ExtendDueDialog'
 import { HoldDialog } from './dialogs/HoldDialog'
+import { CheckOutsideWorkDialog, RedoOutsideWorkDialog } from './dialogs/OutsideCheckDialogs'
+import { OutsourceDialog } from './dialogs/OutsourceDialog'
+import { QuoteDecisionDialog, RecordQuoteDialog } from './dialogs/QuoteDialogs'
+import { RequestDecisionDialog } from './dialogs/RequestDecisionDialog'
 import { IncidentReportDialog } from './dialogs/IncidentReportDialog'
 import { MergeDialog } from './dialogs/MergeDialog'
 import { RateDialog } from './dialogs/RateDialog'
@@ -58,6 +62,14 @@ const BUTTONS: Record<CaseAction, { label: string; variant: 'primary' | 'seconda
     mark_safe: { label: 'Made safe', variant: 'secondary' },
     write_incident_report: { label: 'Post-incident report', variant: 'secondary' },
     acknowledge: { label: 'Acknowledge', variant: 'primary' },
+    // Part 7: F5 repair or replace, outside party
+    request_decision: { label: 'Needs staff decision', variant: 'secondary' },
+    outside_declined: { label: 'Party refused', variant: 'secondary' },
+    redo_outside_work: { label: 'Ask to redo', variant: 'secondary' },
+    outsource: { label: 'Hand to outside party', variant: 'primary' },
+    record_quote: { label: 'Quote received', variant: 'primary' },
+    decide_quote: { label: 'Quote decision', variant: 'primary' },
+    check_outside_work: { label: 'Check outside work', variant: 'primary' },
   }
 const ORDER: CaseAction[] = (Object.keys(BUTTONS) as CaseAction[]).filter(
   (a) => a !== 'update_task',
@@ -130,7 +142,35 @@ export function CaseActions({ caseDetail }: { caseDetail: CaseDetail }) {
       <RejectDialog caseDetail={caseDetail} open={open === 'reject'} onClose={onClose} />
       <AssignDialog caseDetail={caseDetail} open={open === 'assign'} onClose={onClose} />
       <HoldDialog caseId={id} open={open === 'hold'} onClose={onClose} />
-      <CompleteWorkDialog caseId={id} open={open === 'complete'} onClose={onClose} />
+      <CompleteWorkDialog
+        caseId={id}
+        needsReplacement={caseDetail.thirdParties.some(
+          (t) => t.status === 'done' && t.job === 'replace',
+        )}
+        open={open === 'complete'}
+        onClose={onClose}
+      />
+      <RequestDecisionDialog caseId={id} open={open === 'request_decision'} onClose={onClose} />
+      <OutsourceDialog caseDetail={caseDetail} open={open === 'outsource'} onClose={onClose} />
+      <RecordQuoteDialog caseDetail={caseDetail} open={open === 'record_quote'} onClose={onClose} />
+      <QuoteDecisionDialog
+        caseDetail={caseDetail}
+        open={open === 'decide_quote'}
+        onClose={onClose}
+      />
+      <CheckOutsideWorkDialog caseId={id} open={open === 'check_outside_work'} onClose={onClose} />
+      <RedoOutsideWorkDialog caseId={id} open={open === 'redo_outside_work'} onClose={onClose} />
+      <ReasonDialog
+        caseId={id}
+        open={open === 'outside_declined'}
+        onClose={onClose}
+        title="The outside party refused"
+        description="For example the manufacturer declined the warranty claim. The case comes back to you to choose again."
+        label="Their reason"
+        placeholder="e.g. Damage from a power surge is not covered"
+        confirmLabel="Save"
+        action={casesApi.outsideDeclined}
+      />
       <CompleteChecklistDialog caseId={id} open={open === 'complete_checklist'} onClose={onClose} />
       <RateDialog caseId={id} open={open === 'rate'} onClose={onClose} />
       <ReasonDialog

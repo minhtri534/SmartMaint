@@ -40,6 +40,15 @@ public enum CaseAction
     AddLog,
     MarkSafe,
     WriteIncidentReport,
+
+    // Part 7 (F5): repair or replace, outside party
+    RequestDecision,
+    Outsource,
+    RecordQuote,
+    DecideQuote,
+    OutsideDeclined,
+    CheckOutsideWork,
+    RedoOutsideWork,
 }
 
 /// <summary>One arrow of the F3 state machine (docs/flows/F3_Su_Co_Thong_Thuong/F3_Trang5.png): who, from where, to where.</summary>
@@ -112,6 +121,17 @@ internal static class CaseTransitions
         new(CaseAction.AddLog, UserRole.Staff, [.. Handling, CaseStatus.Completed], null),
         new(CaseAction.MarkSafe, UserRole.Technician, [CaseStatus.InProgress, CaseStatus.OnHold], null),
         new(CaseAction.WriteIncidentReport, UserRole.Staff, [CaseStatus.Closed], null),
+
+        // F5 (docs/flows/F5_Sua_Hay_Thay): the case waits On Hold for the staff's decision, then for the outside party;
+        // the technician checks the result (OK → In Progress, the To of that row is set by the service).
+        // CaseService.IsAllowed checks the outside party's own status for each step.
+        new(CaseAction.RequestDecision, UserRole.Technician, [CaseStatus.InProgress], CaseStatus.OnHold),
+        new(CaseAction.Outsource, UserRole.Staff, [CaseStatus.OnHold], null),
+        new(CaseAction.RecordQuote, UserRole.Staff, [CaseStatus.OnHold], null),
+        new(CaseAction.DecideQuote, UserRole.Staff, [CaseStatus.OnHold], null),
+        new(CaseAction.OutsideDeclined, UserRole.Staff, [CaseStatus.OnHold], null),
+        new(CaseAction.CheckOutsideWork, UserRole.Technician, [CaseStatus.OnHold], null),
+        new(CaseAction.RedoOutsideWork, UserRole.Staff, [CaseStatus.OnHold], null),
     ];
 
     public static TransitionRule? Find(CaseAction action, UserRole role, CaseStatus status) =>

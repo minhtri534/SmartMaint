@@ -96,6 +96,9 @@ export const completeWorkSchema = z.object({
     ),
   beforePhotos: z.array(z.string()).max(5),
   afterPhotos: z.array(z.string()).min(1, 'Add at least one photo after the repair.').max(5),
+  /** F5: required (checked by the form) when an outside party replaced the asset. */
+  replacementModel: z.string().trim().max(150),
+  replacementSerial: z.string().trim().max(100),
 })
 export type CompleteWorkFormValues = z.infer<typeof completeWorkSchema>
 
@@ -139,6 +142,63 @@ export const completeChecklistSchema = z.object({
   parts: z.array(costLineSchema).max(20),
 })
 export type CompleteChecklistFormValues = z.infer<typeof completeChecklistSchema>
+
+/** F5 steps ①–②: the technician's assessment. */
+export const requestDecisionSchema = z.object({
+  condition: z.string().trim().min(10, 'At least 10 characters.').max(1000),
+  cause: z.string().trim().min(5, 'At least 5 characters.').max(1000),
+  recommendation: z.enum(['repairable', 'replace', 'specialist']),
+  photos: z.array(z.string()).min(1, 'Add at least one photo.').max(5),
+})
+export type RequestDecisionFormValues = z.infer<typeof requestDecisionSchema>
+
+/** F5 steps ④–⑤: hand the job to an outside party. */
+export const outsourceSchema = z.object({
+  kind: z.enum(['warranty', 'contract', 'quote']),
+  job: z.enum(['repair', 'replace']),
+  companyName: z.string().trim().min(2, 'At least 2 characters.').max(150),
+  contact: z.string().trim().min(5, 'Name and phone, at least 5 characters.').max(150),
+  appointmentAt: z.string(),
+  note: z.string().trim().max(500),
+})
+export type OutsourceFormValues = z.infer<typeof outsourceSchema>
+
+/** The quote arrived: who pays, and to whom it was forwarded. */
+export const recordQuoteSchema = z
+  .object({
+    bearer: z.enum(COST_BEARERS),
+    sentTo: z.string().trim().max(150),
+    note: z.string().trim().max(500),
+  })
+  .refine((v) => v.bearer !== 'customer' || v.sentTo.length >= 3, {
+    path: ['sentTo'],
+    message: 'Who received the quote (name, role).',
+  })
+export type RecordQuoteFormValues = z.infer<typeof recordQuoteSchema>
+
+/** Step ⑥: the payer's decision and its evidence. */
+export const quoteDecisionSchema = z.object({
+  go: z.enum(['yes', 'no']),
+  decidedBy: z.string().trim().min(3, 'Who decided (name, role).').max(150),
+  note: z.string().trim().max(500),
+  evidence: z.array(z.string()).max(1),
+})
+export type QuoteDecisionFormValues = z.infer<typeof quoteDecisionSchema>
+
+/** Step ⑧: the technician's check of the outside work. */
+export const checkOutsideWorkSchema = z
+  .object({ passed: z.enum(['yes', 'no']), note: z.string().trim().max(500) })
+  .refine((v) => v.passed === 'yes' || v.note.length >= 5, {
+    path: ['note'],
+    message: 'Say what is not OK (at least 5 characters).',
+  })
+export type CheckOutsideWorkFormValues = z.infer<typeof checkOutsideWorkSchema>
+
+export const redoOutsideWorkSchema = z.object({
+  appointmentAt: z.string(),
+  reason: z.string().trim().min(5, 'At least 5 characters.').max(500),
+})
+export type RedoOutsideWorkFormValues = z.infer<typeof redoOutsideWorkSchema>
 
 /** F4 K04: back to F3. */
 export const downgradeSchema = z.object({

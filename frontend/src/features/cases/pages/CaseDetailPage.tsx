@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
-import { caseDetailPath, paths, planDetailPath, resubmitPath } from '@/app/paths'
+import { assetDetailPath, caseDetailPath, paths, planDetailPath, resubmitPath } from '@/app/paths'
 import type { Role } from '@/shared/types/role'
 import { Alert, Button, Card, CardHeader, Icon, LinkButton, PageHeader } from '@/shared/ui'
 import { formatDateTime, formatVnd } from '@/shared/utils/format'
@@ -9,6 +9,7 @@ import { CaseActions } from '../components/CaseActions'
 import { ChecklistCard } from '../components/ChecklistCard'
 import { UrgencyNote } from '../components/CaseBadges'
 import { EmergencyCard, IncidentReportCard } from '../components/EmergencyCard'
+import { AssessmentCard, DecisionInfoCard, ThirdPartiesCard } from '../components/OutsideWorkCards'
 import { PhotoGallery, RejectionList, StatusTimeline } from '../components/CaseHistory'
 import { SlaPanel } from '../components/SlaTrack'
 import { StarsView } from '../components/Stars'
@@ -123,8 +124,34 @@ export function CaseDetailPage() {
       )}
       {c.hold && (
         <Alert tone="info">
-          On hold: {HOLD_REASON_LABELS[c.hold.reason]}. Expected to continue on{' '}
-          {c.hold.expectedResumeOn}.
+          On hold: {HOLD_REASON_LABELS[c.hold.reason]}.
+          {c.hold.expectedResumeOn && ` Expected to continue on ${c.hold.expectedResumeOn}.`}
+        </Alert>
+      )}
+      {c.isSurvey && (
+        <Alert tone="info">
+          Asset survey opened by the staff: the technician assesses whether to repair or replace it.
+          Not counted in the KPIs.
+        </Alert>
+      )}
+      {c.replacement && (
+        <Alert tone="info">
+          The asset was replaced by {c.replacement.model}
+          {c.replacement.serial && ` (serial ${c.replacement.serial})`}.{' '}
+          {c.replacement.requestStatus === 'done' && c.replacement.newAssetId ? (
+            <Link
+              to={assetDetailPath(c.replacement.newAssetId)}
+              className="underline underline-offset-2"
+            >
+              Registered as a new asset.
+            </Link>
+          ) : c.replacement.requestStatus === 'dismissed' ? (
+            'The Administrator did not register it.'
+          ) : c.replacement.requestStatus === 'open' ? (
+            'Waiting for the Administrator to register it.'
+          ) : (
+            'The Administrator is asked to register it when the case closes.'
+          )}
         </Alert>
       )}
       {c.notFixed && (
@@ -164,6 +191,8 @@ export function CaseDetailPage() {
           </Card>
 
           {c.isPreventive && c.tasks.length > 0 && <ChecklistCard caseDetail={c} />}
+          {c.assessment && <AssessmentCard assessment={c.assessment} />}
+          {c.thirdParties.length > 0 && <ThirdPartiesCard parties={c.thirdParties} />}
 
           {c.repairReport && (
             <Card>
@@ -222,6 +251,7 @@ export function CaseDetailPage() {
 
         <div className="flex flex-col gap-6">
           <EmergencyCard c={c} now={query.dataUpdatedAt} />
+          {c.decisionInfo && <DecisionInfoCard info={c.decisionInfo} />}
           <SlaPanel c={c} />
 
           <Card>

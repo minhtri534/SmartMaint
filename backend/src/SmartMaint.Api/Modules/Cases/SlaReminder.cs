@@ -67,8 +67,34 @@ internal sealed class SlaReminder(AppDbContext db, INotificationService notifica
             }
         }
 
+        reminded += await RemindQuotesAsync(now, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return reminded;
+    }
+
+    /// <summary>F5 page 1: the customer's contract representative has not answered a quote for 3 days → tell the staff once.</summary>
+    public static readonly TimeSpan QuoteAnswerTime = TimeSpan.FromDays(3);
+
+    private async Task<int> RemindQuotesAsync(DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var limit = now - QuoteAnswerTime;
+        var waiting = await db.CaseThirdParties
+            .Include(t => t.Case).ThenInclude(c => c.Room).ThenInclude(r => r.Floor)
+            .Where(t => t.Status == Entities.Cases.OutsideWorkStatus.AwaitingDecision && t.QuoteBearer == CostBearer.Customer
+                        && t.QuoteSentAt <= limit && t.QuoteRemindedAt == null)
+            .ToListAsync(cancellationToken);
+        foreach (var t in waiting)
+        {
+            long[] staff = t.Case.StaffId is { } s
+                ? [s]
+                : [.. await db.StaffBuildingAssignments.Where(a => a.BuildingId == t.Case.Room.Floor.BuildingId)
+                    .Select(a => a.StaffId).ToListAsync(cancellationToken)];
+            notifications.Send(staff,
+                $"{Case.CodeOf(t.CaseId)}: {t.QuoteSentTo} has not answered the quote of {t.CompanyName} for 3 days. Call them.");
+            t.QuoteRemindedAt = now;
+        }
+
+        return waiting.Count;
     }
 }
 

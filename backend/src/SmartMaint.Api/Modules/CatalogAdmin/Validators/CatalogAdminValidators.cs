@@ -44,6 +44,8 @@ public sealed class AssetTypeRequestValidator : AbstractValidator<AssetTypeReque
         RuleFor(x => x.Code).ValidCode();
         RuleFor(x => x.Name).ValidName(100);
         RuleFor(x => x.Description).MaximumLength(300);
+        RuleFor(x => x.ExpectedLifeYears).InclusiveBetween(1, 100).When(x => x.ExpectedLifeYears is not null)
+            .WithMessage("Between 1 and 100 years.");
     }
 }
 

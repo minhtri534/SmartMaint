@@ -49,6 +49,9 @@ public enum CaseImageKind
     Report,
     Before,
     After,
+
+    /// <summary>F5: the technician's assessment photos.</summary>
+    Assessment,
 }
 
 /// <summary>F4 step ⑫: what the post-incident report proposes so it does not happen again.</summary>

@@ -205,6 +205,10 @@ namespace SmartMaint.Api.Data.Migrations
                         .HasColumnType("character varying(150)")
                         .HasColumnName("name");
 
+                    b.Property<long?>("ReplacesAssetId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("replaces_asset_id");
+
                     b.Property<DateTimeOffset?>("RetiredAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("retired_at");
@@ -232,6 +236,9 @@ namespace SmartMaint.Api.Data.Migrations
 
                     b.HasIndex("ManufacturerId")
                         .HasDatabaseName("ix_assets_manufacturer_id");
+
+                    b.HasIndex("ReplacesAssetId")
+                        .HasDatabaseName("ix_assets_replaces_asset_id");
 
                     b.HasIndex("TypeId")
                         .HasDatabaseName("ix_assets_type_id");
@@ -321,6 +328,10 @@ namespace SmartMaint.Api.Data.Migrations
                         .HasColumnType("character varying(300)")
                         .HasColumnName("description");
 
+                    b.Property<int?>("ExpectedLifeYears")
+                        .HasColumnType("integer")
+                        .HasColumnName("expected_life_years");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -343,7 +354,10 @@ namespace SmartMaint.Api.Data.Migrations
                         .IsUnique()
                         .HasDatabaseName("ix_asset_types_code");
 
-                    b.ToTable("asset_types", (string)null);
+                    b.ToTable("asset_types", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_asset_types_expected_life_years", "expected_life_years IS NULL OR expected_life_years BETWEEN 1 AND 100");
+                        });
                 });
 
             modelBuilder.Entity("SmartMaint.Api.Entities.Buildings.Building", b =>
@@ -563,6 +577,91 @@ namespace SmartMaint.Api.Data.Migrations
                     b.ToTable("staff_building_assignments", (string)null);
                 });
 
+            modelBuilder.Entity("SmartMaint.Api.Entities.Cases.AssetReplacementRequest", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("CaseId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("case_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("DismissReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("dismiss_reason");
+
+                    b.Property<DateTimeOffset?>("FinishedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("finished_at");
+
+                    b.Property<long?>("NewAssetId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("new_asset_id");
+
+                    b.Property<string>("NewModel")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("new_model");
+
+                    b.Property<string>("NewSerial")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("new_serial");
+
+                    b.Property<long>("OldAssetId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("old_asset_id");
+
+                    b.Property<long>("RequestedById")
+                        .HasColumnType("bigint")
+                        .HasColumnName("requested_by_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.HasKey("Id")
+                        .HasName("pk_asset_replacement_requests");
+
+                    b.HasIndex("CaseId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_asset_replacement_requests_case_id");
+
+                    b.HasIndex("NewAssetId")
+                        .HasDatabaseName("ix_asset_replacement_requests_new_asset_id");
+
+                    b.HasIndex("OldAssetId")
+                        .HasDatabaseName("ix_asset_replacement_requests_old_asset_id");
+
+                    b.HasIndex("RequestedById")
+                        .HasDatabaseName("ix_asset_replacement_requests_requested_by_id");
+
+                    b.ToTable("asset_replacement_requests", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_asset_replacement_requests_status", "status IN ('open', 'done', 'dismissed')");
+                        });
+                });
+
             modelBuilder.Entity("SmartMaint.Api.Entities.Cases.Case", b =>
                 {
                     b.Property<long>("Id")
@@ -584,6 +683,25 @@ namespace SmartMaint.Api.Data.Migrations
                         .HasPrecision(6, 2)
                         .HasColumnType("numeric(6,2)")
                         .HasColumnName("actual_completion_hours");
+
+                    b.Property<DateTimeOffset?>("AssessedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("assessed_at");
+
+                    b.Property<string>("AssessmentCause")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("assessment_cause");
+
+                    b.Property<string>("AssessmentCondition")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("assessment_condition");
+
+                    b.Property<string>("AssessmentRecommendation")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("assessment_recommendation");
 
                     b.Property<long?>("AssetId")
                         .HasColumnType("bigint")
@@ -668,6 +786,10 @@ namespace SmartMaint.Api.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("incident_reported_at");
 
+                    b.Property<bool>("IsSurvey")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_survey");
+
                     b.Property<DateTimeOffset?>("MadeSafeAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("made_safe_at");
@@ -714,6 +836,16 @@ namespace SmartMaint.Api.Data.Migrations
                     b.Property<int?>("RatingStars")
                         .HasColumnType("integer")
                         .HasColumnName("rating_stars");
+
+                    b.Property<string>("ReplacementModel")
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("replacement_model");
+
+                    b.Property<string>("ReplacementSerial")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("replacement_serial");
 
                     b.Property<long?>("RequestingCustomerId")
                         .HasColumnType("bigint")
@@ -807,6 +939,8 @@ namespace SmartMaint.Api.Data.Migrations
                     b.ToTable("cases", null, t =>
                         {
                             t.HasCheckConstraint("ck_cases_actual_completion_hours", "actual_completion_hours IS NULL OR actual_completion_hours > 0");
+
+                            t.HasCheckConstraint("ck_cases_assessment_recommendation", "assessment_recommendation IN ('repairable', 'replace', 'specialist')");
 
                             t.HasCheckConstraint("ck_cases_cost_bearer", "cost_bearer IN ('building', 'customer')");
 
@@ -942,7 +1076,7 @@ namespace SmartMaint.Api.Data.Migrations
 
                     b.ToTable("case_images", null, t =>
                         {
-                            t.HasCheckConstraint("ck_case_images_kind", "kind IN ('report', 'before', 'after')");
+                            t.HasCheckConstraint("ck_case_images_kind", "kind IN ('report', 'before', 'after', 'assessment')");
                         });
                 });
 
@@ -989,6 +1123,134 @@ namespace SmartMaint.Api.Data.Migrations
                         .HasDatabaseName("ix_case_status_history_new_status_id");
 
                     b.ToTable("case_status_history", (string)null);
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Cases.CaseThirdParty", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset?>("AppointmentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("appointment_at");
+
+                    b.Property<long>("CaseId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("case_id");
+
+                    b.Property<string>("CompanyName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("company_name");
+
+                    b.Property<string>("Contact")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("contact");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<DateTimeOffset?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("decided_at");
+
+                    b.Property<string>("DecidedBy")
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("decided_by");
+
+                    b.Property<bool?>("DecisionGo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("decision_go");
+
+                    b.Property<string>("EvidenceImage")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("evidence_image");
+
+                    b.Property<DateTimeOffset?>("FinishedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("finished_at");
+
+                    b.Property<string>("Job")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("job");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("note");
+
+                    b.Property<string>("QuoteBearer")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("quote_bearer");
+
+                    b.Property<DateTimeOffset?>("QuoteRemindedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("quote_reminded_at");
+
+                    b.Property<DateTimeOffset?>("QuoteSentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("quote_sent_at");
+
+                    b.Property<string>("QuoteSentTo")
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("quote_sent_to");
+
+                    b.Property<int>("RedoCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("redo_count");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.HasKey("Id")
+                        .HasName("pk_case_third_parties");
+
+                    b.HasIndex("CaseId")
+                        .HasDatabaseName("ix_case_third_parties_case_id");
+
+                    b.ToTable("case_third_parties", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_case_third_parties_job", "job IN ('repair', 'replace')");
+
+                            t.HasCheckConstraint("ck_case_third_parties_kind", "kind IN ('warranty', 'contract', 'quote')");
+
+                            t.HasCheckConstraint("ck_case_third_parties_quote_bearer", "quote_bearer IN ('building', 'customer')");
+
+                            t.HasCheckConstraint("ck_case_third_parties_redo_count", "redo_count >= 0");
+
+                            t.HasCheckConstraint("ck_case_third_parties_status", "status IN ('quoting', 'awaiting_decision', 'working', 'failed_check', 'declined', 'done', 'cancelled')");
+                        });
                 });
 
             modelBuilder.Entity("SmartMaint.Api.Entities.Cases.Cost", b =>
@@ -2232,6 +2494,12 @@ namespace SmartMaint.Api.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_assets_manufacturers_manufacturer_id");
 
+                    b.HasOne("SmartMaint.Api.Entities.Buildings.Asset", "ReplacesAsset")
+                        .WithMany()
+                        .HasForeignKey("ReplacesAssetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_assets_assets_replaces_asset_id");
+
                     b.HasOne("SmartMaint.Api.Entities.Buildings.Room", "Room")
                         .WithMany()
                         .HasForeignKey("RoomId")
@@ -2247,6 +2515,8 @@ namespace SmartMaint.Api.Data.Migrations
                         .HasConstraintName("fk_assets_asset_types_type_id");
 
                     b.Navigation("Manufacturer");
+
+                    b.Navigation("ReplacesAsset");
 
                     b.Navigation("Room");
 
@@ -2329,6 +2599,44 @@ namespace SmartMaint.Api.Data.Migrations
                     b.Navigation("Building");
 
                     b.Navigation("Staff");
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Cases.AssetReplacementRequest", b =>
+                {
+                    b.HasOne("SmartMaint.Api.Entities.Cases.Case", "Case")
+                        .WithMany()
+                        .HasForeignKey("CaseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_asset_replacement_requests_cases_case_id");
+
+                    b.HasOne("SmartMaint.Api.Entities.Buildings.Asset", "NewAsset")
+                        .WithMany()
+                        .HasForeignKey("NewAssetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_asset_replacement_requests_assets_new_asset_id");
+
+                    b.HasOne("SmartMaint.Api.Entities.Buildings.Asset", "OldAsset")
+                        .WithMany()
+                        .HasForeignKey("OldAssetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_asset_replacement_requests_assets_old_asset_id");
+
+                    b.HasOne("SmartMaint.Api.Entities.Accounts.Staff", "RequestedBy")
+                        .WithMany()
+                        .HasForeignKey("RequestedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_asset_replacement_requests_staff_requested_by_id");
+
+                    b.Navigation("Case");
+
+                    b.Navigation("NewAsset");
+
+                    b.Navigation("OldAsset");
+
+                    b.Navigation("RequestedBy");
                 });
 
             modelBuilder.Entity("SmartMaint.Api.Entities.Cases.Case", b =>
@@ -2466,6 +2774,18 @@ namespace SmartMaint.Api.Data.Migrations
                     b.Navigation("Case");
 
                     b.Navigation("ChangedBy");
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Cases.CaseThirdParty", b =>
+                {
+                    b.HasOne("SmartMaint.Api.Entities.Cases.Case", "Case")
+                        .WithMany("ThirdParties")
+                        .HasForeignKey("CaseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_case_third_parties_cases_case_id");
+
+                    b.Navigation("Case");
                 });
 
             modelBuilder.Entity("SmartMaint.Api.Entities.Cases.Cost", b =>
@@ -2811,6 +3131,8 @@ namespace SmartMaint.Api.Data.Migrations
                     b.Navigation("Rejections");
 
                     b.Navigation("Tasks");
+
+                    b.Navigation("ThirdParties");
                 });
 
             modelBuilder.Entity("SmartMaint.Api.Entities.Core.AiConversation", b =>

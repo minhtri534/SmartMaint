@@ -29,6 +29,7 @@ export const assetTypeSchema = z.object({
   code,
   name: name(100),
   description,
+  expectedLifeYears: z.string().regex(/^([1-9][0-9]?|100)?$/, '1 to 100 years, or empty.'),
 })
 export type AssetTypeValues = z.infer<typeof assetTypeSchema>
 

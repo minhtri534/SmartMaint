@@ -36,6 +36,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
   },
   // F4
   { label: 'Emergencies', to: paths.emergencies, icon: 'siren', roles: ['staff', 'manager'] },
+  // F5
+  { label: 'Outside work', to: paths.outsideWork, icon: 'truck', roles: ['staff', 'manager'] },
   {
     label: 'My work orders',
     to: paths.workOrders,
@@ -81,6 +83,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
     also: ['/admin/accounts/'],
     roles: ['admin'],
   },
+  { label: 'Replacements', to: paths.replacements, icon: 'swap', roles: ['admin'] },
   { label: 'SLA settings', to: paths.slaSettings, icon: 'clock', roles: ['admin'] },
   { label: 'Audit log', to: paths.auditLog, icon: 'log', roles: ['admin'] },
   { label: 'Roles', to: paths.roles, icon: 'shield', roles: ['admin'] },

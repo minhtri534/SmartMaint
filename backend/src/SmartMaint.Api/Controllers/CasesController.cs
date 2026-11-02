@@ -196,6 +196,56 @@ public sealed class CasesController(ICaseService cases) : ControllerBase
     public Task<CaseDetailResponse> WriteIncidentReport(long id, IncidentReportRequest request, CancellationToken cancellationToken) =>
         cases.WriteIncidentReportAsync(id, request, cancellationToken);
 
+    // ----- F5 repair or replace -----
+
+    /// <summary>Steps ①–②: the technician's assessment, waits for the staff.</summary>
+    [HttpPost("{id:long}/request-decision")]
+    [AuthorizeRoles(UserRole.Technician)]
+    public Task<CaseDetailResponse> RequestDecision(long id, RequestDecisionRequest request, CancellationToken cancellationToken) =>
+        cases.RequestDecisionAsync(id, request, cancellationToken);
+
+    /// <summary>Steps ④–⑤: manufacturer or contractor.</summary>
+    [HttpPost("{id:long}/outsource")]
+    [AuthorizeRoles(UserRole.Staff)]
+    public Task<CaseDetailResponse> Outsource(long id, OutsourceRequest request, CancellationToken cancellationToken) =>
+        cases.OutsourceAsync(id, request, cancellationToken);
+
+    /// <summary>The quote arrived.</summary>
+    [HttpPost("{id:long}/outside/quote")]
+    [AuthorizeRoles(UserRole.Staff)]
+    public Task<CaseDetailResponse> RecordQuote(long id, RecordQuoteRequest request, CancellationToken cancellationToken) =>
+        cases.RecordQuoteAsync(id, request, cancellationToken);
+
+    /// <summary>Step ⑥: the payer's decision.</summary>
+    [HttpPost("{id:long}/outside/decision")]
+    [AuthorizeRoles(UserRole.Staff)]
+    public Task<CaseDetailResponse> DecideQuote(long id, QuoteDecisionRequest request, CancellationToken cancellationToken) =>
+        cases.DecideQuoteAsync(id, request, cancellationToken);
+
+    /// <summary>The outside party refused.</summary>
+    [HttpPost("{id:long}/outside/declined")]
+    [AuthorizeRoles(UserRole.Staff)]
+    public Task<CaseDetailResponse> OutsideDeclined(long id, ReasonRequest request, CancellationToken cancellationToken) =>
+        cases.OutsideDeclinedAsync(id, request, cancellationToken);
+
+    /// <summary>Step ⑧: the technician checked the outside work.</summary>
+    [HttpPost("{id:long}/outside/check")]
+    [AuthorizeRoles(UserRole.Technician)]
+    public Task<CaseDetailResponse> CheckOutsideWork(long id, CheckOutsideWorkRequest request, CancellationToken cancellationToken) =>
+        cases.CheckOutsideWorkAsync(id, request, cancellationToken);
+
+    /// <summary>The check failed: redo.</summary>
+    [HttpPost("{id:long}/outside/redo")]
+    [AuthorizeRoles(UserRole.Staff)]
+    public Task<CaseDetailResponse> RedoOutsideWork(long id, RedoOutsideWorkRequest request, CancellationToken cancellationToken) =>
+        cases.RedoOutsideWorkAsync(id, request, cancellationToken);
+
+    /// <summary>F5 way 2: survey of an asset that fails often.</summary>
+    [HttpPost("surveys")]
+    [AuthorizeRoles(UserRole.Staff)]
+    public Task<CaseDetailResponse> OpenSurvey(OpenSurveyRequest request, CancellationToken cancellationToken) =>
+        cases.OpenSurveyAsync(request, cancellationToken);
+
     [HttpPut("{id:long}/costs")]
     [AuthorizeRoles(UserRole.Staff)]
     public Task<CaseDetailResponse> UpdateCosts(long id, UpdateCostsRequest request, CancellationToken cancellationToken) =>

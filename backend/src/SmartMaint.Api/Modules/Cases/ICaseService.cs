@@ -93,4 +93,30 @@ public interface ICaseService
 
     /// <summary>Staff, K08: optional post-incident report of a closed emergency.</summary>
     Task<CaseDetailResponse> WriteIncidentReportAsync(long id, IncidentReportRequest request, CancellationToken cancellationToken);
+
+    // ----- F5 repair or replace -------------------------------------------------------------------------------------
+
+    /// <summary>Technician, steps ①–②: the assessment; On Hold until the staff decide.</summary>
+    Task<CaseDetailResponse> RequestDecisionAsync(long id, RequestDecisionRequest request, CancellationToken cancellationToken);
+
+    /// <summary>Staff, steps ④–⑤: hand the job to the manufacturer or a contractor.</summary>
+    Task<CaseDetailResponse> OutsourceAsync(long id, OutsourceRequest request, CancellationToken cancellationToken);
+
+    /// <summary>Staff: the contractor's quote arrived (who pays; forwarded to whom).</summary>
+    Task<CaseDetailResponse> RecordQuoteAsync(long id, RecordQuoteRequest request, CancellationToken cancellationToken);
+
+    /// <summary>Staff, step ⑥: the payer's decision on the quote, with evidence.</summary>
+    Task<CaseDetailResponse> DecideQuoteAsync(long id, QuoteDecisionRequest request, CancellationToken cancellationToken);
+
+    /// <summary>Staff: the outside party refused (warranty claim declined...).</summary>
+    Task<CaseDetailResponse> OutsideDeclinedAsync(long id, ReasonRequest request, CancellationToken cancellationToken);
+
+    /// <summary>Technician, step ⑧: the outside party's work checked; OK → In Progress.</summary>
+    Task<CaseDetailResponse> CheckOutsideWorkAsync(long id, CheckOutsideWorkRequest request, CancellationToken cancellationToken);
+
+    /// <summary>Staff: the check failed, the same party redoes it.</summary>
+    Task<CaseDetailResponse> RedoOutsideWorkAsync(long id, RedoOutsideWorkRequest request, CancellationToken cancellationToken);
+
+    /// <summary>Staff, F5 way 2: a survey case for an asset that fails often.</summary>
+    Task<CaseDetailResponse> OpenSurveyAsync(OpenSurveyRequest request, CancellationToken cancellationToken);
 }

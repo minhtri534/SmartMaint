@@ -8,6 +8,9 @@ import type {
   ImportResult,
   ManufacturerOption,
   PlaceOption,
+  ReplacementRequest,
+  ServiceTypeOption,
+  CompleteReplacementRequest,
   QrTarget,
 } from './types'
 
@@ -52,6 +55,26 @@ export const assetsApi = {
     apiClient.get<ManufacturerOption[]>('/catalog/manufacturers').then((r) => r.data),
   /** GET /api/buildings (floors + rooms) */
   places: () => apiClient.get<PlaceOption[]>('/buildings').then((r) => r.data),
+  /** GET /api/service-types (survey form) */
+  serviceTypes: () => apiClient.get<ServiceTypeOption[]>('/service-types').then((r) => r.data),
+
+  // F5 → F1: replacement requests (A06) and the survey of an asset that fails often
+  /** GET /api/asset-replacements */
+  replacements: () =>
+    apiClient.get<ReplacementRequest[]>('/asset-replacements').then((r) => r.data),
+  /** POST /api/asset-replacements/{id}/complete — Admin: new asset in, old asset retired */
+  completeReplacement: ({ id, ...body }: Id & CompleteReplacementRequest) =>
+    apiClient
+      .post<ReplacementRequest>(`/asset-replacements/${id}/complete`, body)
+      .then((r) => r.data),
+  /** POST /api/asset-replacements/{id}/dismiss — Admin */
+  dismissReplacement: ({ id, reason }: Id & { reason: string }) =>
+    apiClient
+      .post<ReplacementRequest>(`/asset-replacements/${id}/dismiss`, { reason })
+      .then((r) => r.data),
+  /** POST /api/cases/surveys — Staff, F5 way 2; returns the new case */
+  openSurvey: (body: { assetId: number; serviceTypeId: number; note: string | null }) =>
+    apiClient.post<{ id: number }>('/cases/surveys', body).then((r) => r.data),
 }
 
 export const assetKeys = {
@@ -63,4 +86,6 @@ export const assetKeys = {
   types: ['assets', 'ref', 'types'] as const,
   manufacturers: ['assets', 'ref', 'manufacturers'] as const,
   places: ['assets', 'ref', 'places'] as const,
+  serviceTypes: ['assets', 'ref', 'service-types'] as const,
+  replacements: ['assets', 'replacements'] as const,
 }

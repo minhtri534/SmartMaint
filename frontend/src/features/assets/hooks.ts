@@ -57,6 +57,21 @@ export function useAssetMutation<TVariables, TResult>(
         queryClient.invalidateQueries({ queryKey: assetKeys.all }),
         queryClient.invalidateQueries({ queryKey: ['facilities'] }),
         queryClient.invalidateQueries({ queryKey: ['audit'] }),
+        queryClient.invalidateQueries({ queryKey: ['cases'] }),
       ]),
   })
+}
+
+export function useServiceTypeOptions(enabled: boolean) {
+  return useQuery({
+    queryKey: assetKeys.serviceTypes,
+    queryFn: assetsApi.serviceTypes,
+    staleTime: Infinity,
+    enabled,
+  })
+}
+
+/** A06 replacement requests (Admin: all; staff and managers: their buildings). */
+export function useReplacements() {
+  return useQuery({ queryKey: assetKeys.replacements, queryFn: assetsApi.replacements })
 }
