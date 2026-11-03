@@ -9,6 +9,7 @@ import {
   QrLandingPage,
   ReplacementsPage,
 } from '@/features/assets'
+import { AnalyticsPage } from '@/features/analytics'
 import { AuditLogPage } from '@/features/audit'
 import { ChangePasswordPage, LoginPage, RequireAuth } from '@/features/auth'
 import {
@@ -86,6 +87,15 @@ export const router = createBrowserRouter([
             element: (
               <RequireAuth roles={['staff', 'manager']}>
                 <CaseQueuePage />
+              </RequireAuth>
+            ),
+          },
+          // F6 — analytics (AnalyticsController: Staff, Manager)
+          {
+            path: paths.analytics,
+            element: (
+              <RequireAuth roles={['staff', 'manager']}>
+                <AnalyticsPage />
               </RequireAuth>
             ),
           },

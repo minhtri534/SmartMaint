@@ -42,6 +42,8 @@ export const paths = {
   auditLog: '/admin/audit-log',
   slaSettings: '/admin/sla',
   replacements: '/admin/replacements',
+  // F6 — analytics (ANA-01..04)
+  analytics: '/analytics',
 } as const
 
 export const caseDetailPath = (id: number) => `/cases/${id}`

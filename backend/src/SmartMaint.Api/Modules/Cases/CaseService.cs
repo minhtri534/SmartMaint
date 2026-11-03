@@ -40,8 +40,8 @@ internal sealed partial class CaseService(
 
     private static readonly Dictionary<HoldReason, string> HoldLabels = new()
     {
-        [HoldReason.WaitingParts] = "Waiting for parts",
-        [HoldReason.WaitingCustomer] = "Waiting for the customer",
+        [HoldReason.WaitingParts] = CaseHistoryTags.WaitingParts,
+        [HoldReason.WaitingCustomer] = CaseHistoryTags.WaitingCustomer,
         [HoldReason.WaitingStaffDecision] = "Waiting for the staff member's decision",
         [HoldReason.WaitingThirdParty] = "Waiting for an outside party",
     };
@@ -505,7 +505,7 @@ internal sealed partial class CaseService(
             c.SlaOverdueNotifiedAt = null;
             var note = string.IsNullOrWhiteSpace(request.Note) ? string.Empty : $" {request.Note.Trim()}";
             return Task.FromResult<string?>(
-                $"Deadline moved to {request.NewDueAt:yyyy-MM-dd HH:mm} UTC: {ExtendLabels[request.Reason]}.{note}");
+                $"{CaseHistoryTags.DeadlineMoved} to {request.NewDueAt:yyyy-MM-dd HH:mm} UTC: {ExtendLabels[request.Reason]}.{note}");
         }, cancellationToken);
 
     public Task<CaseDetailResponse> ReportNotFixedAsync(long id, ReasonRequest request, CancellationToken cancellationToken) =>

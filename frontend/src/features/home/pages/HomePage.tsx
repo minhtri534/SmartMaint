@@ -1,17 +1,21 @@
-import { Navigate } from 'react-router'
-import { HOME_BY_ROLE } from '@/app/navigation'
-import { paths } from '@/app/paths'
 import { AdminHomePage } from '@/features/accounts'
 import { useAuth } from '@/features/auth'
+import { CustomerHome, ManagerHome, StaffHome, TechnicianHome } from './RoleHomes'
 
-/**
- * "/" sends each role to its main screen (HOME_BY_ROLE). The Administrator stays here: ADM-01.
- * F6 (Hùng) later gives every role its own Home with KPIs.
- */
+/** "/" is every role's Home (EMP-01, OFF-01, TEC-01, MGR-01, ADM-01), the page each role lands on after signing in. */
 export function HomePage() {
   const { user } = useAuth()
   if (!user) return null
-  if (HOME_BY_ROLE[user.role] !== paths.home)
-    return <Navigate to={HOME_BY_ROLE[user.role]} replace />
-  return <AdminHomePage />
+  switch (user.role) {
+    case 'customer':
+      return <CustomerHome />
+    case 'staff':
+      return <StaffHome />
+    case 'technician':
+      return <TechnicianHome />
+    case 'manager':
+      return <ManagerHome />
+    default:
+      return <AdminHomePage />
+  }
 }

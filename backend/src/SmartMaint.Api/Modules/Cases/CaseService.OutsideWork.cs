@@ -68,7 +68,7 @@ internal sealed partial class CaseService
             notifications.Send(
                 c.StaffId is { } s ? [s] : await StaffOfBuildingAsync(c.Room.Floor.BuildingId, cancellationToken),
                 $"{c.Technician?.FullName} needs your decision on {Case.CodeOf(c.Id)} \"{c.Title}\": {label}.");
-            return $"Needs the staff's decision ({label}): {c.AssessmentCondition}";
+            return $"{CaseHistoryTags.NeedsDecision} ({label}): {c.AssessmentCondition}";
         }, cancellationToken);
 
     /// <summary>Step ⑧: the technician, as contact person, checked the outside party's work. OK → back to In Progress.</summary>

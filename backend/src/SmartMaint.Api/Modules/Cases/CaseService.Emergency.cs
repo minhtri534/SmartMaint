@@ -72,7 +72,7 @@ internal sealed partial class CaseService
             c.DueAt = c.StartedAt?.AddHours(priority.SlaHours);
             c.SlaWarnedAt = null;
             c.SlaOverdueNotifiedAt = null;
-            return $"Not an emergency, moved to F3 ({priority.Name}): {request.Reason.Trim()}";
+            return $"{CaseHistoryTags.NotAnEmergency}, moved to F3 ({priority.Name}): {request.Reason.Trim()}";
         }, cancellationToken);
 
     /// <summary>

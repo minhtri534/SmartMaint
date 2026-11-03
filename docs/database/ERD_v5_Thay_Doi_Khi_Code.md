@@ -93,6 +93,7 @@
 | Trạng thái khi chờ bên thứ 3 (R02, Leader 02/11) | **On Hold** lý do `waiting_staff_decision` (chờ Staff) → `waiting_third_party` (đang ở bên ngoài); KTV kiểm tra đạt → In Progress | Hạn SLA không dừng; Staff dời hạn có lý do như F3. KTV không tự "Tiếp tục" khi đang chờ 2 lý do này |
 | Kênh Staff → Admin khi thay thiết bị (A06) | **Bảng mới `asset_replacement_requests`** (Phần 7): Staff đóng case đã thay → tạo đề nghị; Admin đăng ký thiết bị mới (cùng phòng, `replaces_asset_id`) và thanh lý thiết bị cũ trong 1 bước, hoặc bỏ qua có lý do | Admin thấy mã case để trích dẫn, **không mở được case** (BR-11) |
 | Khách chịu chi phí báo giá (R04 = O13) | Staff ghi "đã gửi báo giá cho <đại diện>" + quyết định + ảnh bằng chứng; quá 3 ngày chưa trả lời → nhắc Staff 1 lần | Không có tài khoản đại diện hợp đồng |
+| Thống kê F6 (Phần 8) không có bảng sự kiện riêng | Số lần dời hạn, số case hạ mức, thời gian On Hold theo lý do được **đếm từ dòng `case_status_history`** theo tiền tố lý do chung (`CaseHistoryTags` trong code); tính ngay khi mở trang, không có bảng tổng hợp | Không thêm bảng / cột. Đổi câu lý do thì phải giữ tiền tố |
 | Tuổi thiết bị | ERD không có ngày lắp đặt → tuổi tính từ `assets.created_at` | Họp: có thêm `installed_at` không |
 | Case khẩn cấp vào thẳng Approved | Dòng lịch sử đầu tiên là *Approved* do chính khách (người tạo) đứng tên, lý do "approved automatically" | `changed_by_id` bắt buộc |
 | Sửa kế hoạch đang chạy | Quay lại *Chờ duyệt* (Manager duyệt lại); thiết bị giữ nguyên thì giữ `last_due_date` nên không sinh trùng | — |
@@ -121,3 +122,4 @@ Tài khoản demo đăng nhập bằng **username** (`admin`, `staff`, `technici
 - 02/11 — Phần 5 (F2): 11 bảng bảo trì định kỳ + `cases.trigger_work_order_id`; cột thêm `lead_days`, `reject_reason`, `last_due_date`, `case_tasks.name/description/repair_case_id` (migration `AddPreventiveMaintenance`).
 - 02/11 — Phần 6 (F4): 11 cột khẩn cấp trên `cases` (mốc, gộp, nhắc, báo cáo sau sự cố) (migration `AddEmergencyFlow`; điền `emergency_at` cho case khẩn cấp cũ).
 - 02/11 — Phần 7 (F5): bảng `case_third_parties`, `asset_replacement_requests`; cột đánh giá / khảo sát / thiết bị thay trên `cases`, `asset_types.expected_life_years`, `assets.replaces_asset_id`, ảnh `assessment` (migration `AddRepairOrReplace`).
+- 03/11 — Phần 8 (F6): không đổi DB; thống kê đọc từ bảng có sẵn (ghi chú ở mục 3).

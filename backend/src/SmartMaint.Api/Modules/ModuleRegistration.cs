@@ -1,5 +1,6 @@
 using FluentValidation;
 using SmartMaint.Api.Modules.Accounts;
+using SmartMaint.Api.Modules.Analytics;
 using SmartMaint.Api.Modules.Assets;
 using SmartMaint.Api.Modules.Audit;
 using SmartMaint.Api.Modules.Auth;
@@ -32,6 +33,7 @@ internal static class ModuleRegistration
         services.AddScoped<IFacilityService, FacilityService>();
         services.AddScoped<IAssetService, AssetService>();
         services.AddScoped<IReplacementService, ReplacementService>();
+        services.AddScoped<IAnalyticsService, AnalyticsService>();
         services.AddScoped<ICatalogAdminService, CatalogAdminService>();
         services.AddScoped<IChecklistService, ChecklistService>();
         services.AddScoped<IMaintenancePlanService, MaintenancePlanService>();

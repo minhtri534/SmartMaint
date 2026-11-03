@@ -18,6 +18,13 @@ export interface NavItem {
  * Nav items are other screens, never anchors into the current page.
  */
 export const NAV_ITEMS: readonly NavItem[] = [
+  // Every role: its Home (F6)
+  {
+    label: 'Home',
+    to: paths.home,
+    icon: 'home',
+    roles: ['customer', 'staff', 'technician', 'manager', 'admin'],
+  },
   // F3
   {
     label: 'My requests',
@@ -59,8 +66,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
     icon: 'checklist',
     roles: ['staff', 'manager', 'admin'],
   },
-  // Core — Administrator
-  { label: 'Home', to: paths.home, icon: 'home', roles: ['admin'] },
+  // F6
+  { label: 'Analytics', to: paths.analytics, icon: 'chart', roles: ['staff', 'manager'] },
   // F1 — buildings and assets (read for staff / manager, edit for admin)
   {
     label: 'Buildings',
@@ -100,11 +107,11 @@ export function navItemsFor(role: Role): NavItem[] {
   return NAV_ITEMS.filter((item) => item.roles.includes(role))
 }
 
-/** Where each role lands after signing in (its main screen). */
+/** Where each role lands after signing in: its own Home (F6, Screen catalog rule 15). */
 export const HOME_BY_ROLE: Record<Role, string> = {
-  customer: paths.myRequests,
-  staff: paths.cases,
-  manager: paths.cases,
-  technician: paths.workOrders,
+  customer: paths.home,
+  staff: paths.home,
+  manager: paths.home,
+  technician: paths.home,
   admin: paths.home,
 }
