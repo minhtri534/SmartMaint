@@ -2006,3 +2006,27 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261116163243_EnableRowLevelSecurity') THEN
+    DO $$
+    DECLARE t record;
+    BEGIN
+        FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = current_schema() LOOP
+            EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t.tablename);
+        END LOOP;
+    END $$;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261116163243_EnableRowLevelSecurity') THEN
+    INSERT INTO __ef_migrations_history (migration_id, product_version)
+    VALUES ('20261116163243_EnableRowLevelSecurity', '10.0.13');
+    END IF;
+END $EF$;
+COMMIT;
+

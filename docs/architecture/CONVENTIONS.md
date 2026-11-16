@@ -122,6 +122,7 @@ HTTP → AuthController (mỏng) → ValidationFilter (FluentValidation tự ch�
 | Account + bảng con theo role (Customers, Staff, Technicians…): EF **TPT**, bảng con dùng chung id với `accounts` | `db.Accounts` = mọi người, `db.Technicians` = chỉ KTV |
 | Mọi bảng nghiệp vụ kế thừa `AuditableEntity` | `created_at`, `updated_at` tự điền, có default `now()` |
 | Tên ràng buộc do convention sinh | `pk_cases`, `ix_accounts_username`, `ck_accounts_status`, `fk_rooms_floors_floor_id` |
+| **Mọi bảng bật RLS, không policy** (16/11, migration `EnableRowLevelSecurity`). Migration nào tạo bảng mới phải thêm `migrationBuilder.Sql("ALTER TABLE <bảng> ENABLE ROW LEVEL SECURITY;")`, nếu không Supabase báo đỏ "UNRESTRICTED" và khoá `anon` công khai đọc được bảng đó qua Data API. API không bị ảnh hưởng vì kết nối bằng chủ bảng | `ALTER TABLE cases ENABLE ROW LEVEL SECURITY;` |
 
 **Hai file nộp kèm R4 / R5:**
 - `database/Schema.sql` — **sinh tự động** từ migration (`scripts/db-schema.ps1`), idempotent. Không sửa tay.
@@ -130,6 +131,7 @@ HTTP → AuthController (mỏng) → ValidationFilter (FluentValidation tự ch�
 **Môi trường:**
 - Dev: Postgres Docker riêng mỗi máy (`docker compose up -d`). Xóa sạch: `docker compose down -v`.
 - Supabase (deploy): chạy `Schema.sql` rồi `Data.sql` bằng SQL editor. API trên Railway **không** tự migrate.
+  (16/11: project `smartmaint` đã được API trên máy Leader tự migrate + seed qua pooler cổng 6543; kiểm tra bảo mật bằng Supabase › Advisors, không được còn lỗi `rls_disabled_in_public`.)
 - Không dùng Supabase Auth. File (ảnh case) lưu ở **Supabase Storage**, bucket private: DB chỉ giữ đường dẫn, API trả URL ký tạm 1 giờ (`IFileStorage`). Chưa điền `Supabase__Url` thì file nằm ở `backend/src/SmartMaint.Api/uploads/` (chỉ dùng khi dev).
 
 ## 5. Web — cấu trúc
