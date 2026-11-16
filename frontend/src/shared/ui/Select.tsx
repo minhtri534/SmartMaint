@@ -30,7 +30,7 @@ export function Select({
         id={selectId}
         aria-invalid={error ? true : undefined}
         aria-describedby={error || hint ? `${selectId}-message` : undefined}
-        className={controlClass(error) + ' h-[38px] pr-8'}
+        className={controlClass(error) + ' control-select h-[38px] pr-9'}
         {...rest}
       >
         {placeholder !== undefined && <option value="">{placeholder}</option>}

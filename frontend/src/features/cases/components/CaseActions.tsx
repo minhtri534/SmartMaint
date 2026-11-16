@@ -1,79 +1,56 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router'
+import { caseApprovePath, caseEditPath } from '@/app/paths'
 import { useAuth } from '@/features/auth'
 import { Alert, Button, ConfirmDialog } from '@/shared/ui'
 import { casesApi } from '../api'
 import { useCaseMutation } from '../hooks'
 import type { CaseAction, CaseDetail } from '../types'
-import { ApproveDialog } from './dialogs/ApproveDialog'
-import { AssignDialog } from './dialogs/AssignDialog'
-import { CompleteChecklistDialog } from './dialogs/CompleteChecklistDialog'
-import { CompleteWorkDialog } from './dialogs/CompleteWorkDialog'
+import { AddCostDialog } from './dialogs/AddCostDialog'
 import { CostsDialog } from './dialogs/CostsDialog'
-import { DowngradeDialog } from './dialogs/DowngradeDialog'
 import { EmergencyLogDialog } from './dialogs/EmergencyLogDialog'
 import { ExtendDueDialog } from './dialogs/ExtendDueDialog'
-import { HoldDialog } from './dialogs/HoldDialog'
-import { CheckOutsideWorkDialog, RedoOutsideWorkDialog } from './dialogs/OutsideCheckDialogs'
-import { OutsourceDialog } from './dialogs/OutsourceDialog'
-import { QuoteDecisionDialog, RecordQuoteDialog } from './dialogs/QuoteDialogs'
-import { RequestDecisionDialog } from './dialogs/RequestDecisionDialog'
 import { IncidentReportDialog } from './dialogs/IncidentReportDialog'
-import { MergeDialog } from './dialogs/MergeDialog'
 import { RateDialog } from './dialogs/RateDialog'
-import { ReassignDialog } from './dialogs/ReassignDialog'
 import { ReasonDialog } from './dialogs/ReasonDialog'
 import { RejectDialog } from './dialogs/RejectDialog'
-import { UrgencyDialog } from './dialogs/UrgencyDialog'
+import { RequestDecisionDialog } from './dialogs/RequestDecisionDialog'
+import { taskProgress } from '../task-progress'
+import { StatusMenu } from './StatusMenu'
+import { TasksDialog } from './TaskList'
+import { WorkHoursDialog } from './dialogs/WorkHoursDialog'
 
 /**
  * Button text and style per action, in display order: secondary actions first so the main one ends up on the right.
- * At most one primary per status (the state machine never offers two primary actions at once).
+ * Meeting 07/11: the staff's assign / reassign / change urgency / let continue / close / reopen are one "Edit" (the
+ * work order form, with the status change in it); merge, downgrade and the quote steps are gone. The technician's
+ * start / hold / resume / complete are one status dropdown (StatusMenu); "Start work on site" is gone.
  */
-const BUTTONS: Record<CaseAction, { label: string; variant: 'primary' | 'secondary' | 'danger' }> =
-  {
-    cancel: { label: 'Cancel case', variant: 'danger' },
-    reject: { label: 'Reject', variant: 'secondary' },
-    decline: { label: 'Decline job', variant: 'secondary' },
-    reopen: { label: 'Not OK, reopen', variant: 'secondary' },
-    hold: { label: 'Put on hold', variant: 'secondary' },
-    approve: { label: 'Approve', variant: 'primary' },
-    assign: { label: 'Assign technician', variant: 'primary' },
-    accept: { label: 'Accept job', variant: 'primary' },
-    start: { label: 'Start work on site', variant: 'primary' },
-    resume: { label: 'Resume work', variant: 'secondary' },
-    complete: { label: 'Report completed', variant: 'primary' },
-    close: { label: 'Verify and close', variant: 'primary' },
-    rate: { label: 'Rate the service', variant: 'primary' },
-    // Part 4: staff steps in, "not fixed", costs
-    reassign: { label: 'Reassign', variant: 'secondary' },
-    change_urgency: { label: 'Change urgency', variant: 'secondary' },
-    extend_due: { label: 'Move deadline', variant: 'secondary' },
-    update_costs: { label: 'Correct costs', variant: 'secondary' },
-    report_not_fixed: { label: 'Still not fixed', variant: 'secondary' },
-    decline_not_fixed: { label: 'Decline report', variant: 'secondary' },
-    accept_not_fixed: { label: 'Reopen for the customer', variant: 'primary' },
-    // Part 5: F2 checklist. "update_task" is pressed per item in the checklist card, not here.
-    update_task: { label: 'Update checklist', variant: 'secondary' },
-    complete_checklist: { label: 'Report maintenance done', variant: 'primary' },
-    // Part 6: F4 emergency
-    merge: { label: 'Merge', variant: 'secondary' },
-    downgrade: { label: 'Not an emergency', variant: 'secondary' },
-    add_log: { label: 'Add to log', variant: 'secondary' },
-    mark_safe: { label: 'Made safe', variant: 'secondary' },
-    write_incident_report: { label: 'Post-incident report', variant: 'secondary' },
-    acknowledge: { label: 'Acknowledge', variant: 'primary' },
-    // Part 7: F5 repair or replace, outside party
-    request_decision: { label: 'Needs staff decision', variant: 'secondary' },
-    outside_declined: { label: 'Party refused', variant: 'secondary' },
-    redo_outside_work: { label: 'Ask to redo', variant: 'secondary' },
-    outsource: { label: 'Hand to outside party', variant: 'primary' },
-    record_quote: { label: 'Quote received', variant: 'primary' },
-    decide_quote: { label: 'Quote decision', variant: 'primary' },
-    check_outside_work: { label: 'Check outside work', variant: 'primary' },
-  }
-const ORDER: CaseAction[] = (Object.keys(BUTTONS) as CaseAction[]).filter(
-  (a) => a !== 'update_task',
-)
+const BUTTONS: Partial<
+  Record<CaseAction, { label: string; variant: 'primary' | 'secondary' | 'danger' }>
+> = {
+  cancel: { label: 'Cancel case', variant: 'danger' },
+  reject: { label: 'Reject', variant: 'secondary' },
+  decline: { label: 'Decline job', variant: 'secondary' },
+  request_decision: { label: 'Needs outside party', variant: 'secondary' },
+  log_hours: { label: 'Work hours', variant: 'secondary' },
+  add_cost: { label: 'Add cost', variant: 'secondary' },
+  extend_due: { label: 'Move deadline', variant: 'secondary' },
+  update_costs: { label: 'Costs', variant: 'secondary' },
+  outsource: { label: 'Hand to outside party', variant: 'secondary' },
+  add_log: { label: 'Add to log', variant: 'secondary' },
+  mark_safe: { label: 'Made safe', variant: 'secondary' },
+  write_incident_report: { label: 'Post-incident report', variant: 'secondary' },
+  report_not_fixed: { label: 'Still not fixed', variant: 'secondary' },
+  decline_not_fixed: { label: 'Decline report', variant: 'secondary' },
+  edit: { label: 'Edit', variant: 'secondary' },
+  approve: { label: 'Approve and assign', variant: 'primary' },
+  acknowledge: { label: 'Acknowledge', variant: 'primary' },
+  accept: { label: 'Accept job', variant: 'primary' },
+  accept_not_fixed: { label: 'Reopen for the customer', variant: 'primary' },
+  rate: { label: 'Rate the service', variant: 'primary' },
+}
+const ORDER = Object.keys(BUTTONS) as CaseAction[]
 
 /**
  * The buttons the signed-in user may press on this case, and the dialog each one opens.
@@ -81,54 +58,62 @@ const ORDER: CaseAction[] = (Object.keys(BUTTONS) as CaseAction[]).filter(
  */
 export function CaseActions({ caseDetail }: { caseDetail: CaseDetail }) {
   const { user } = useAuth()
-  const [open, setOpen] = useState<CaseAction | null>(null)
+  const navigate = useNavigate()
+  const [open, setOpen] = useState<CaseAction | 'tasks' | null>(null)
   const accept = useCaseMutation(casesApi.accept)
-  const start = useCaseMutation(casesApi.start)
-  const resume = useCaseMutation(casesApi.resume)
-  const close = useCaseMutation(casesApi.close)
   const acceptNotFixed = useCaseMutation(casesApi.acceptNotFixed)
   const acknowledge = useCaseMutation(casesApi.acknowledge)
   const markSafe = useCaseMutation(casesApi.markSafe)
+  const outsource = useCaseMutation(casesApi.outsource)
 
-  const actions = caseDetail.allowedActions.filter((a) => ORDER.includes(a))
-  if (actions.length === 0) return null
+  const actions = ORDER.filter((a) => caseDetail.allowedActions.includes(a))
+  // Meeting 07/11: a separate "Tasks" button for everyone who works on the case.
+  const showTasks = user?.role !== 'customer' && caseDetail.tasks.length > 0
+  const showStatus = ['start', 'resume', 'hold', 'complete'].some((a) =>
+    caseDetail.allowedActions.includes(a as CaseAction),
+  )
+  if (actions.length === 0 && !showTasks && !showStatus) return null
 
   const id = caseDetail.id
   const onClose = () => setOpen(null)
-  // Actions without a dialog run straight away.
+  // Actions without a dialog run straight away; approve and edit open the work order form.
   const direct: Partial<Record<CaseAction, () => void>> = {
     accept: () => accept.mutate({ id }),
-    start: () => start.mutate({ id }),
-    resume: () => resume.mutate({ id }),
     acknowledge: () => acknowledge.mutate({ id }),
     mark_safe: () => markSafe.mutate({ id }),
+    approve: () => navigate(caseApprovePath(id)),
+    edit: () => navigate(caseEditPath(id)),
   }
   const pending: Partial<Record<CaseAction, boolean>> = {
     accept: accept.isPending,
-    start: start.isPending,
-    resume: resume.isPending,
     acknowledge: acknowledge.isPending,
     mark_safe: markSafe.isPending,
   }
-  const directError =
-    accept.error ?? start.error ?? resume.error ?? acknowledge.error ?? markSafe.error
+  const directError = accept.error ?? acknowledge.error ?? markSafe.error
+  // One primary at a time: an unacknowledged emergency is acknowledged first; a completed case is checked with Edit.
+  const variant = (action: CaseAction) =>
+    action === 'edit' && caseDetail.status === 'completed' && !actions.includes('acknowledge')
+      ? 'primary'
+      : BUTTONS[action]!.variant
   const label = (action: CaseAction) =>
-    action === 'resume' && user?.role === 'staff'
-      ? 'Let technician continue'
-      : BUTTONS[action].label
+    action === 'edit' && caseDetail.status === 'completed'
+      ? 'Check and close'
+      : BUTTONS[action]!.label
 
   return (
     <div className="flex flex-col items-end gap-2">
+      {showStatus && <StatusMenu caseDetail={caseDetail} />}
       <div className="flex flex-wrap justify-end gap-2">
-        {ORDER.filter((a) => actions.includes(a)).map((action) => (
+        {showTasks && (
+          <Button variant="secondary" onClick={() => setOpen('tasks')}>
+            Tasks{' '}
+            <span className="text-muted ml-1 text-xs tabular-nums">{taskProgress(caseDetail)}</span>
+          </Button>
+        )}
+        {actions.map((action) => (
           <Button
             key={action}
-            variant={
-              // One primary at a time: an unacknowledged emergency is acknowledged first.
-              action === 'assign' && actions.includes('acknowledge')
-                ? 'secondary'
-                : BUTTONS[action].variant
-            }
+            variant={variant(action)}
             loading={pending[action]}
             onClick={direct[action] ?? (() => setOpen(action))}
           >
@@ -138,41 +123,34 @@ export function CaseActions({ caseDetail }: { caseDetail: CaseDetail }) {
       </div>
       {directError && <Alert>{directError.message}</Alert>}
 
-      <ApproveDialog caseDetail={caseDetail} open={open === 'approve'} onClose={onClose} />
+      <TasksDialog caseDetail={caseDetail} open={open === 'tasks'} onClose={onClose} />
       <RejectDialog caseDetail={caseDetail} open={open === 'reject'} onClose={onClose} />
-      <AssignDialog caseDetail={caseDetail} open={open === 'assign'} onClose={onClose} />
-      <HoldDialog caseId={id} open={open === 'hold'} onClose={onClose} />
-      <CompleteWorkDialog
-        caseId={id}
-        needsReplacement={caseDetail.thirdParties.some(
-          (t) => t.status === 'done' && t.job === 'replace',
-        )}
-        open={open === 'complete'}
-        onClose={onClose}
-      />
       <RequestDecisionDialog caseId={id} open={open === 'request_decision'} onClose={onClose} />
-      <OutsourceDialog caseDetail={caseDetail} open={open === 'outsource'} onClose={onClose} />
-      <RecordQuoteDialog caseDetail={caseDetail} open={open === 'record_quote'} onClose={onClose} />
-      <QuoteDecisionDialog
-        caseDetail={caseDetail}
-        open={open === 'decide_quote'}
-        onClose={onClose}
-      />
-      <CheckOutsideWorkDialog caseId={id} open={open === 'check_outside_work'} onClose={onClose} />
-      <RedoOutsideWorkDialog caseId={id} open={open === 'redo_outside_work'} onClose={onClose} />
-      <ReasonDialog
-        caseId={id}
-        open={open === 'outside_declined'}
-        onClose={onClose}
-        title="The outside party refused"
-        description="For example the manufacturer declined the warranty claim. The case comes back to you to choose again."
-        label="Their reason"
-        placeholder="e.g. Damage from a power surge is not covered"
-        confirmLabel="Save"
-        action={casesApi.outsideDeclined}
-      />
-      <CompleteChecklistDialog caseId={id} open={open === 'complete_checklist'} onClose={onClose} />
+      <WorkHoursDialog caseDetail={caseDetail} open={open === 'log_hours'} onClose={onClose} />
+      <AddCostDialog caseId={id} open={open === 'add_cost'} onClose={onClose} />
       <RateDialog caseId={id} open={open === 'rate'} onClose={onClose} />
+      <ExtendDueDialog caseDetail={caseDetail} open={open === 'extend_due'} onClose={onClose} />
+      <CostsDialog caseDetail={caseDetail} open={open === 'update_costs'} onClose={onClose} />
+      <EmergencyLogDialog caseId={id} open={open === 'add_log'} onClose={onClose} />
+      <IncidentReportDialog
+        caseDetail={caseDetail}
+        open={open === 'write_incident_report'}
+        onClose={onClose}
+      />
+      <ConfirmDialog
+        open={open === 'outsource'}
+        onClose={onClose}
+        title="Hand to an outside party"
+        description="Agree the job with the party outside the system first. The case waits on hold; mark the tasks they do in Tasks, then let the technician continue with Edit."
+        confirmLabel="Hand over"
+        loading={outsource.isPending}
+        error={outsource.error?.message}
+        onConfirm={() => outsource.mutate({ id }, { onSuccess: onClose })}
+      >
+        {caseDetail.assessment && (
+          <p className="text-sm">The technician says: “{caseDetail.assessment.condition}”</p>
+        )}
+      </ConfirmDialog>
       <ReasonDialog
         caseId={id}
         open={open === 'cancel'}
@@ -199,29 +177,6 @@ export function CaseActions({ caseDetail }: { caseDetail: CaseDetail }) {
         confirmLabel="Decline"
         danger
         action={casesApi.decline}
-      />
-      <ReasonDialog
-        caseId={id}
-        open={open === 'reopen'}
-        onClose={onClose}
-        title="Reopen case"
-        description="The same technician gets the case back and must accept it again (BR-04). The deadline starts over when work restarts."
-        label="What is not OK?"
-        placeholder="e.g. The AC is cooling again but still drips water."
-        confirmLabel="Reopen"
-        action={casesApi.reopen}
-      />
-      <ReassignDialog caseDetail={caseDetail} open={open === 'reassign'} onClose={onClose} />
-      <UrgencyDialog caseDetail={caseDetail} open={open === 'change_urgency'} onClose={onClose} />
-      <ExtendDueDialog caseDetail={caseDetail} open={open === 'extend_due'} onClose={onClose} />
-      <CostsDialog caseDetail={caseDetail} open={open === 'update_costs'} onClose={onClose} />
-      <DowngradeDialog caseDetail={caseDetail} open={open === 'downgrade'} onClose={onClose} />
-      <MergeDialog caseDetail={caseDetail} open={open === 'merge'} onClose={onClose} />
-      <EmergencyLogDialog caseId={id} open={open === 'add_log'} onClose={onClose} />
-      <IncidentReportDialog
-        caseDetail={caseDetail}
-        open={open === 'write_incident_report'}
-        onClose={onClose}
       />
       <ReasonDialog
         caseId={id}
@@ -257,20 +212,6 @@ export function CaseActions({ caseDetail }: { caseDetail: CaseDetail }) {
         onConfirm={() => acceptNotFixed.mutate({ id }, { onSuccess: onClose })}
       >
         {caseDetail.notFixed && <p className="text-sm">“{caseDetail.notFixed.reason}”</p>}
-      </ConfirmDialog>
-      <ConfirmDialog
-        open={open === 'close'}
-        onClose={onClose}
-        title="Verify and close"
-        description="Closing records the repair in the asset history and notifies the customer."
-        confirmLabel="Close case"
-        loading={close.isPending}
-        error={close.error?.message}
-        onConfirm={() => close.mutate({ id }, { onSuccess: onClose })}
-      >
-        <p className="text-sm">
-          I checked the repair record and the before / after photos, and the problem is fixed.
-        </p>
       </ConfirmDialog>
     </div>
   )

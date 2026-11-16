@@ -10,6 +10,7 @@ import {
   PageHeader,
   Select,
 } from '@/shared/ui'
+import { formatAssetCode } from '@/shared/utils/asset-code'
 import { QrCode } from '../components/QrCode'
 import { qrUrl } from '../qr-url'
 import { useAssetsForLabels, usePlaces } from '../hooks'
@@ -87,6 +88,8 @@ export function QrLabelsPage() {
                 label={`QR code for ${a.name}`}
               />
               <div className="text-sm leading-tight font-medium">{a.name}</div>
+              {/* The customer can type this code into the report form (meeting 07/11). */}
+              <div className="font-mono text-xs leading-tight">{formatAssetCode(a.id)}</div>
               <div className="text-muted text-xs leading-tight">
                 {a.location.buildingName} · {a.location.floorName} · {a.location.roomName}
               </div>

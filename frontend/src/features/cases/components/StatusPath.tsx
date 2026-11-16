@@ -5,14 +5,14 @@ import { STATUS_LABELS, type CaseDetail, type CaseStatus } from '../types'
 
 /*
  * The case's road through F3 (page 5 of the flow), read left to right. Branch statuses sit on the step
- * they belong to: On hold on "In progress", Reopened on "Assigned"; Rejected / Cancelled end the road
+ * they belong to: On hold on "In progress", Reopened on "Approved" (meeting 07/11: no "Assigned" step, the
+ * technician is chosen on approval); Rejected / Cancelled end the road
  * at the step where it stopped.
  */
 
 const STEPS: { status: CaseStatus; label: string }[] = [
   { status: 'pending', label: 'Reported' },
   { status: 'approved', label: 'Approved' },
-  { status: 'assigned', label: 'Assigned' },
   { status: 'accepted', label: 'Accepted' },
   { status: 'in_progress', label: 'In progress' },
   { status: 'completed', label: 'Completed' },
@@ -22,13 +22,12 @@ const STEPS: { status: CaseStatus; label: string }[] = [
 const STEP_OF: Partial<Record<CaseStatus, number>> = {
   pending: 0,
   approved: 1,
-  assigned: 2,
-  reopened: 2,
-  accepted: 3,
-  in_progress: 4,
-  on_hold: 4,
-  completed: 5,
-  closed: 6,
+  reopened: 1,
+  accepted: 2,
+  in_progress: 3,
+  on_hold: 3,
+  completed: 4,
+  closed: 5,
 }
 
 export function StatusPath({ c }: { c: CaseDetail }) {
@@ -43,7 +42,7 @@ export function StatusPath({ c }: { c: CaseDetail }) {
 
   return (
     <div className="overflow-x-auto">
-      <ol className="grid min-w-[640px] grid-cols-7">
+      <ol className="grid min-w-[560px] grid-cols-6">
         {STEPS.map((step, i) => {
           const done = i < current
           const here = i === current
@@ -51,9 +50,10 @@ export function StatusPath({ c }: { c: CaseDetail }) {
           return (
             <li key={step.status} className="flex flex-col gap-1.5 pr-3">
               <div className="flex items-center">
+                {/* When the case moves on, the dot recolours and the next segment fills from the left. */}
                 <span
                   className={cn(
-                    'size-2.5 flex-none rounded-full',
+                    'size-2.5 flex-none rounded-full transition-[background-color,box-shadow] duration-300',
                     done && 'bg-ink',
                     here && !ended && 'bg-accent ring-accent/25 ring-4',
                     here && ended && 'bg-muted',
@@ -61,7 +61,14 @@ export function StatusPath({ c }: { c: CaseDetail }) {
                   )}
                 />
                 {i < STEPS.length - 1 && (
-                  <span className={cn('h-0.5 flex-1', done ? 'bg-ink' : 'bg-rule')} />
+                  <span className="bg-rule h-0.5 flex-1 overflow-hidden">
+                    <span
+                      className={cn(
+                        'bg-ink ease-glide block h-full origin-left transition-transform duration-500',
+                        done ? 'scale-x-100' : 'scale-x-0',
+                      )}
+                    />
+                  </span>
                 )}
               </div>
               <span

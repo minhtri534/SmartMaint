@@ -36,6 +36,20 @@ export function useAssets(roomId: number | null) {
   })
 }
 
+/** Look an asset up by the code the customer typed (nothing is cached: each "Find" asks again). */
+export function useAssetLookup() {
+  return useMutation({ mutationFn: casesApi.assetByCode })
+}
+
+/** Staff: the customers of the case's building who may follow it (Edit form). */
+export function useFollowerOptions(caseId: number, enabled: boolean) {
+  return useQuery({
+    queryKey: caseKeys.followerOptions(caseId),
+    queryFn: () => casesApi.followerOptions(caseId),
+    enabled,
+  })
+}
+
 export function useTechnicians(enabled: boolean) {
   return useQuery({ queryKey: caseKeys.technicians, queryFn: casesApi.technicians, enabled })
 }

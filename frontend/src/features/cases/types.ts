@@ -11,11 +11,13 @@
 // Fixed lists
 // ---------------------------------------------------------------------------
 
-/** The 11 case statuses (F3 page 5, "Need more info" removed 12/10). ERD: CaseStatuses (rows, not an enum). */
+/**
+ * The 10 case statuses (F3 page 5; "Need more info" removed 12/10, "Assigned" removed 07/11: the staff names the
+ * technician on approval). ERD: CaseStatuses (rows, not an enum).
+ */
 export const CASE_STATUSES = [
   'pending',
   'approved',
-  'assigned',
   'accepted',
   'in_progress',
   'on_hold',
@@ -30,7 +32,6 @@ export type CaseStatus = (typeof CASE_STATUSES)[number]
 export const STATUS_LABELS: Record<CaseStatus, string> = {
   pending: 'Pending',
   approved: 'Approved',
-  assigned: 'Assigned',
   accepted: 'Accepted',
   in_progress: 'In progress',
   on_hold: 'On hold',
@@ -55,7 +56,7 @@ export const URGENCY_LABELS: Record<Urgency, string> = {
   low: 'Low',
 }
 
-/** Who pays (N23). NOT IN ERD v5. */
+/** Who pays (N23). Meeting 07/11: no longer recorded for a case; only old F5 quote rows still carry it. */
 export const COST_BEARERS = ['building', 'customer'] as const
 export type CostBearer = (typeof COST_BEARERS)[number]
 
@@ -92,42 +93,43 @@ export type CaseAction =
   | 'cancel'
   | 'approve'
   | 'reject'
-  | 'assign'
   | 'accept'
   | 'decline'
   | 'start'
   | 'hold'
   | 'resume'
   | 'complete'
-  | 'close'
-  | 'reopen'
   | 'rate'
-  // Part 4: staff steps in, the customer's "not fixed" report, cost lines
-  | 'reassign'
-  | 'change_urgency'
+  /** Meeting 07/11: the staff's one Edit (replaces assign, reassign, change urgency, continue, close, reopen). */
+  | 'edit'
+  // Part 4: the deadline, the customer's "not fixed" report, cost lines
   | 'extend_due'
   | 'report_not_fixed'
   | 'accept_not_fixed'
   | 'decline_not_fixed'
   | 'update_costs'
-  // Part 5: checklist of a preventive work order (F2)
+  // Tasks (every case has tasks, meeting 07/11)
   | 'update_task'
-  | 'complete_checklist'
+  | 'log_hours'
+  | 'add_cost'
+  | 'set_task_third_party'
   // Part 6: emergency (F4)
   | 'acknowledge'
-  | 'downgrade'
-  | 'merge'
   | 'add_log'
   | 'mark_safe'
   | 'write_incident_report'
-  // Part 7: repair or replace, outside party (F5)
+  // Part 7: repair or replace (F5). Meeting 07/11: the hand-over to an outside party is one button.
   | 'request_decision'
   | 'outsource'
-  | 'record_quote'
-  | 'decide_quote'
-  | 'outside_declined'
-  | 'check_outside_work'
-  | 'redo_outside_work'
+
+/** What the Edit form can do to the status (the server lists the ones allowed now: CaseDetail.statusChanges). */
+export type EditStatusChange = 'continue' | 'close' | 'reopen'
+
+export const STATUS_CHANGE_LABELS: Record<EditStatusChange, string> = {
+  continue: 'Let the technician continue (back to In progress)',
+  close: 'Verified: close the case',
+  reopen: 'Not OK: reopen for the technician',
+}
 
 /** O09: why a deadline moves (a fixed list, counted in the statistics). */
 export const EXTEND_REASONS = [
@@ -156,7 +158,7 @@ export interface PersonRef {
 /**
  * One item of the 2-level service catalogue (N24): group "Water", type "Leaking pipe or tap".
  * ERD: CaseCategories(Name, Description) — one level only.
- * NOT IN ERD v5: groupName, defaultUrgency, isEmergency, defaultCostBearer, photoRequired.
+ * NOT IN ERD v5: groupName, defaultUrgency, isEmergency, photoRequired.
  */
 export interface ServiceType {
   id: number
@@ -165,7 +167,6 @@ export interface ServiceType {
   defaultUrgency: Urgency
   /** In the emergency list -> goes to F4 as soon as it is created (N26). */
   isEmergency: boolean
-  defaultCostBearer: CostBearer
   /** e.g. leaks need a photo (O05: fewer rejections for missing information). */
   photoRequired: boolean
 }
@@ -196,6 +197,15 @@ export interface AssetRef {
   id: number
   name: string
   roomId: number
+}
+
+/** An asset found by its code (GET /asset-register/{id}/qr-target). canReport = in the customer's room or a common area. */
+export interface AssetLookup {
+  id: number
+  name: string
+  location: CaseLocation
+  isRetired: boolean
+  canReport: boolean
 }
 
 /** Where the problem is. NOT IN ERD v5: Cases only links Assets; a customer may not know the asset. */
@@ -250,8 +260,11 @@ export interface CaseSummary {
   holdReason: HoldReason | null
   /** F5 way 2: a survey the staff opened for an asset that fails often (no customer, not in the KPI). */
   isSurvey: boolean
-  /** F5: the latest outside party of the case. */
+  /** F5: the latest outside party of the case (old flow, before 07/11). */
   outsideWork: OutsideWorkBrief | null
+  /** Meeting 07/11: when the staff plans the work to start / be finished. Not the SLA deadline. NOT IN ERD v5. */
+  plannedStartAt: string | null
+  plannedEndAt: string | null
 }
 
 // ---------------------------------------------------------------------------
@@ -311,10 +324,12 @@ export interface ThirdParty extends OutsideWorkBrief {
   finishedAt: string | null
 }
 
+/** Meeting 07/11: the technician's request for an outside party (condition = description, cause = reason). */
 export interface Assessment {
   condition: string
   cause: string
-  recommendation: TechnicianRecommendation
+  /** Only on requests made before 07/11. */
+  recommendation: TechnicianRecommendation | null
   assessedAt: string
 }
 
@@ -387,7 +402,7 @@ export const LOG_KIND_LABELS: Record<EmergencyLogKind, string> = {
 export type TaskStatus = 'pending' | 'pass' | 'fail' | 'not_applicable'
 export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
   pending: 'Not done',
-  pass: 'Pass',
+  pass: 'Successful',
   fail: 'Fail',
   not_applicable: 'N/A',
 }
@@ -395,17 +410,31 @@ export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
 /** What the technician does with a failed item (BR-07). */
 export type FailAction = 'fixed_on_site' | 'create_case'
 
-/** One checklist item of a preventive work order. ERD: CaseTasks + TaskNotes + TaskImages. */
+/** Who finished a task (meeting 07/11, for the KPI and the costs). NOT IN ERD v5. */
+export type TaskDoneBy = 'technician' | 'third_party'
+export const DONE_BY_LABELS: Record<TaskDoneBy, string> = {
+  technician: 'Technician',
+  third_party: 'Outside party',
+}
+
+/**
+ * One task of a case: a checklist item of a work order (F2), or a task the staff wrote on approval (meeting 07/11:
+ * every case has tasks). ERD: CaseTasks + TaskNotes + TaskImages.
+ */
 export interface CaseTask {
   id: number
   name: string
   description: string | null
   status: TaskStatus
   notes: { note: string; at: string }[]
-  photoUrls: string[]
+  /** Photos with their caption (ERD: TaskImages(Image, Notes)). */
+  photos: { url: string; caption: string | null }[]
   /** The repair case made from this failed item. NOT IN ERD v5. */
   repairCaseId: number | null
   repairCaseCode: string | null
+  /** Who finished it and when (empty while not done). NOT IN ERD v5. */
+  doneBy: TaskDoneBy | null
+  doneAt: string | null
 }
 
 /** Photo attached to a case. ERD: CaseImages(Image, Notes). NOT IN ERD v5: kind (report / before / after). */
@@ -425,8 +454,8 @@ export interface StatusChange {
 }
 
 /**
- * A technician declined the assignment (N10: the manager sees declines). ERD: TechnicianRejections.
- * Who assigned whom is in the history ("Assigned to ..." rows): the ERD keeps only the last technician on the case.
+ * A technician declined the job (N10: the manager sees declines). ERD: TechnicianRejections.
+ * Who got the job is in the history (the "Approved" row says "Assigned to ..."): the ERD keeps only the last technician.
  */
 export interface Rejection {
   technician: PersonRef
@@ -463,35 +492,45 @@ export interface CaseDetail extends CaseSummary {
   /** ERD: Cases.Asset (optional: the customer may not know which asset) */
   asset: AssetRef | null
   serviceTypeId: number
-  /** Copied from the service type at creation, confirmed by the staff on approval. NOT IN ERD v5. */
-  costBearer: CostBearer
+  /** Meeting 07/11: the case this one continues after a change of technician. NOT IN ERD v5. */
+  previousCase: CaseRef | null
+  /** ... and the case that continues this one. */
+  nextCase: CaseRef | null
+  /** Meeting 07/11: other customers who follow the case (read only). NOT IN ERD v5. */
+  followers: PersonRef[]
   photos: CasePhoto[]
   history: StatusChange[]
   rejections: Rejection[]
+  /** Empty for the customer (meeting 07/11). */
   repairReport: RepairReport | null
   rating: Rating | null
   hold: Hold | null
-  /** ERD: Costs. Null when hidden from the caller (a customer when the building pays). */
-  costs: (CostLine & { id: number })[] | null
+  /** ERD: Costs. Null for the customer (meeting 07/11). */
+  costs: Cost[] | null
   totalCost: number | null
+  /** Meeting 07/11: the work hours so far, and when the running clock started (empty when stopped). */
+  workedHours: number | null
+  clockStartedAt: string | null
   /** The customer's "not fixed" report waiting for the staff (within 7 days of closing). NOT IN ERD v5. */
   notFixed: { reason: string; reportedAt: string } | null
   /** F2: the maintenance plan that made this work order. ERD: Cases.TriggerWorkOrder */
   planId: number | null
-  /** F2: the checklist items (empty for an F3 case). */
+  /** Every case has tasks (meeting 07/11). Empty for the customer. */
   tasks: CaseTask[]
-  /** F4: reports of the same incident merged into this case. */
+  /** F4: reports of the same incident merged into this case (before 07/11). */
   mergedCases: CaseRef[]
   /** F4 step ⑫: the post-incident report, once written. */
   incidentReport: IncidentReport | null
   /** F5: the technician's assessment when the job is beyond them. */
   assessment: Assessment | null
-  /** F5: every outside party called on this case. */
+  /** F5: outside parties of the old flow (before 07/11). */
   thirdParties: ThirdParty[]
   /** F5: the decision board (staff and managers only). */
   decisionInfo: DecisionInfo | null
   /** F5: the new asset an outside party installed. */
   replacement: Replacement | null
+  /** The status changes the staff's Edit form may offer now (empty for everyone else). */
+  statusChanges: EditStatusChange[]
   /** What the signed-in user may do right now (state machine + role + data scope, decided by the server). */
   allowedActions: CaseAction[]
 }
@@ -516,61 +555,102 @@ export interface CreateCaseRequest {
   assetId: number | null
   /** Data URLs for now. TODO(storage): Supabase Storage. */
   photos: string[]
+  /** The customer's choice (meeting 07/11). "Emergency" stays Pending until the staff confirms it. */
+  urgency: Urgency
 }
 
+/** One task line of the work order form. id null = a new task; a task left out is removed. */
+export interface TaskLine {
+  id: number | null
+  name: string
+  description: string | null
+}
+
+/** DLG-01 Approve = the work order form (meeting 07/11): the request as corrected + technician, window, tasks. */
 export interface ApproveCaseRequest {
   urgency: Urgency
-  costBearer: CostBearer
+  technicianId: number
+  serviceTypeId: number
+  title: string
+  description: string
+  /** ISO date-times */
+  plannedStartAt: string | null
+  plannedEndAt: string | null
+  tasks: TaskLine[]
+}
+
+/** The staff's one Edit (meeting 07/11). */
+export interface EditCaseRequest {
+  urgency: Urgency
+  /** A new technician on work the old one already took = a new case continues it. */
+  technicianId: number | null
+  serviceTypeId: number
+  title: string
+  description: string
+  plannedStartAt: string | null
+  plannedEndAt: string | null
+  tasks: TaskLine[]
+  followerIds: number[]
+  statusChange: EditStatusChange | null
+  /** Required to reopen. */
+  reason: string | null
+}
+
+/** Meeting 07/11 (replaces merge): what a repeated request hands to the case it repeats. */
+export interface DuplicateOf {
+  caseId: number
+  addAsTask: boolean
+  copyPhotos: boolean
+  addFollower: boolean
 }
 
 export interface RejectCaseRequest {
   reason: RejectReason
   note: string
-}
-
-export interface AssignCaseRequest {
-  technicianId: number
+  duplicate: DuplicateOf | null
 }
 
 export interface ReasonRequest {
   reason: string
 }
 
-export interface HoldCaseRequest {
-  reason: HoldReason
-  /** yyyy-MM-dd, today or later */
-  expectedResumeOn: string
-}
-
-/** One cost line. ERD: Costs(Name, Description, Amount). Amount in VND. */
+/** One cost line. ERD: Costs(Name, Description, Amount). Amount in VND. id = a line the staff keeps (its receipt stays). */
 export interface CostLine {
+  id?: number | null
   name: string
   description: string | null
   amount: number
 }
 
+/** A cost line as the API returns it, with the receipt the technician gave (meeting 07/11). */
+export interface Cost extends CostLine {
+  id: number
+  receiptCode: string | null
+  receiptUrl: string | null
+}
+
+/**
+ * Status → Completed (meeting 07/11: nothing to fill in). Only an asset an outside party replaced (old F5 flow) needs
+ * the new model.
+ */
 export interface CompleteWorkRequest {
-  rootCause: string
-  partsUsed: string | null
-  /** Empty = the system measures the time from start to finish. */
-  laborHours: number | null
-  beforePhotos: string[]
-  afterPhotos: string[]
-  /** Parts bought; the labour line is added by the server (hours × hourly rate). */
-  parts: CostLine[]
-  /** F5: required when an outside party replaced the asset. */
   replacementModel?: string | null
   replacementSerial?: string | null
 }
 
-export interface ReassignCaseRequest {
-  technicianId: number
-  reason: string
+/** Meeting 07/11: the technician types the total work hours. */
+export interface LogHoursRequest {
+  hours: number
 }
 
-export interface ChangeUrgencyRequest {
-  urgency: Urgency
-  reason: string
+/** Meeting 07/11: a cost the technician paid, with the receipt number and / or a photo of it (one is required). */
+export interface AddCostRequest {
+  name: string
+  description: string | null
+  amount: number
+  receiptCode: string | null
+  /** Data URL */
+  receiptPhoto: string | null
 }
 
 export interface ExtendDueRequest {
@@ -584,80 +664,29 @@ export interface UpdateCostsRequest {
   lines: CostLine[]
 }
 
-/** F2 TEC-05: a Fail needs a note, a photo (unless the item has one) and a FailAction. */
+/**
+ * TEC-05, meeting 07/11: status (still to do is fine, to add a note), a note, photos with captions. A Fail needs a
+ * note and a photo (unless the task has one); on a work order it may make a repair case.
+ */
 export interface UpdateTaskRequest {
-  status: Exclude<TaskStatus, 'pending'>
+  status: TaskStatus
   note: string | null
-  photos: string[]
+  photos: { image: string; caption: string | null }[]
   failAction: FailAction | null
   /** A dangerous failure makes an emergency repair case (F4). */
   dangerous: boolean
 }
 
-/** F2: every item has a result; report the work order done. */
-export interface CompleteChecklistRequest {
-  note: string | null
-  laborHours: number | null
-  parts: CostLine[]
-}
-
+/** Meeting 07/11: ask the staff to hand the job to an outside party — what is wrong, why, photos. */
 export interface RequestDecisionRequest {
-  condition: string
-  cause: string
-  recommendation: TechnicianRecommendation
-  photos: string[]
-}
-
-export interface OutsourceRequest {
-  kind: OutsideWorkKind
-  job: OutsideWorkJob
-  companyName: string
-  contact: string
-  /** ISO date-time */
-  appointmentAt: string | null
-  note: string | null
-}
-
-export interface RecordQuoteRequest {
-  bearer: CostBearer
-  /** Required when the customer pays: the contract representative it was forwarded to. */
-  sentTo: string | null
-  note: string | null
-}
-
-export interface QuoteDecisionRequest {
-  go: boolean
-  decidedBy: string
-  note: string | null
-  /** Data URL of the email / signed paper. */
-  evidence: string | null
-}
-
-export interface CheckOutsideWorkRequest {
-  passed: boolean
-  note: string | null
-}
-
-export interface RedoOutsideWorkRequest {
-  appointmentAt: string | null
+  description: string
   reason: string
+  photos: string[]
 }
 
 export interface OpenSurveyRequest {
   assetId: number
   serviceTypeId: number
-  note: string | null
-}
-
-/** K04: not an emergency after all. */
-export interface DowngradeRequest {
-  urgency: Exclude<Urgency, 'emergency'>
-  costBearer: CostBearer
-  reason: string
-}
-
-export interface MergeCaseRequest {
-  targetCaseId: number
   note: string | null
 }
 
@@ -677,9 +706,23 @@ export interface RateCaseRequest {
   comment: string
 }
 
-/** Technician option in the assign dialog (DLG-04). Specialties come back with F1. */
+/** One open job of a technician. Title is empty for a case in a building the staff does not manage. */
+export interface TechnicianJob {
+  id: number
+  code: string
+  title: string | null
+  status: CaseStatus
+  urgency: Urgency
+  plannedStartAt: string | null
+  plannedEndAt: string | null
+  dueAt: string | null
+}
+
+/** A technician the staff can choose (meeting 07/11): specialties and schedule. */
 export interface TechnicianOption extends PersonRef {
   openCases: number
+  specialties: string[]
+  jobs: TechnicianJob[]
 }
 
 /** AI suggestion while the customer writes the request (F3 section 4). The customer decides. */

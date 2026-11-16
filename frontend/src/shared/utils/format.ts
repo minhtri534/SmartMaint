@@ -6,6 +6,13 @@ export function formatDateTime(iso: string | null | undefined): string {
   return iso ? dateTime.format(new Date(iso)) : '—'
 }
 
+const timeOnly = new Intl.DateTimeFormat('en-GB', { timeStyle: 'short' })
+
+/** "14:28". */
+export function formatTime(iso: string | null | undefined): string {
+  return iso ? timeOnly.format(new Date(iso)) : '—'
+}
+
 /** "27 Oct 2026". */
 export function formatDate(iso: string | null | undefined): string {
   return iso ? dateOnly.format(new Date(iso)) : '—'

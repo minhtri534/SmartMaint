@@ -16,7 +16,8 @@ interface DialogProps {
 /**
  * Modal built on the native <dialog> element (Esc and the backdrop are handled by the browser).
  * Screen catalog dialogs (DLG-xx) use this: put the form inside, call onClose after the mutation succeeds.
- * A dialog floats, so it is the one surface allowed a shadow.
+ * A dialog floats, so it is the one surface allowed a shadow. It opens from 96% with a fade
+ * (class dialog-panel, see index.css) and closes at once: the user has already decided.
  */
 export function Dialog({ open, onClose, title, description, wide, children }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null)
@@ -33,7 +34,7 @@ export function Dialog({ open, onClose, title, description, wide, children }: Di
       ref={ref}
       onClose={onClose}
       className={cn(
-        'bg-surface text-ink border-border rounded-card m-auto w-[calc(100%-32px)] border p-0',
+        'dialog-panel bg-surface text-ink border-border rounded-card m-auto w-[calc(100%-32px)] border p-0',
         'shadow-[0_12px_32px_rgba(0,0,0,0.14)] backdrop:bg-black/30',
         wide ? 'max-w-2xl' : 'max-w-lg',
       )}

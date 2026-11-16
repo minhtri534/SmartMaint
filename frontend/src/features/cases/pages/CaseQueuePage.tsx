@@ -6,16 +6,17 @@ import { isOverdue } from '../sla'
 import { FINAL_STATUSES, type CaseStatus, type CaseSummary } from '../types'
 
 const WITH_TECHNICIANS: readonly CaseStatus[] = [
-  'assigned',
+  'approved',
   'accepted',
   'in_progress',
   'on_hold',
   'reopened',
 ]
 
-// The staff's own steps in F3: review (④), assign (⑤), verify (⑩).
+// The staff's own steps: review (approve with a technician), choose a technician again (after a decline or for an
+// emergency that came in on its own), verify (Edit → close). Meeting 07/11: no separate "assign" step.
 const toReview = (c: CaseSummary) => c.status === 'pending'
-const toAssign = (c: CaseSummary) => c.status === 'approved'
+const toAssign = (c: CaseSummary) => c.status === 'approved' && !c.technician
 const toVerify = (c: CaseSummary) => c.status === 'completed'
 /** Waiting for the staff, or past its deadline wherever it is. */
 const needsYou = (c: CaseSummary) => toReview(c) || toAssign(c) || toVerify(c) || isOverdue(c)
@@ -51,7 +52,7 @@ const TABS = [
   {
     value: 'with-technicians',
     label: 'With technicians',
-    match: (c) => WITH_TECHNICIANS.includes(c.status),
+    match: (c) => WITH_TECHNICIANS.includes(c.status) && !!c.technician,
     sort: byUrgencyOfWork,
     emptyText: 'No technician is working on a case.',
   },

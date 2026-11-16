@@ -6,11 +6,11 @@ import {
   Button,
   EmptyBlock,
   ErrorBlock,
+  FilterSelect,
   LinkButton,
   LoadingBlock,
   PageHeader,
-  Select,
-  TextField,
+  SearchInput,
 } from '@/shared/ui'
 import { formatRelative } from '@/shared/utils/format'
 import { AccountStatusBadge } from '../components/AccountBadges'
@@ -45,39 +45,40 @@ export function AccountListPage() {
         }
       />
 
-      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_180px_160px]">
-        <TextField
-          label="Search"
+      {/* One 32px filter row, like Cases (16/11): search, then the narrowing filters. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <SearchInput
+          label="Search accounts"
           placeholder="Name, username or e-mail"
           value={filters.search ?? ''}
           onChange={(e) => set({ search: e.target.value || undefined })}
         />
-        <Select
+        <FilterSelect
           label="Role"
-          placeholder="All roles"
           value={filters.role ?? ''}
           onChange={(e) => set({ role: (e.target.value || undefined) as Role | undefined })}
         >
+          <option value="">All</option>
           {ROLES.map((r) => (
             <option key={r} value={r}>
               {ROLE_LABELS[r]}
             </option>
           ))}
-        </Select>
-        <Select
+        </FilterSelect>
+        <FilterSelect
           label="Status"
-          placeholder="Any status"
           value={filters.status ?? ''}
           onChange={(e) =>
             set({ status: (e.target.value || undefined) as AccountStatus | undefined })
           }
         >
+          <option value="">Any</option>
           {(['active', 'deactivated'] as const).map((s) => (
             <option key={s} value={s}>
               {STATUS_LABELS[s]}
             </option>
           ))}
-        </Select>
+        </FilterSelect>
       </div>
 
       {accounts.isPending ? (

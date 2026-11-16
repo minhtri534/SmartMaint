@@ -10,18 +10,39 @@ import {
   ErrorBlock,
   LoadingBlock,
   PageHeader,
-  Select,
+  controlClass,
+  FilterSelect,
   Tabs,
-  TextField,
 } from '@/shared/ui'
 import { formatDate } from '@/shared/utils/format'
 import { BarList, WeekBars } from '../components/Bars'
-import { StatTile } from '../components/StatTile'
+import { StatStrip } from '../components/StatStrip'
 import { change, hours, minutes, percent } from '../format'
 import { useExport, useFailures, useOverview, useTechnicianStats } from '../hooks'
 import type { AnalyticsFilters, ExportReport, Overview } from '../types'
 
 type Tab = 'overview' | 'technicians' | 'failures' | 'reports'
+
+/** yyyy-MM-dd in local time, `offsetDays` from today. Called from event handlers only (no clock in render). */
+function localDay(offsetDays: number, from = new Date()) {
+  const d = new Date(from.getTime() + offsetDays * 86_400_000)
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 10)
+}
+
+/** The from / to of a period preset; '' (last 30 days) is the server's default and sends nothing. */
+function presetRange(preset: string): { from: string; to: string } | null {
+  const today = localDay(0)
+  switch (preset) {
+    case '7d':
+      return { from: localDay(-6), to: today }
+    case '90d':
+      return { from: localDay(-89), to: today }
+    case 'month':
+      return { from: today.slice(0, 8) + '01', to: today } // day 1 of the month, not numbering: taste-skill-ignore
+    default:
+      return null
+  }
+}
 
 /**
  * ANA-01..04 (F6, staff and managers of their buildings; read only, BR-12). Staff get the short version: no
@@ -50,50 +71,95 @@ export function AnalyticsPage() {
     setParams(next, { replace: true })
   }
   // The building list comes from the unfiltered overview (the caller's buildings).
-  const buildings = useOverview({ from: filters.from, to: filters.to }).data?.byBuilding ?? []
+  const scope = useOverview({ from: filters.from, to: filters.to })
+  const buildings = scope.data?.byBuilding ?? []
+  // The finding under the title: the same numbers as the Overview tab, for the chosen scope (cached query).
+  const shown = useOverview(filters).data
+  const overdueNow = shown?.byBuilding.reduce((n, b) => n + b.overdueNow, 0) ?? 0
+  const finding =
+    shown &&
+    `${shown.current.reported} reported, ${percent(shown.current.onTimeRate)} on time` +
+      (overdueNow > 0
+        ? `; ${overdueNow} past the deadline now.`
+        : '; nothing past the deadline now.')
+
+  // 16/11: the period is a preset (one 32px control) instead of two native date fields; "Custom" opens them.
+  const period = params.get('period') ?? (filters.from || filters.to ? 'custom' : '')
+  const choosePeriod = (value: string) => {
+    const next = new URLSearchParams(params)
+    next.delete('from')
+    next.delete('to')
+    next.delete('period')
+    if (value) {
+      next.set('period', value)
+      const range = presetRange(value)
+      if (range) {
+        next.set('from', range.from)
+        next.set('to', range.to)
+      }
+    }
+    setParams(next, { replace: true })
+  }
 
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
         title="Analytics"
-        description="How maintenance performs in your buildings. Merged reports and surveys are not counted."
+        description={finding}
         actions={
-          <Button variant="secondary" onClick={() => window.print()}>
-            Print / PDF
-          </Button>
+          <>
+            <div className="flex flex-wrap items-center gap-2 print:hidden">
+              <FilterSelect
+                label="Period"
+                value={period}
+                onChange={(e) => choosePeriod(e.target.value)}
+              >
+                <option value="">Last 30 days</option>
+                <option value="7d">Last 7 days</option>
+                <option value="90d">Last 90 days</option>
+                <option value="month">This month</option>
+                <option value="custom">Custom</option>
+              </FilterSelect>
+              {period === 'custom' && (
+                <>
+                  <input
+                    type="date"
+                    aria-label="From"
+                    value={filters.from ?? ''}
+                    onChange={(e) => set('from', e.target.value)}
+                    className={controlClass() + ' h-8 max-w-36'}
+                  />
+                  <span className="text-muted">–</span>
+                  <input
+                    type="date"
+                    aria-label="To"
+                    value={filters.to ?? ''}
+                    onChange={(e) => set('to', e.target.value)}
+                    className={controlClass() + ' h-8 max-w-36'}
+                  />
+                </>
+              )}
+              {buildings.length > 1 && (
+                <FilterSelect
+                  label="Building"
+                  value={filters.buildingId ? String(filters.buildingId) : ''}
+                  onChange={(e) => set('building', e.target.value)}
+                >
+                  <option value="">All</option>
+                  {buildings.map((b) => (
+                    <option key={b.buildingId} value={b.buildingId}>
+                      {b.name}
+                    </option>
+                  ))}
+                </FilterSelect>
+              )}
+            </div>
+            <Button variant="secondary" onClick={() => window.print()}>
+              Print / PDF
+            </Button>
+          </>
         }
       />
-      <div className="flex flex-wrap items-end gap-3 print:hidden">
-        <TextField
-          label="From"
-          type="date"
-          value={filters.from ?? ''}
-          onChange={(e) => set('from', e.target.value)}
-          className="w-40"
-        />
-        <TextField
-          label="To"
-          type="date"
-          value={filters.to ?? ''}
-          onChange={(e) => set('to', e.target.value)}
-          className="w-40"
-        />
-        {buildings.length > 1 && (
-          <Select
-            label="Building"
-            value={filters.buildingId ? String(filters.buildingId) : ''}
-            onChange={(e) => set('building', e.target.value)}
-            className="w-56"
-          >
-            <option value="">All my buildings</option>
-            {buildings.map((b) => (
-              <option key={b.buildingId} value={b.buildingId}>
-                {b.name}
-              </option>
-            ))}
-          </Select>
-        )}
-      </div>
       <div className="print:hidden">
         <Tabs items={tabs} value={tab} onChange={(v) => set('tab', v)} />
       </div>
@@ -114,56 +180,63 @@ function OverviewTab({ filters, isManager }: { filters: AnalyticsFilters; isMana
     return (
       <ErrorBlock what="the numbers" message={q.error.message} onRetry={() => void q.refetch()} />
     )
-  return <OverviewView o={q.data} isManager={isManager} />
+  // While a new period loads, the old numbers stay, dimmed, and the bars then ease to the new values.
+  return (
+    <div className={q.isPlaceholderData ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
+      <OverviewView o={q.data} isManager={isManager} />
+    </div>
+  )
 }
 
 /** Exported for the Manager home (MGR-01 uses the same numbers). */
 export function KpiTiles({ o, isManager }: { o: Overview; isManager: boolean }) {
   const c = o.current
   const p = o.previous
+  // One divided strip, not six tiles (16/11).
   return (
-    <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
-      <StatTile
-        label="Reported"
-        value={c.reported}
-        change={change(c.reported, p.reported, 'down', 'number')}
-        hint={`${c.completed} completed`}
-      />
-      <StatTile
-        label="First response"
-        value={minutes(c.avgFirstResponseMinutes)}
-        change={change(c.avgFirstResponseMinutes, p.avgFirstResponseMinutes, 'down', 'minutes')}
-        hint="report → decision"
-      />
-      <StatTile
-        label="Resolution"
-        value={hours(c.avgResolutionHours)}
-        change={change(c.avgResolutionHours, p.avgResolutionHours, 'down', 'hours')}
-        hint="report → done"
-      />
-      <StatTile
-        label="On time"
-        value={percent(c.onTimeRate)}
-        change={change(c.onTimeRate, p.onTimeRate, 'up', 'rate')}
-        hint={`${percent(c.onTimeOriginalRate)} by the first deadline`}
-      />
-      <StatTile
-        label="Reopened"
-        value={percent(c.reopenRate)}
-        change={change(c.reopenRate, p.reopenRate, 'down', 'rate')}
-        hint={`${c.deadlineMoves} deadline moves`}
-      />
-      {isManager ? (
-        <StatTile
-          label="Rating"
-          value={c.avgRating === null ? '—' : `${c.avgRating} / 5`}
-          change={change(c.avgRating, p.avgRating, 'up', 'number')}
-          hint={`${c.technicianDeclines} jobs declined`}
-        />
-      ) : (
-        <StatTile label="Jobs declined" value={c.technicianDeclines} hint="by technicians" />
-      )}
-    </div>
+    <StatStrip
+      className="md:grid-cols-3 xl:grid-cols-6"
+      items={[
+        {
+          label: 'Reported',
+          value: c.reported,
+          change: change(c.reported, p.reported, 'down', 'number'),
+          hint: `${c.completed} completed`,
+        },
+        {
+          label: 'First response',
+          value: minutes(c.avgFirstResponseMinutes),
+          change: change(c.avgFirstResponseMinutes, p.avgFirstResponseMinutes, 'down', 'minutes'),
+          hint: 'report → decision',
+        },
+        {
+          label: 'Resolution',
+          value: hours(c.avgResolutionHours),
+          change: change(c.avgResolutionHours, p.avgResolutionHours, 'down', 'hours'),
+          hint: 'report → done',
+        },
+        {
+          label: 'On time',
+          value: percent(c.onTimeRate),
+          change: change(c.onTimeRate, p.onTimeRate, 'up', 'rate'),
+          hint: `${percent(c.onTimeOriginalRate)} by the first deadline`,
+        },
+        {
+          label: 'Reopened',
+          value: percent(c.reopenRate),
+          change: change(c.reopenRate, p.reopenRate, 'down', 'rate'),
+          hint: `${c.deadlineMoves} deadline moves`,
+        },
+        isManager
+          ? {
+              label: 'Rating',
+              value: c.avgRating === null ? '—' : `${c.avgRating} / 5`,
+              change: change(c.avgRating, p.avgRating, 'up', 'number'),
+              hint: `${c.technicianDeclines} jobs declined`,
+            }
+          : { label: 'Jobs declined', value: c.technicianDeclines, hint: 'by technicians' },
+      ]}
+    />
   )
 }
 
@@ -172,7 +245,8 @@ function OverviewView({ o, isManager }: { o: Overview; isManager: boolean }) {
     <div className="flex flex-col gap-5">
       <p className="text-muted text-sm">
         {formatDate(o.period.from)} – {formatDate(o.period.to)}, compared with{' '}
-        {formatDate(o.previousPeriod.from)} – {formatDate(o.previousPeriod.to)}.
+        {formatDate(o.previousPeriod.from)} – {formatDate(o.previousPeriod.to)}. Merged reports and
+        surveys are not counted.
       </p>
       <KpiTiles o={o} isManager={isManager} />
 
@@ -192,7 +266,7 @@ function OverviewView({ o, isManager }: { o: Overview; isManager: boolean }) {
         </Card>
         <Card>
           <CardHeader title="Emergencies and preventive work" />
-          <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+          <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
             <Row label="Emergencies">{o.emergency.count}</Row>
             <Row label="Acknowledged after">{minutes(o.emergency.avgAcknowledgeMinutes)}</Row>
             <Row label="Made safe after">{minutes(o.emergency.avgMadeSafeMinutes)}</Row>
@@ -283,7 +357,10 @@ function TechniciansTab({ filters }: { filters: AnalyticsFilters }) {
     )
   if (q.data.length === 0) return <EmptyBlock>No technician worked in this period.</EmptyBlock>
   return (
-    <Card padding="none" className="overflow-x-auto">
+    <Card
+      padding="none"
+      className={'overflow-x-auto transition-opacity' + (q.isPlaceholderData ? ' opacity-60' : '')}
+    >
       <table className="w-full min-w-[760px] text-left text-sm">
         <thead>
           <tr className="border-border text-muted border-b text-xs">
@@ -341,7 +418,11 @@ function FailuresTab({ filters }: { filters: AnalyticsFilters }) {
     )
   const f = q.data
   return (
-    <div className="flex flex-col gap-5">
+    <div
+      className={
+        'flex flex-col gap-5 transition-opacity' + (q.isPlaceholderData ? ' opacity-60' : '')
+      }
+    >
       <div className="grid gap-5 lg:grid-cols-2">
         <Card>
           <CardHeader title="Cases by service type" />

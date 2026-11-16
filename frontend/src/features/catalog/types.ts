@@ -1,7 +1,6 @@
 /** Mirrors backend Modules/CatalogAdmin/Dtos. "usedBy" = rows that point at the item (0 = can delete). */
 
 export type Urgency = 'emergency' | 'high' | 'normal' | 'low'
-export type CostBearer = 'building' | 'customer'
 
 /** ERD: CaseCategories (+ NOT IN ERD v5 group, emergency, defaults, photo rule). */
 export interface CaseCategory {
@@ -11,7 +10,6 @@ export interface CaseCategory {
   description: string | null
   isEmergency: boolean
   defaultPriority: Urgency
-  defaultCostBearer: CostBearer
   photoRequired: boolean
   usedBy: number
 }

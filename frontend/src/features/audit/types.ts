@@ -1,6 +1,20 @@
 /** Mirrors backend Modules/Audit/Dtos. ERD: AuditLog (+ lookup tables AuditLogTargetType / AuditLogTargetOperation). */
 
-export const AUDIT_TARGETS = ['account', 'priority_level'] as const
+// Same values as backend Entities/Core/AuditLog.cs (AuditTarget / AuditOperation, snake_case on the wire).
+// 16/11: F1 added building … specialty and delete / retire / import on the backend; the page crashed on them.
+export const AUDIT_TARGETS = [
+  'account',
+  'priority_level',
+  'building',
+  'floor',
+  'room',
+  'asset',
+  'case_category',
+  'asset_category',
+  'asset_type',
+  'manufacturer',
+  'specialty',
+] as const
 export type AuditTarget = (typeof AUDIT_TARGETS)[number]
 
 export const AUDIT_OPERATIONS = [
@@ -12,12 +26,24 @@ export const AUDIT_OPERATIONS = [
   'reactivate',
   'reset_password',
   'unlock',
+  'delete',
+  'retire',
+  'import',
 ] as const
 export type AuditOperation = (typeof AUDIT_OPERATIONS)[number]
 
 export const TARGET_LABELS: Record<AuditTarget, string> = {
   account: 'Account',
   priority_level: 'SLA level',
+  building: 'Building',
+  floor: 'Floor',
+  room: 'Room',
+  asset: 'Asset',
+  case_category: 'Service type',
+  asset_category: 'Asset category',
+  asset_type: 'Asset type',
+  manufacturer: 'Manufacturer',
+  specialty: 'Specialty',
 }
 
 export const OPERATION_LABELS: Record<AuditOperation, string> = {
@@ -29,6 +55,9 @@ export const OPERATION_LABELS: Record<AuditOperation, string> = {
   reactivate: 'Reactivate',
   reset_password: 'Reset password',
   unlock: 'Unlock',
+  delete: 'Delete',
+  retire: 'Retire',
+  import: 'Import',
 }
 
 export interface AuditRow {

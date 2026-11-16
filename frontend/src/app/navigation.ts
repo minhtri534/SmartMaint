@@ -41,10 +41,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
     also: ['/cases/'],
     roles: ['staff', 'manager'],
   },
-  // F4
-  { label: 'Emergencies', to: paths.emergencies, icon: 'siren', roles: ['staff', 'manager'] },
-  // F5
-  { label: 'Outside work', to: paths.outsideWork, icon: 'truck', roles: ['staff', 'manager'] },
+  // F4 (meeting 07/11: the staff find emergencies in Cases with the urgency filter)
+  { label: 'Emergencies', to: paths.emergencies, icon: 'siren', roles: ['manager'] },
   {
     label: 'My work orders',
     to: paths.workOrders,
@@ -67,7 +65,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
     roles: ['staff', 'manager', 'admin'],
   },
   // F6
-  { label: 'Analytics', to: paths.analytics, icon: 'chart', roles: ['staff', 'manager'] },
+  { label: 'Analytics', to: paths.analytics, icon: 'chart', roles: ['manager'] }, // meeting 07/11: not for the staff
   // F1 — buildings and assets (read for staff / manager, edit for admin)
   {
     label: 'Buildings',
@@ -80,7 +78,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
     to: paths.assets,
     icon: 'box',
     also: ['/assets/'],
-    roles: ['staff', 'manager', 'admin'],
+    // Meeting 07/11: the staff no longer browse the asset list (they still open an asset from a case).
+    roles: ['manager', 'admin'],
   },
   { label: 'Catalog', to: paths.catalog, icon: 'list', roles: ['admin'] },
   {

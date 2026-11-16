@@ -16,7 +16,6 @@ export const caseCategorySchema = z.object({
   description,
   isEmergency: z.boolean(),
   defaultPriority: z.enum(['emergency', 'high', 'normal', 'low']),
-  defaultCostBearer: z.enum(['building', 'customer']),
   photoRequired: z.boolean(),
 })
 export type CaseCategoryValues = z.infer<typeof caseCategorySchema>

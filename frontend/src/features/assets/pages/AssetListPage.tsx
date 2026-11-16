@@ -6,11 +6,11 @@ import {
   Button,
   EmptyBlock,
   ErrorBlock,
+  FilterSelect,
   LinkButton,
   LoadingBlock,
   PageHeader,
-  Select,
-  TextField,
+  SearchInput,
 } from '@/shared/ui'
 import { formatDate } from '@/shared/utils/format'
 import { AssetStatus } from '../components/AssetStatus'
@@ -62,42 +62,41 @@ export function AssetListPage() {
         }
       />
 
-      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_200px_200px]">
-        <TextField
-          label="Search"
+      {/* One 32px filter row, like Cases (16/11): search, the narrowing filters, then the retired toggle. */}
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <SearchInput
+          label="Search assets"
           placeholder="Asset name"
           value={filters.search ?? ''}
           onChange={(e) => set({ search: e.target.value || undefined })}
         />
-        <Select
+        <FilterSelect
           label="Building"
-          placeholder="All buildings"
-          value={filters.buildingId ?? ''}
+          value={String(filters.buildingId ?? '')}
           onChange={(e) =>
             set({ buildingId: Number(e.target.value) || undefined, roomId: undefined })
           }
         >
+          <option value="">All</option>
           {places.data?.map((b) => (
             <option key={b.id} value={b.id}>
               {b.name}
             </option>
           ))}
-        </Select>
-        <Select
+        </FilterSelect>
+        <FilterSelect
           label="Type"
-          placeholder="All types"
-          value={filters.typeId ?? ''}
+          value={String(filters.typeId ?? '')}
           onChange={(e) => set({ typeId: Number(e.target.value) || undefined })}
         >
+          <option value="">All</option>
           {types.data?.map((t) => (
             <option key={t.id} value={t.id}>
               {t.categoryName} · {t.name}
             </option>
           ))}
-        </Select>
-      </div>
-      <div className="flex flex-wrap items-center gap-4 text-sm">
-        <label className="flex items-center gap-2">
+        </FilterSelect>
+        <label className="ml-1 flex items-center gap-2">
           <input
             type="checkbox"
             className="accent-primary size-4"

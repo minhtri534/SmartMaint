@@ -13,15 +13,18 @@ interface Props {
   onClose: () => void
 }
 
-/** Staff corrects the cost lines (parts + labour) while the case waits for verification. */
+/**
+ * Meeting 07/11: the staff records the costs (not the technician, who hands in the receipts). Any number of lines,
+ * each a title, a description and an amount. Labour is computed by the system from the hours and the hourly rate.
+ */
 export function CostsDialog({ caseDetail, open, onClose }: Props) {
   return (
     <Dialog
       open={open}
       onClose={onClose}
       wide
-      title="Correct costs"
-      description="These lines replace the current ones. The change is kept in the history."
+      title="Costs"
+      description="Parts, materials and outside services of this case. These lines replace the current ones."
     >
       <CostsForm caseDetail={caseDetail} onDone={onClose} />
     </Dialog>
@@ -38,10 +41,17 @@ function CostsForm({ caseDetail, onDone }: { caseDetail: CaseDetail; onDone: () 
   } = useForm<CostsFormValues>({
     resolver: zodResolver(costsSchema),
     defaultValues: {
-      lines: (caseDetail.costs ?? []).map((c) => ({ name: c.name, amount: String(c.amount) })),
+      lines: (caseDetail.costs ?? []).map((c) => ({
+        id: String(c.id),
+        name: c.name,
+        description: c.description ?? '',
+        amount: String(c.amount),
+      })),
     },
   })
-  const lines = useFieldArray({ control, name: 'lines' })
+  // keyName 'key': the rows carry their own "id" (the cost line id).
+  const lines = useFieldArray({ control, name: 'lines', keyName: 'key' })
+  const receipts = new Map((caseDetail.costs ?? []).map((c) => [String(c.id), c]))
 
   const onSubmit = handleSubmit((v) =>
     save.mutate({ id: caseDetail.id, lines: toCostLines(v.lines) }, { onSuccess: onDone }),
@@ -53,9 +63,31 @@ function CostsForm({ caseDetail, onDone }: { caseDetail: CaseDetail; onDone: () 
         rows={lines.fields}
         field={(i, key) => register(`lines.${i}.${key}`)}
         errors={errors.lines}
-        onAdd={() => lines.append({ name: '', amount: '' })}
+        onAdd={() => lines.append({ id: '', name: '', description: '', amount: '' })}
         onRemove={lines.remove}
-        hint="Parts and labour of this repair, in VND."
+        hint="Amounts in VND. A line the technician added keeps its receipt."
+        extra={(i) => {
+          const cost = receipts.get(lines.fields[i]?.id ?? '')
+          if (!cost?.receiptCode && !cost?.receiptUrl) return null
+          return (
+            <p className="text-muted text-xs sm:col-span-4">
+              Receipt {cost.receiptCode}
+              {cost.receiptUrl && (
+                <>
+                  {' '}
+                  <a
+                    href={cost.receiptUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline underline-offset-2"
+                  >
+                    photo
+                  </a>
+                </>
+              )}
+            </p>
+          )
+        }}
       />
       {save.error && <Alert>{save.error.message}</Alert>}
       <DialogActions>

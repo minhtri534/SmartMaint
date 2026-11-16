@@ -8,7 +8,6 @@ import { STATUS_LABELS, URGENCY_LABELS, type CaseStatus, type Urgency } from '..
 const STATUS_TONES: Record<CaseStatus, BadgeTone> = {
   pending: 'warning',
   approved: 'neutral',
-  assigned: 'neutral',
   accepted: 'accent',
   in_progress: 'accent',
   on_hold: 'warning',
@@ -23,16 +22,21 @@ export function StatusBadge({ status }: { status: CaseStatus }) {
   return <Badge tone={STATUS_TONES[status]}>{STATUS_LABELS[status]}</Badge>
 }
 
-/** Urgency is printed only above normal, as words (not a second pill on the row). */
-export function UrgencyNote({ urgency }: { urgency: Urgency }) {
-  if (urgency === 'normal' || urgency === 'low') return null
+/** The urgency column of the case lists (meeting 07/11: its own column, not under the status). Words, no pill. */
+export function UrgencyText({ urgency }: { urgency: Urgency }) {
   return (
     <span
       className={
-        urgency === 'emergency' ? 'text-negative text-xs font-medium' : 'text-warning text-xs'
+        urgency === 'emergency'
+          ? 'text-negative font-medium'
+          : urgency === 'high'
+            ? 'text-warning'
+            : urgency === 'low'
+              ? 'text-muted'
+              : undefined
       }
     >
-      {URGENCY_LABELS[urgency]} urgency
+      {URGENCY_LABELS[urgency]}
     </span>
   )
 }

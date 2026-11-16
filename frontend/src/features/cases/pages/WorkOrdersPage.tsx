@@ -5,7 +5,8 @@ import { useCases } from '../hooks'
 import { isOverdue } from '../sla'
 import type { CaseStatus, CaseSummary } from '../types'
 
-const WAITING: readonly CaseStatus[] = ['assigned', 'reopened']
+// Meeting 07/11: a job given to me waits as "approved" until I accept it.
+const WAITING: readonly CaseStatus[] = ['approved', 'reopened']
 const IN_HAND: readonly CaseStatus[] = ['accepted', 'in_progress', 'on_hold']
 
 /** Jobs to answer first, then overdue, then the nearest deadline. */
@@ -61,7 +62,8 @@ export function WorkOrdersPage() {
             : undefined
         }
       />
-      <CaseListCard tabs={tabs} variant="cards" showRequester />
+      {/* Meeting 07/11: the technician sees when each job is planned to start. */}
+      <CaseListCard tabs={tabs} variant="cards" showRequester timeColumn="planned" />
     </div>
   )
 }

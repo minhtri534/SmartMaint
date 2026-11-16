@@ -6,6 +6,7 @@ const PATHS = {
     'M4 13h4l2 3h4l2-3h4 M4 13V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z',
   requests: 'M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z M14 3v5h5 M9 13h6 M9 17h4',
   plus: 'M12 5v14 M5 12h14',
+  search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14z M20 20l-4-4',
   wrench:
     'M14.5 6.5a4 4 0 0 0-5.2 5.2L4.5 16.5a1.8 1.8 0 0 0 2.5 2.5l4.8-4.8a4 4 0 0 0 5.2-5.2l-2.3 2.3-2.2-.3-.3-2.2z',
   home: 'M4 11l8-7 8 7 M6 9.5V20h12V9.5',
@@ -52,20 +53,18 @@ export function Icon({ name, className }: { name: IconName; className?: string }
   )
 }
 
-/** The SmartMaint mark: an office tower whose floors are being checked off, in the accent. */
+/**
+ * The SmartMaint mark: four floors of a building section (roof set back); the floor under service
+ * slides out by a third, in the accent. Drawn on a 20-pixel grid so it is crisp at size-5.
+ * Master files and app icons: docs/design/brand/.
+ */
 export function ProductMark({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 20 20" aria-hidden="true" className={cn('size-5 flex-none', className)}>
-      <rect x="2" y="1" width="16" height="18" rx="4" className="fill-accent" />
-      <path d="M6 6h5 M6 10h5 M6 14h5" stroke="white" strokeWidth="1.6" strokeLinecap="round" />
-      <path
-        d="M12.8 13.6l1.2 1.2 2-2.4"
-        stroke="white"
-        strokeWidth="1.4"
-        fill="none"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      <rect x="2" y="1" width="7" height="3" rx="0.9" className="fill-ink" />
+      <rect x="2" y="6" width="12" height="3" rx="0.9" className="fill-ink" />
+      <rect x="6" y="11" width="12" height="3" rx="0.9" className="fill-accent" />
+      <rect x="2" y="16" width="12" height="3" rx="0.9" className="fill-ink" />
     </svg>
   )
 }

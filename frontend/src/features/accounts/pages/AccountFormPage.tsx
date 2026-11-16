@@ -7,9 +7,9 @@ import { ROLE_LABELS, ROLES } from '@/shared/types/role'
 import {
   Alert,
   Button,
-  Card,
-  CardHeader,
   ErrorBlock,
+  FormActions,
+  FormSection,
   LinkButton,
   LoadingBlock,
   PageHeader,
@@ -177,7 +177,7 @@ function AccountForm({
   const showError = mutation.error && Object.keys(mutation.error.fieldErrors).length === 0
 
   return (
-    <div className="flex max-w-[720px] flex-col gap-5">
+    <div className="flex max-w-[1040px] flex-col gap-5">
       <PageHeader
         title={TITLES[mode]}
         description={
@@ -189,9 +189,11 @@ function AccountForm({
         }
       />
 
-      <form onSubmit={onSubmit} noValidate className="flex flex-col gap-5">
-        <Card>
-          <CardHeader title="Account" />
+      <form onSubmit={onSubmit} noValidate className="flex flex-col gap-6">
+        <FormSection
+          title="Account"
+          description="Who the person is and how to reach them. The username is what they sign in with."
+        >
           <div className="grid gap-4 sm:grid-cols-2">
             <TextField
               label="Username"
@@ -236,7 +238,7 @@ function AccountForm({
               </Select>
             )}
           </div>
-        </Card>
+        </FormSection>
 
         <RoleDetailsCard
           role={role}
@@ -247,8 +249,7 @@ function AccountForm({
           specialties={specialties}
         />
 
-        {showError && <Alert>{mutation.error.message}</Alert>}
-        <div className="flex justify-end gap-2">
+        <FormActions error={showError && <Alert>{mutation.error.message}</Alert>}>
           <LinkButton variant="ghost" to={account ? accountDetailPath(account.id) : paths.accounts}>
             Cancel
           </LinkButton>
@@ -259,7 +260,7 @@ function AccountForm({
                 ? 'Save changes'
                 : 'Change role'}
           </Button>
-        </div>
+        </FormActions>
       </form>
 
       {created && (
@@ -305,11 +306,10 @@ function RoleDetailsCard({
           f.rooms.filter((r) => !r.isCommonArea).map((r) => ({ ...r, floor: f.name })),
         ) ?? []
     return (
-      <Card>
-        <CardHeader title="Rented room" />
-        <p className="text-muted -mt-2 mb-4 text-sm">
-          The customer reports problems in this room and in the common areas of the same building.
-        </p>
+      <FormSection
+        title="Rented room"
+        description="The customer reports problems in this room and in the common areas of the same building."
+      >
         <div className="grid gap-4 sm:grid-cols-2">
           <Select label="Building" placeholder="Choose a building" {...register('buildingId')}>
             {buildings.map((b) => (
@@ -331,14 +331,16 @@ function RoleDetailsCard({
             ))}
           </Select>
         </div>
-      </Card>
+      </FormSection>
     )
   }
 
   if (role === 'technician') {
     return (
-      <Card>
-        <CardHeader title="Technician" />
+      <FormSection
+        title="Technician"
+        description="The rate prices their labour on a case; the specialties tell the staff what they can repair."
+      >
         <div className="flex flex-col gap-4">
           <TextField
             label="Hourly rate (VND)"
@@ -365,20 +367,21 @@ function RoleDetailsCard({
             </div>
           </fieldset>
         </div>
-      </Card>
+      </FormSection>
     )
   }
 
   // staff and manager: the buildings they look after
   return (
-    <Card>
-      <CardHeader title="Buildings" />
-      <p className="text-muted -mt-2 mb-4 text-sm">
-        {role === 'staff'
+    <FormSection
+      title="Buildings"
+      description={
+        role === 'staff'
           ? 'Staff handle the cases of these buildings. One primary staff member per building: choosing one here replaces the current one.'
-          : 'The manager sees the cases and plans of these buildings.'}
-      </p>
-      <ul className="flex flex-col">
+          : 'The manager sees the cases and plans of these buildings.'
+      }
+    >
+      <ul className="-my-2.5 flex flex-col">
         {buildings.map((b) => {
           const id = String(b.id)
           const chosen = chosenBuildings.includes(id)
@@ -411,6 +414,6 @@ function RoleDetailsCard({
           )
         })}
       </ul>
-    </Card>
+    </FormSection>
   )
 }

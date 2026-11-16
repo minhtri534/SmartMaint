@@ -37,9 +37,10 @@ export function BarList({
             className="bg-rule col-span-2 h-1.5 overflow-hidden rounded-full"
             title={`${r.label}: ${r.value} ${unit}`}
           >
+            {/* scaleX: a new period or building moves the bar on the GPU instead of redrawing it */}
             <div
-              className="bg-accent h-full rounded-full"
-              style={{ width: `${Math.max(2, (r.value / max) * 100)}%` }}
+              className="bg-accent ease-snap h-full origin-left rounded-full transition-transform duration-500"
+              style={{ transform: `scaleX(${Math.max(0.02, r.value / max)})` }}
             />
           </div>
         </li>
@@ -57,6 +58,11 @@ export function WeekBars({
   weeks: { weekStart: string; value: number }[]
 }) {
   const max = Math.max(1, ...weeks.map((w) => w.value))
+  // A long period (90 days = 13 weeks) keeps the axis readable: about 6 date labels, counted back from the
+  // latest week, and only the non-zero counts above the bars (16/11; they were truncated to "1.." before).
+  const dense = weeks.length > 8
+  const step = Math.ceil(weeks.length / 6)
+  const labelled = (i: number) => (weeks.length - 1 - i) % step === 0
   return (
     <figure className="flex min-w-0 flex-col gap-2">
       <figcaption className="text-muted text-[13px]">{title}</figcaption>
@@ -67,21 +73,28 @@ export function WeekBars({
             className="group flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1"
             title={`Week of ${formatDate(w.weekStart)}: ${w.value}`}
           >
-            <span className="text-muted text-[11px] tabular-nums">{w.value}</span>
+            <span className="text-muted text-[11px] tabular-nums">
+              {dense && w.value === 0 ? '' : w.value}
+            </span>
+            {/* height eases to the new value when the filters change (12 small bars: cheap) */}
             <div
-              className="bg-accent w-full max-w-8 rounded-t-[4px] group-hover:opacity-80"
+              className="bg-accent ease-snap w-full max-w-8 rounded-t-[4px] transition-[height,opacity] duration-500 group-hover:opacity-80"
               style={{ height: `${(w.value / max) * 80}%`, minHeight: w.value > 0 ? 2 : 0 }}
             />
           </div>
         ))}
       </div>
       <div className="flex gap-1.5">
-        {weeks.map((w) => (
+        {weeks.map((w, i) => (
           <span
             key={w.weekStart}
-            className="text-muted min-w-0 flex-1 truncate text-center text-[11px]"
+            className="text-muted flex min-w-0 flex-1 justify-center text-[11px] whitespace-nowrap"
           >
-            {new Date(w.weekStart).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+            {labelled(i) &&
+              new Date(w.weekStart).toLocaleDateString('en-GB', {
+                day: 'numeric',
+                month: 'short',
+              })}
           </span>
         ))}
       </div>

@@ -2,7 +2,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { useNavigate } from 'react-router'
 import { paths } from '@/app/paths'
-import { Alert, Button, Card, TextField } from '@/shared/ui'
+import { Alert, Button, TextField } from '@/shared/ui'
 import { applyFieldErrors } from '@/shared/utils/apply-field-errors'
 import { useAuth, useChangePassword } from '../hooks'
 import { changePasswordSchema, type ChangePasswordFormValues } from '../schemas'
@@ -43,7 +43,7 @@ export function ChangePasswordPage() {
     Object.keys(changePassword.error.fieldErrors).length === 0
 
   return (
-    <Card padding="roomy" className="w-full max-w-[400px]">
+    <div className="w-full max-w-[360px]">
       <h1 className="text-title font-semibold tracking-[-0.01em]">
         {forced ? 'Set your own password' : 'Change password'}
       </h1>
@@ -91,6 +91,6 @@ export function ChangePasswordPage() {
           </Button>
         )}
       </form>
-    </Card>
+    </div>
   )
 }

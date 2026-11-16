@@ -1,4 +1,7 @@
+import { motion } from 'motion/react'
+import { useId } from 'react'
 import { cn } from '@/shared/utils/cn'
+import { slide } from '@/shared/utils/motion'
 
 export interface TabItem<T extends string> {
   value: T
@@ -12,8 +15,13 @@ interface TabsProps<T extends string> {
   onChange: (value: T) => void
 }
 
-/** Underline tabs on a full-width 1px rule; the selected one gets a 2px ink line. For filtering a list. */
+/**
+ * Underline tabs on a full-width 1px rule; the selected one gets a 2px ink line that slides to the new tab
+ * (shared layoutId, 220ms). For filtering a list.
+ */
 export function Tabs<T extends string>({ items, value, onChange }: TabsProps<T>) {
+  const groupId = useId()
+
   return (
     <div role="tablist" className="border-border flex gap-6 overflow-x-auto border-b">
       {items.map((item) => {
@@ -34,7 +42,13 @@ export function Tabs<T extends string>({ items, value, onChange }: TabsProps<T>)
             {item.count !== undefined && (
               <span className="text-muted tabular-nums">{item.count}</span>
             )}
-            {active && <span className="bg-ink absolute inset-x-0 -bottom-px h-0.5" />}
+            {active && (
+              <motion.span
+                layoutId={`tab-underline-${groupId}`}
+                transition={slide}
+                className="bg-ink absolute inset-x-0 -bottom-px h-0.5"
+              />
+            )}
           </button>
         )
       })}

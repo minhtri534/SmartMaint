@@ -9,11 +9,12 @@ export const paths = {
   newRequest: '/requests/new',
   cases: '/cases',
   caseDetail: '/cases/:id',
+  /** The staff's work order form (meeting 07/11): approve, and Edit. */
+  caseApprove: '/cases/:id/approve',
+  caseEdit: '/cases/:id/edit',
   workOrders: '/work-orders',
   // F4 — emergency board
   emergencies: '/emergencies',
-  // F5 — repair or replace, outside party
-  outsideWork: '/outside-work',
   // F1 — buildings and assets
   facilities: '/facilities',
   assets: '/assets',
@@ -47,6 +48,8 @@ export const paths = {
 } as const
 
 export const caseDetailPath = (id: number) => `/cases/${id}`
+export const caseApprovePath = (id: number) => `/cases/${id}/approve`
+export const caseEditPath = (id: number) => `/cases/${id}/edit`
 export const assetDetailPath = (id: number) => `/assets/${id}`
 export const assetEditPath = (id: number) => `/assets/${id}/edit`
 /** What a QR label encodes (AST-06 / AST-07); prefixed with the site origin when printed. */

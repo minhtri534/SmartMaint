@@ -5,8 +5,9 @@ import { assetDetailPath, paths } from '@/app/paths'
 import {
   Alert,
   Button,
-  Card,
   ErrorBlock,
+  FormActions,
+  FormSection,
   LinkButton,
   LoadingBlock,
   PageHeader,
@@ -101,7 +102,7 @@ function AssetForm({
   const showError = save.error && Object.keys(save.error.fieldErrors).length === 0
 
   return (
-    <div className="flex max-w-[720px] flex-col gap-5">
+    <div className="flex max-w-[1040px] flex-col gap-5">
       <PageHeader
         title={asset ? 'Edit asset' : 'New asset'}
         description={
@@ -110,8 +111,11 @@ function AssetForm({
             : 'One asset in one room. For many, use Import.'
         }
       />
-      <form onSubmit={onSubmit} noValidate className="flex flex-col gap-5">
-        <Card>
+      <form onSubmit={onSubmit} noValidate className="flex flex-col gap-6">
+        <FormSection
+          title="What it is"
+          description="The name is what customers and technicians see; put the label code in it."
+        >
           <div className="grid gap-4 sm:grid-cols-2">
             <TextField
               label="Name"
@@ -139,6 +143,22 @@ function AssetForm({
                 </option>
               ))}
             </Select>
+            <label className="flex items-center gap-2 text-sm sm:col-span-2">
+              <input
+                type="checkbox"
+                className="accent-primary size-4"
+                {...register('hasCopyright')}
+              />
+              Only the manufacturer may service it
+            </label>
+          </div>
+        </FormSection>
+
+        <FormSection
+          title="Where, and warranty"
+          description="One asset sits in one room. The warranty date shows in the repair-or-replace decision."
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
             <Select
               label="Building"
               placeholder="Choose a building"
@@ -172,25 +192,17 @@ function AssetForm({
               hint="Optional"
               {...register('warrantyEndDate')}
             />
-            <label className="flex items-center gap-2 self-end pb-2 text-sm">
-              <input
-                type="checkbox"
-                className="accent-primary size-4"
-                {...register('hasCopyright')}
-              />
-              Only the manufacturer may service it
-            </label>
           </div>
-        </Card>
-        {showError && <Alert>{save.error.message}</Alert>}
-        <div className="flex justify-end gap-2">
+        </FormSection>
+
+        <FormActions error={showError && <Alert>{save.error.message}</Alert>}>
           <LinkButton variant="ghost" to={asset ? assetDetailPath(asset.id) : paths.assets}>
             Cancel
           </LinkButton>
           <Button type="submit" variant="primary" loading={save.isPending}>
             {asset ? 'Save changes' : 'Add asset'}
           </Button>
-        </div>
+        </FormActions>
       </form>
     </div>
   )

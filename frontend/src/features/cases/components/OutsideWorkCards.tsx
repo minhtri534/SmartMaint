@@ -26,11 +26,13 @@ const STATUS_TONES: Record<OutsideWorkStatus, BadgeTone> = {
 export function AssessmentCard({ assessment }: { assessment: Assessment }) {
   return (
     <Card>
-      <CardHeader title="Technician's assessment" aside={formatDateTime(assessment.assessedAt)} />
+      <CardHeader title="Outside party requested" aside={formatDateTime(assessment.assessedAt)} />
       <dl className="grid gap-4 text-sm sm:grid-cols-2">
-        <Item label="Condition">{assessment.condition}</Item>
-        <Item label="Cause">{assessment.cause}</Item>
-        <Item label="Recommendation">{RECOMMENDATION_LABELS[assessment.recommendation]}</Item>
+        <Item label="What is wrong">{assessment.condition}</Item>
+        <Item label="Why">{assessment.cause}</Item>
+        {assessment.recommendation && (
+          <Item label="Recommendation">{RECOMMENDATION_LABELS[assessment.recommendation]}</Item>
+        )}
       </dl>
     </Card>
   )

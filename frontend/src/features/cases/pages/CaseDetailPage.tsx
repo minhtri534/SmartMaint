@@ -6,8 +6,7 @@ import { Alert, Button, Card, CardHeader, Icon, LinkButton, PageHeader } from '@
 import { formatDateTime, formatVnd } from '@/shared/utils/format'
 import { useAuth } from '@/features/auth'
 import { CaseActions } from '../components/CaseActions'
-import { ChecklistCard } from '../components/ChecklistCard'
-import { UrgencyNote } from '../components/CaseBadges'
+import { UrgencyText } from '../components/CaseBadges'
 import { EmergencyCard, IncidentReportCard } from '../components/EmergencyCard'
 import { AssessmentCard, DecisionInfoCard, ThirdPartiesCard } from '../components/OutsideWorkCards'
 import { PhotoGallery, RejectionList, StatusTimeline } from '../components/CaseHistory'
@@ -15,7 +14,8 @@ import { SlaPanel } from '../components/SlaTrack'
 import { StarsView } from '../components/Stars'
 import { StatusPath } from '../components/StatusPath'
 import { useCase } from '../hooks'
-import { COST_BEARER_LABELS, FINAL_STATUSES, HOLD_REASON_LABELS, URGENCY_LABELS } from '../types'
+import { workedHoursNow } from '../work-hours'
+import { FINAL_STATUSES, HOLD_REASON_LABELS } from '../types'
 
 const BACK: Partial<Record<Role, { to: string; label: string }>> = {
   customer: { to: paths.myRequests, label: 'My requests' },
@@ -59,6 +59,9 @@ export function CaseDetailPage() {
 
   const c = query.data
   const seesRejections = user?.role === 'staff' || user?.role === 'manager'
+  // Meeting 07/11: how the work was done (tasks, repair record, assessment, outside parties) is for the building's
+  // people only; the customer follows the status, the photos and the history.
+  const seesWork = user?.role !== 'customer'
   const lastChange = c.history.at(-1)
 
   return (
@@ -79,6 +82,31 @@ export function CaseDetailPage() {
         <StatusPath c={c} />
       </div>
 
+      {/* Meeting 07/11: a change of technician on taken work continues the case in a new one. */}
+      {c.previousCase && (
+        <Alert tone="info">
+          Continues{' '}
+          <Link
+            to={caseDetailPath(c.previousCase.id)}
+            className="font-mono underline underline-offset-2"
+          >
+            {c.previousCase.code}
+          </Link>
+          , where the previous technician's finished tasks stay.
+        </Alert>
+      )}
+      {c.nextCase && (
+        <Alert tone="info">
+          Given to another technician: the work continues in{' '}
+          <Link
+            to={caseDetailPath(c.nextCase.id)}
+            className="font-mono underline underline-offset-2"
+          >
+            {c.nextCase.code}
+          </Link>
+          .
+        </Alert>
+      )}
       {c.emergency?.mergedInto && (
         <Alert tone="info">
           Same incident as{' '}
@@ -190,11 +218,10 @@ export function CaseDetailPage() {
             </div>
           </Card>
 
-          {c.isPreventive && c.tasks.length > 0 && <ChecklistCard caseDetail={c} />}
-          {c.assessment && <AssessmentCard assessment={c.assessment} />}
-          {c.thirdParties.length > 0 && <ThirdPartiesCard parties={c.thirdParties} />}
+          {seesWork && c.assessment && <AssessmentCard assessment={c.assessment} />}
+          {seesWork && c.thirdParties.length > 0 && <ThirdPartiesCard parties={c.thirdParties} />}
 
-          {c.repairReport && (
+          {seesWork && c.repairReport && (
             <Card>
               <CardHeader
                 title={c.isPreventive ? 'Maintenance report' : 'Repair record'}
@@ -227,6 +254,24 @@ export function CaseDetailPage() {
                     <span>
                       {x.name}
                       {x.description && <span className="text-muted"> · {x.description}</span>}
+                      {(x.receiptCode || x.receiptUrl) && (
+                        <span className="text-muted block text-xs">
+                          Receipt {x.receiptCode}
+                          {x.receiptUrl && (
+                            <>
+                              {' '}
+                              <a
+                                href={x.receiptUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="underline underline-offset-2"
+                              >
+                                photo
+                              </a>
+                            </>
+                          )}
+                        </span>
+                      )}
                     </span>
                     <span className="flex-none tabular-nums">{formatVnd(x.amount)}</span>
                   </li>
@@ -247,6 +292,23 @@ export function CaseDetailPage() {
               {c.rating.comment && <p className="mt-2 text-sm">“{c.rating.comment}”</p>}
             </Card>
           )}
+
+          {/* 16/11: the history is the case's own story, so it reads in the main column (the right rail
+              keeps the deadline and the people); before, the main column ended early beside a long rail. */}
+          <Card>
+            <CardHeader
+              title="History"
+              aside={`${c.history.length} ${c.history.length === 1 ? 'change' : 'changes'}`}
+            />
+            {/* Meeting 07/11: a long history scrolls inside its card instead of stretching the page. */}
+            <div
+              tabIndex={0}
+              aria-label="Status history"
+              className="rounded-control focus-visible:ring-accent/20 -mx-1 max-h-96 overflow-y-auto px-1 focus-visible:ring-2 focus-visible:outline-none"
+            >
+              <StatusTimeline history={c.history} />
+            </div>
+          </Card>
         </div>
 
         <div className="flex flex-col gap-6">
@@ -278,15 +340,31 @@ export function CaseDetailPage() {
               <Field label="Technician" inline>
                 {c.technician?.fullName ?? <span className="text-muted">Not assigned</span>}
               </Field>
+              {seesWork && (c.workedHours !== null || c.clockStartedAt) && (
+                <Field label="Work hours" inline>
+                  <span className="tabular-nums">
+                    {workedHoursNow(c, query.dataUpdatedAt).toFixed(2)} h
+                    {c.clockStartedAt && <span className="text-muted"> · running</span>}
+                  </span>
+                </Field>
+              )}
               <Field label="Urgency" inline>
-                <span className="flex flex-col items-end">
-                  {URGENCY_LABELS[c.urgency]}
-                  <UrgencyNote urgency={c.urgency} />
-                </span>
+                {/* one word, coloured above Normal (was the word twice: "High" over "High urgency") */}
+                <UrgencyText urgency={c.urgency} />
               </Field>
-              <Field label="Who pays" inline>
-                {COST_BEARER_LABELS[c.costBearer]}
-              </Field>
+              {(c.plannedStartAt || c.plannedEndAt) && (
+                <Field label="Planned" inline>
+                  <span className="flex flex-col items-end tabular-nums">
+                    {c.plannedStartAt && <span>from {formatDateTime(c.plannedStartAt)}</span>}
+                    {c.plannedEndAt && <span>to {formatDateTime(c.plannedEndAt)}</span>}
+                  </span>
+                </Field>
+              )}
+              {c.followers.length > 0 && (
+                <Field label="Also followed by" inline>
+                  {c.followers.map((f) => f.fullName).join(', ')}
+                </Field>
+              )}
             </dl>
           </Card>
 
@@ -296,11 +374,6 @@ export function CaseDetailPage() {
               <RejectionList rejections={c.rejections} />
             </Card>
           )}
-
-          <Card>
-            <CardHeader title="History" />
-            <StatusTimeline history={c.history} />
-          </Card>
         </div>
       </div>
     </div>

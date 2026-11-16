@@ -1,36 +1,29 @@
 import { apiClient } from '@/lib/api-client'
 import type {
   ApproveCaseRequest,
-  ChangeUrgencyRequest,
-  ExtendDueRequest,
-  ReassignCaseRequest,
-  UpdateCostsRequest,
-  AssignCaseRequest,
+  AssetLookup,
   AssetRef,
   Building,
   CaseDetail,
   CasePage,
-  CompleteChecklistRequest,
+  AddCostRequest,
   CompleteWorkRequest,
   CreateCaseRequest,
-  DowngradeRequest,
+  EditCaseRequest,
   EmergencyLogRequest,
+  ExtendDueRequest,
+  LogHoursRequest,
   IncidentReportRequest,
-  MergeCaseRequest,
-  CheckOutsideWorkRequest,
   OpenSurveyRequest,
-  OutsourceRequest,
-  QuoteDecisionRequest,
-  RecordQuoteRequest,
-  RedoOutsideWorkRequest,
-  RequestDecisionRequest,
-  UpdateTaskRequest,
-  HoldCaseRequest,
+  PersonRef,
   RateCaseRequest,
   ReasonRequest,
   RejectCaseRequest,
+  RequestDecisionRequest,
   ServiceType,
   TechnicianOption,
+  UpdateCostsRequest,
+  UpdateTaskRequest,
 } from './types'
 
 type Id = { id: number }
@@ -45,10 +38,16 @@ export const casesApi = {
   buildings: () => apiClient.get<Building[]>('/buildings').then((r) => r.data),
   assets: (roomId: number) =>
     apiClient.get<AssetRef[]>('/assets', { params: { roomId } }).then((r) => r.data),
-  /** Staff only */
+  /** The asset behind a typed code AS-000012 (same endpoint as the QR label, AST-07). */
+  assetByCode: (id: number) =>
+    apiClient.get<AssetLookup>(`/asset-register/${id}/qr-target`).then((r) => r.data),
+  /** Staff only: every active technician with specialties and open jobs (meeting 07/11). */
   technicians: () => apiClient.get<TechnicianOption[]>('/technicians').then((r) => r.data),
+  /** Staff only: the customers of the case's building who may follow it. */
+  followerOptions: (id: number) =>
+    apiClient.get<PersonRef[]>(`/cases/${id}/follower-options`).then((r) => r.data),
 
-  // Cases: the server filters by role (own cases / own buildings / own work orders, B3).
+  // Cases: the server filters by role (own + followed cases / own buildings / own work orders, B3).
   // The first 100 are enough for the demo; the screens count and filter them.
   list: () =>
     apiClient
@@ -58,44 +57,35 @@ export const casesApi = {
   /** EMP-02 */
   create: (body: CreateCaseRequest) => post<CaseDetail>('/cases', body),
 
-  // Status changes: one endpoint per arrow of the F3 state machine. Each returns the updated case.
+  // Status changes: one endpoint per arrow of the state machine. Each returns the updated case.
   /** DLG-12 */
   cancel: ({ id, ...body }: Id & ReasonRequest) => post<CaseDetail>(`/cases/${id}/cancel`, body),
-  /** DLG-01 */
+  /** DLG-01: the work order form (technician, window, tasks; meeting 07/11) */
   approve: ({ id, ...body }: Id & ApproveCaseRequest) =>
     post<CaseDetail>(`/cases/${id}/approve`, body),
-  /** DLG-02 */
+  /** DLG-02 (a duplicate may hand its content to the case it repeats) */
   reject: ({ id, ...body }: Id & RejectCaseRequest) =>
     post<CaseDetail>(`/cases/${id}/reject`, body),
-  /** DLG-04 */
-  assign: ({ id, ...body }: Id & AssignCaseRequest) =>
-    post<CaseDetail>(`/cases/${id}/assign`, body),
+  /** PUT /api/cases/{id} — the staff's one Edit (meeting 07/11) */
+  edit: ({ id, ...body }: Id & EditCaseRequest) =>
+    apiClient.put<CaseDetail>(`/cases/${id}`, body).then((r) => r.data),
   accept: ({ id }: Id) => post<CaseDetail>(`/cases/${id}/accept`),
   /** DLG-09 */
   decline: ({ id, ...body }: Id & ReasonRequest) => post<CaseDetail>(`/cases/${id}/decline`, body),
   /** The SLA clock starts here. */
   start: ({ id }: Id) => post<CaseDetail>(`/cases/${id}/start`),
   /** DLG-10 */
-  hold: ({ id, ...body }: Id & HoldCaseRequest) => post<CaseDetail>(`/cases/${id}/hold`, body),
-  /** The technician continues, or the staff lets them continue (after "beyond my ability"). */
+  /** Status → On hold (meeting 07/11: no reason, no date); the work clock stops. */
+  hold: ({ id }: Id) => post<CaseDetail>(`/cases/${id}/hold`),
+  /** The technician continues after a hold. */
   resume: ({ id }: Id) => post<CaseDetail>(`/cases/${id}/resume`),
   /** DLG-11 */
   complete: ({ id, ...body }: Id & CompleteWorkRequest) =>
     post<CaseDetail>(`/cases/${id}/complete`, body),
-  /** DLG-06 */
-  close: ({ id }: Id) => post<CaseDetail>(`/cases/${id}/close`),
-  /** DLG-07 */
-  reopen: ({ id, ...body }: Id & ReasonRequest) => post<CaseDetail>(`/cases/${id}/reopen`, body),
   /** DLG-14 */
   rate: ({ id, ...body }: Id & RateCaseRequest) => post<CaseDetail>(`/cases/${id}/rating`, body),
 
-  // Part 4: staff steps in, "not fixed", costs
-  /** POST /api/cases/{id}/reassign — another technician (back to Assigned) */
-  reassign: ({ id, ...body }: Id & ReassignCaseRequest) =>
-    post<CaseDetail>(`/cases/${id}/reassign`, body),
-  /** POST /api/cases/{id}/urgency — O08 */
-  changeUrgency: ({ id, ...body }: Id & ChangeUrgencyRequest) =>
-    post<CaseDetail>(`/cases/${id}/urgency`, body),
+  // Part 4: the deadline, "not fixed", costs
   /** POST /api/cases/{id}/due — O09 */
   extendDue: ({ id, ...body }: Id & ExtendDueRequest) => post<CaseDetail>(`/cases/${id}/due`, body),
   /** POST /api/cases/{id}/not-fixed — customer, within 7 days of closing */
@@ -106,26 +96,26 @@ export const casesApi = {
   /** POST /api/cases/{id}/not-fixed/decline — staff, with a reason for the customer */
   declineNotFixed: ({ id, ...body }: Id & ReasonRequest) =>
     post<CaseDetail>(`/cases/${id}/not-fixed/decline`, body),
-  /** PUT /api/cases/{id}/costs — staff, before closing */
+  /** PUT /api/cases/{id}/costs — staff records the cost lines (meeting 07/11) */
+  /** PUT /api/cases/{id}/hours — technician types the total work hours (meeting 07/11) */
+  logHours: ({ id, ...body }: Id & LogHoursRequest) =>
+    apiClient.put<CaseDetail>(`/cases/${id}/hours`, body).then((r) => r.data),
+  /** POST /api/cases/{id}/costs — technician records a cost they paid, with the receipt */
+  addCost: ({ id, ...body }: Id & AddCostRequest) => post<CaseDetail>(`/cases/${id}/costs`, body),
   updateCosts: ({ id, ...body }: Id & UpdateCostsRequest) =>
     apiClient.put<CaseDetail>(`/cases/${id}/costs`, body).then((r) => r.data),
 
-  // Part 5: checklist of a preventive work order (F2)
+  // Tasks (every case has tasks, meeting 07/11)
   /** POST /api/cases/{id}/tasks/{taskId} — TEC-05, technician */
   updateTask: ({ id, taskId, ...body }: Id & { taskId: number } & UpdateTaskRequest) =>
     post<CaseDetail>(`/cases/${id}/tasks/${taskId}`, body),
-  /** POST /api/cases/{id}/complete-checklist — technician, every item has a result */
-  completeChecklist: ({ id, ...body }: Id & CompleteChecklistRequest) =>
-    post<CaseDetail>(`/cases/${id}/complete-checklist`, body),
+  /** POST /api/cases/{id}/tasks/{taskId}/third-party — staff: done by an outside party (or back) */
+  setTaskThirdParty: ({ id, taskId, thirdParty }: Id & { taskId: number; thirdParty: boolean }) =>
+    post<CaseDetail>(`/cases/${id}/tasks/${taskId}/third-party`, { thirdParty }),
 
   // Part 6: emergency (F4)
   /** POST /api/cases/{id}/acknowledge — staff, first response */
   acknowledge: ({ id }: Id) => post<CaseDetail>(`/cases/${id}/acknowledge`),
-  /** POST /api/cases/{id}/downgrade — staff, back to F3 (K04) */
-  downgrade: ({ id, ...body }: Id & DowngradeRequest) =>
-    post<CaseDetail>(`/cases/${id}/downgrade`, body),
-  /** POST /api/cases/{id}/merge — staff, same incident (N5) */
-  merge: ({ id, ...body }: Id & MergeCaseRequest) => post<CaseDetail>(`/cases/${id}/merge`, body),
   /** POST /api/cases/{id}/log — staff, emergency log line */
   addLog: ({ id, ...body }: Id & EmergencyLogRequest) => post<CaseDetail>(`/cases/${id}/log`, body),
   /** POST /api/cases/{id}/made-safe — technician (K06) */
@@ -134,28 +124,12 @@ export const casesApi = {
   writeIncidentReport: ({ id, ...body }: Id & IncidentReportRequest) =>
     apiClient.put<CaseDetail>(`/cases/${id}/incident-report`, body).then((r) => r.data),
 
-  // Part 7: repair or replace, outside party (F5)
+  // Part 7: repair or replace (F5)
   /** POST /api/cases/{id}/request-decision — technician, steps ①–② */
   requestDecision: ({ id, ...body }: Id & RequestDecisionRequest) =>
     post<CaseDetail>(`/cases/${id}/request-decision`, body),
-  /** POST /api/cases/{id}/outsource — staff, steps ④–⑤ */
-  outsource: ({ id, ...body }: Id & OutsourceRequest) =>
-    post<CaseDetail>(`/cases/${id}/outsource`, body),
-  /** POST /api/cases/{id}/outside/quote — staff */
-  recordQuote: ({ id, ...body }: Id & RecordQuoteRequest) =>
-    post<CaseDetail>(`/cases/${id}/outside/quote`, body),
-  /** POST /api/cases/{id}/outside/decision — staff, step ⑥ */
-  decideQuote: ({ id, ...body }: Id & QuoteDecisionRequest) =>
-    post<CaseDetail>(`/cases/${id}/outside/decision`, body),
-  /** POST /api/cases/{id}/outside/declined — staff */
-  outsideDeclined: ({ id, ...body }: Id & ReasonRequest) =>
-    post<CaseDetail>(`/cases/${id}/outside/declined`, body),
-  /** POST /api/cases/{id}/outside/check — technician, step ⑧ */
-  checkOutsideWork: ({ id, ...body }: Id & CheckOutsideWorkRequest) =>
-    post<CaseDetail>(`/cases/${id}/outside/check`, body),
-  /** POST /api/cases/{id}/outside/redo — staff */
-  redoOutsideWork: ({ id, ...body }: Id & RedoOutsideWorkRequest) =>
-    post<CaseDetail>(`/cases/${id}/outside/redo`, body),
+  /** POST /api/cases/{id}/outsource — staff: handed to an outside party (meeting 07/11: nothing else recorded) */
+  outsource: ({ id }: Id) => post<CaseDetail>(`/cases/${id}/outsource`),
   /** POST /api/cases/surveys — staff, F5 way 2 */
   openSurvey: (body: OpenSurveyRequest) => post<CaseDetail>('/cases/surveys', body),
 }
@@ -165,6 +139,7 @@ export const caseKeys = {
   all: ['cases'] as const,
   list: () => [...caseKeys.all, 'list'] as const,
   detail: (id: number) => [...caseKeys.all, 'detail', id] as const,
+  followerOptions: (id: number) => [...caseKeys.all, 'follower-options', id] as const,
   serviceTypes: ['service-types'] as const,
   buildings: ['buildings'] as const,
   assets: (roomId: number) => ['assets', roomId] as const,

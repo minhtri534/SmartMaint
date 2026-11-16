@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { COST_BEARERS, EXTEND_REASONS, HOLD_REASONS, REJECT_REASONS, URGENCIES } from './types'
+import { EXTEND_REASONS, REJECT_REASONS, URGENCIES } from './types'
 
 /*
  * Form rules of F3. Select boxes keep their value as a string ("" = nothing chosen);
@@ -8,10 +8,16 @@ import { COST_BEARERS, EXTEND_REASONS, HOLD_REASONS, REJECT_REASONS, URGENCIES }
 
 const requiredId = (message: string) => z.string().min(1, message)
 
-/** EMP-02 New request. */
+const isUrgency = (v: string) => (URGENCIES as readonly string[]).includes(v)
+
+/**
+ * EMP-02 New request. Category = the service group (Electrical, Water...), problem = the service type (meeting 07/11:
+ * kept 2 levels, renamed). The customer chooses the urgency; the staff confirms it on approval.
+ */
 export const newRequestSchema = z.object({
-  serviceGroup: requiredId('Choose a group.'),
-  serviceTypeId: requiredId('Choose what is wrong.'),
+  serviceGroup: requiredId('Choose a category.'),
+  serviceTypeId: requiredId('Choose the problem.'),
+  urgency: z.string().refine(isUrgency, 'Choose how urgent it is.'),
   buildingId: requiredId('Choose a building.'),
   floorId: requiredId('Choose a floor.'),
   roomId: requiredId('Choose a room or area.'),
@@ -26,26 +32,63 @@ export const newRequestSchema = z.object({
 })
 export type NewRequestFormValues = z.infer<typeof newRequestSchema>
 
-/** DLG-01 Approve: the staff confirms urgency and who pays. */
-export const approveSchema = z.object({
-  urgency: z.enum(URGENCIES),
-  costBearer: z.enum(COST_BEARERS),
+/** One task line of the work order form (id '' = new). */
+export const taskLineSchema = z.object({
+  id: z.string(),
+  name: z.string().trim().min(2, 'At least 2 characters.').max(200, 'At most 200 characters.'),
+  description: z.string().trim().max(500, 'At most 500 characters.'),
 })
-export type ApproveFormValues = z.infer<typeof approveSchema>
+export type TaskLineValues = z.infer<typeof taskLineSchema>
 
-/** DLG-02 Reject. */
-export const rejectSchema = z.object({
-  reason: z.enum(REJECT_REASONS),
-  note: z.string().trim().min(10, 'Tell the customer what is missing (at least 10 characters).'),
-})
+/**
+ * DLG-01 Approve and the staff's Edit = one work order form (meeting 07/11): the customer's request as the staff
+ * corrects it, plus the technician, the planned window and the tasks. The Edit form adds the status change.
+ * Date-times are the values of datetime-local inputs ('' = none).
+ */
+export const workOrderSchema = z
+  .object({
+    title: z.string().trim().min(5, 'At least 5 characters.').max(120, 'At most 120 characters.'),
+    description: z
+      .string()
+      .trim()
+      .min(15, 'At least 15 characters.')
+      .max(2000, 'At most 2000 characters.'),
+    serviceGroup: requiredId('Choose a category.'),
+    serviceTypeId: requiredId('Choose the problem.'),
+    urgency: z.enum(URGENCIES),
+    technicianId: z.string(),
+    plannedStartAt: z.string(),
+    plannedEndAt: z.string(),
+    tasks: z.array(taskLineSchema).max(30, 'At most 30 tasks.'),
+    followerIds: z.array(z.string()),
+    statusChange: z.enum(['', 'continue', 'close', 'reopen']),
+    reason: z.string().trim().max(500),
+  })
+  .refine((v) => !v.plannedStartAt || !v.plannedEndAt || v.plannedEndAt > v.plannedStartAt, {
+    path: ['plannedEndAt'],
+    message: 'The planned end must be after the planned start.',
+  })
+  .refine((v) => v.statusChange !== 'reopen' || v.reason.length >= 10, {
+    path: ['reason'],
+    message: 'Say what is not OK (at least 10 characters).',
+  })
+export type WorkOrderFormValues = z.infer<typeof workOrderSchema>
+
+/** DLG-02 Reject. A duplicate names the case it repeats and what to hand over (meeting 07/11, replaces merge). */
+export const rejectSchema = z
+  .object({
+    reason: z.enum(REJECT_REASONS),
+    note: z.string().trim().min(10, 'Tell the customer why (at least 10 characters).'),
+    duplicateOf: z.string(),
+    addAsTask: z.boolean(),
+    copyPhotos: z.boolean(),
+    addFollower: z.boolean(),
+  })
+  .refine((v) => v.reason !== 'duplicate' || v.duplicateOf !== '', {
+    path: ['duplicateOf'],
+    message: 'Choose the case this request repeats.',
+  })
 export type RejectFormValues = z.infer<typeof rejectSchema>
-
-/** DLG-04 Assign technician. */
-export const assignSchema = z.object({
-  technicianId: requiredId('Choose a technician.'),
-})
-export type AssignFormValues = z.infer<typeof assignSchema>
-
 /** Cancel (DLG-12), decline (DLG-09), reopen (DLG-07): a reason of at least 10 characters. */
 export const reasonSchema = z.object({
   reason: z.string().trim().min(10, 'At least 10 characters.').max(500),
@@ -58,19 +101,13 @@ export const rateSchema = z.object({
   comment: z.string().trim().max(500),
 })
 export type RateFormValues = z.infer<typeof rateSchema>
-/** DLG-10 Put on hold: a fixed reason and the day it should continue (today or later). */
-export const holdSchema = z.object({
-  reason: z.enum(HOLD_REASONS),
-  expectedResumeOn: z
-    .string()
-    .min(1, 'Choose the day you expect to continue.')
-    .refine((d) => d >= new Date().toISOString().slice(0, 10), 'Choose today or a later day.'),
-})
-export type HoldFormValues = z.infer<typeof holdSchema>
-
 /** One cost line in a form: amount typed as text, VND. Mirrors backend CostRules. */
 export const costLineSchema = z.object({
+  /** The line's id when the staff keeps an existing one ('' = new): its receipt stays. */
+  id: z.string(),
   name: z.string().trim().min(2, 'At least 2 characters.').max(150),
+  /** Meeting 07/11: each cost has a title, a description (e.g. the receipt number) and an amount. */
+  description: z.string().trim().max(300, 'At most 300 characters.'),
   amount: z
     .string()
     .trim()
@@ -80,41 +117,12 @@ export type CostLineValues = z.infer<typeof costLineSchema>
 
 /** Form rows -> request lines. */
 export const toCostLines = (rows: CostLineValues[]) =>
-  rows.map((r) => ({ name: r.name, description: null, amount: Number(r.amount) }))
-
-/** DLG-11 Complete work + repair record. Hours left empty = the system measures start to finish. */
-export const completeWorkSchema = z.object({
-  parts: z.array(costLineSchema).max(20),
-  rootCause: z.string().trim().min(3, 'Enter the cause.'),
-  partsUsed: z.string().trim(),
-  laborHours: z
-    .string()
-    .trim()
-    .refine(
-      (v) => v === '' || (Number(v) >= 0.25 && Number(v) <= 24),
-      'Between 0.25 and 24 hours.',
-    ),
-  beforePhotos: z.array(z.string()).max(5),
-  afterPhotos: z.array(z.string()).min(1, 'Add at least one photo after the repair.').max(5),
-  /** F5: required (checked by the form) when an outside party replaced the asset. */
-  replacementModel: z.string().trim().max(150),
-  replacementSerial: z.string().trim().max(100),
-})
-export type CompleteWorkFormValues = z.infer<typeof completeWorkSchema>
-
-/** Reassign: another technician and why. */
-export const reassignSchema = z.object({
-  technicianId: requiredId('Choose a technician.'),
-  reason: z.string().trim().min(10, 'At least 10 characters.').max(500),
-})
-export type ReassignFormValues = z.infer<typeof reassignSchema>
-
-/** O08 change urgency. */
-export const urgencySchema = z.object({
-  urgency: z.enum(URGENCIES),
-  reason: z.string().trim().min(10, 'At least 10 characters.').max(500),
-})
-export type UrgencyFormValues = z.infer<typeof urgencySchema>
+  rows.map((r) => ({
+    id: r.id ? Number(r.id) : null,
+    name: r.name,
+    description: r.description || null,
+    amount: Number(r.amount),
+  }))
 
 /** O09 extend the deadline: a later time, a reason from the list, a note when "other". */
 export const extendDueSchema = z
@@ -126,94 +134,59 @@ export const extendDueSchema = z
   .refine((v) => v.reason !== 'other' || v.note.length > 0, { path: ['note'], message: 'Say why.' })
 export type ExtendDueFormValues = z.infer<typeof extendDueSchema>
 
-/** F2 TEC-05 a failed checklist item: what is wrong, a photo, and what happens next. */
-export const failTaskSchema = z.object({
-  note: z.string().trim().min(5, 'Say what is wrong (at least 5 characters).').max(1000),
-  photos: z.array(z.string()).max(5),
-  failAction: z.enum(['fixed_on_site', 'create_case']),
-  dangerous: z.boolean(),
-})
-export type FailTaskFormValues = z.infer<typeof failTaskSchema>
+/**
+ * TEC-05, meeting 07/11: one task's status (still to do is fine), a note, photos with captions. A failure needs a
+ * note; on a work order it says what happens next (fixed on the spot, or a repair case).
+ */
+export const taskUpdateSchema = z
+  .object({
+    status: z.enum(['pending', 'pass', 'fail', 'not_applicable']),
+    note: z.string().trim().max(1000, 'At most 1000 characters.'),
+    photos: z.array(z.string()).max(5, 'At most 5 photos.'),
+    captions: z.array(z.string().trim().max(200, 'At most 200 characters.')),
+    failAction: z.enum(['fixed_on_site', 'create_case']),
+    dangerous: z.boolean(),
+  })
+  .refine((v) => v.status !== 'fail' || v.note.length >= 5, {
+    path: ['note'],
+    message: 'Say what is wrong (at least 5 characters).',
+  })
+export type TaskUpdateFormValues = z.infer<typeof taskUpdateSchema>
 
-/** F2 report a preventive work order done. Hours left empty = the system measures start to finish. */
-export const completeChecklistSchema = z.object({
-  note: z.string().trim().max(1000),
-  laborHours: completeWorkSchema.shape.laborHours,
-  parts: z.array(costLineSchema).max(20),
+/** Meeting 07/11: the technician types the total work hours (e.g. forgot to start the clock). */
+export const logHoursSchema = z.object({
+  hours: z
+    .string()
+    .trim()
+    .refine((v) => Number(v) > 0 && Number(v) <= 200, 'More than 0 and at most 200 hours.'),
 })
-export type CompleteChecklistFormValues = z.infer<typeof completeChecklistSchema>
+export type LogHoursFormValues = z.infer<typeof logHoursSchema>
 
-/** F5 steps ①–②: the technician's assessment. */
+/** Meeting 07/11: a cost the technician paid, with the receipt number and / or a photo of it. */
+export const addCostSchema = z
+  .object({
+    name: z.string().trim().min(2, 'At least 2 characters.').max(150),
+    description: z.string().trim().max(300, 'At most 300 characters.'),
+    amount: z
+      .string()
+      .trim()
+      .regex(/^\d{1,10}$/, 'A whole number of VND, e.g. 150000.'),
+    receiptCode: z.string().trim().max(100, 'At most 100 characters.'),
+    receiptPhoto: z.array(z.string()).max(1),
+  })
+  .refine((v) => v.receiptCode.length > 0 || v.receiptPhoto.length > 0, {
+    path: ['receiptCode'],
+    message: 'Add the receipt number or a photo of the receipt.',
+  })
+export type AddCostFormValues = z.infer<typeof addCostSchema>
+
+/** Meeting 07/11: ask the staff for an outside party — what is wrong, why, photos. */
 export const requestDecisionSchema = z.object({
-  condition: z.string().trim().min(10, 'At least 10 characters.').max(1000),
-  cause: z.string().trim().min(5, 'At least 5 characters.').max(1000),
-  recommendation: z.enum(['repairable', 'replace', 'specialist']),
+  description: z.string().trim().min(10, 'At least 10 characters.').max(1000),
+  reason: z.string().trim().min(5, 'At least 5 characters.').max(1000),
   photos: z.array(z.string()).min(1, 'Add at least one photo.').max(5),
 })
 export type RequestDecisionFormValues = z.infer<typeof requestDecisionSchema>
-
-/** F5 steps ④–⑤: hand the job to an outside party. */
-export const outsourceSchema = z.object({
-  kind: z.enum(['warranty', 'contract', 'quote']),
-  job: z.enum(['repair', 'replace']),
-  companyName: z.string().trim().min(2, 'At least 2 characters.').max(150),
-  contact: z.string().trim().min(5, 'Name and phone, at least 5 characters.').max(150),
-  appointmentAt: z.string(),
-  note: z.string().trim().max(500),
-})
-export type OutsourceFormValues = z.infer<typeof outsourceSchema>
-
-/** The quote arrived: who pays, and to whom it was forwarded. */
-export const recordQuoteSchema = z
-  .object({
-    bearer: z.enum(COST_BEARERS),
-    sentTo: z.string().trim().max(150),
-    note: z.string().trim().max(500),
-  })
-  .refine((v) => v.bearer !== 'customer' || v.sentTo.length >= 3, {
-    path: ['sentTo'],
-    message: 'Who received the quote (name, role).',
-  })
-export type RecordQuoteFormValues = z.infer<typeof recordQuoteSchema>
-
-/** Step ⑥: the payer's decision and its evidence. */
-export const quoteDecisionSchema = z.object({
-  go: z.enum(['yes', 'no']),
-  decidedBy: z.string().trim().min(3, 'Who decided (name, role).').max(150),
-  note: z.string().trim().max(500),
-  evidence: z.array(z.string()).max(1),
-})
-export type QuoteDecisionFormValues = z.infer<typeof quoteDecisionSchema>
-
-/** Step ⑧: the technician's check of the outside work. */
-export const checkOutsideWorkSchema = z
-  .object({ passed: z.enum(['yes', 'no']), note: z.string().trim().max(500) })
-  .refine((v) => v.passed === 'yes' || v.note.length >= 5, {
-    path: ['note'],
-    message: 'Say what is not OK (at least 5 characters).',
-  })
-export type CheckOutsideWorkFormValues = z.infer<typeof checkOutsideWorkSchema>
-
-export const redoOutsideWorkSchema = z.object({
-  appointmentAt: z.string(),
-  reason: z.string().trim().min(5, 'At least 5 characters.').max(500),
-})
-export type RedoOutsideWorkFormValues = z.infer<typeof redoOutsideWorkSchema>
-
-/** F4 K04: back to F3. */
-export const downgradeSchema = z.object({
-  urgency: z.enum(['high', 'normal', 'low']),
-  costBearer: z.enum(COST_BEARERS),
-  reason: z.string().trim().min(10, 'At least 10 characters.').max(500),
-})
-export type DowngradeFormValues = z.infer<typeof downgradeSchema>
-
-/** F4 N5: the case of the same incident. */
-export const mergeSchema = z.object({
-  targetCaseId: requiredId('Choose the case of the same incident.'),
-  note: z.string().trim().max(500),
-})
-export type MergeFormValues = z.infer<typeof mergeSchema>
 
 /** F4 emergency log line. */
 export const emergencyLogSchema = z.object({
@@ -230,6 +203,6 @@ export const incidentReportSchema = z.object({
 })
 export type IncidentReportFormValues = z.infer<typeof incidentReportSchema>
 
-/** Staff corrects the cost lines before closing. */
+/** The staff records the cost lines (meeting 07/11). */
 export const costsSchema = z.object({ lines: z.array(costLineSchema).max(20) })
 export type CostsFormValues = z.infer<typeof costsSchema>

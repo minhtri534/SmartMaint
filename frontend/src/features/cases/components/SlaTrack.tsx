@@ -36,22 +36,31 @@ function Track({ sla, className }: { sla: Sla; className?: string }) {
         : 'bg-accent'
   return (
     <div className={cn('bg-rule h-1 w-full overflow-hidden rounded-full', className)}>
+      {/* scaleX (not width) so a refresh moves the fill on the GPU */}
       <div
-        className={cn('h-full rounded-full', fill)}
-        style={{ width: `${Math.max(2, Math.round(sla.used * 100))}%` }}
+        className={cn(
+          'ease-snap h-full origin-left rounded-full transition-transform duration-500',
+          fill,
+        )}
+        style={{ transform: `scaleX(${Math.max(0.02, Math.min(1, sla.used))})` }}
       />
     </div>
   )
 }
 
-/** Compact form for a table cell: label, track, deadline — right-aligned. */
+/**
+ * Compact form for a table cell: label, track, deadline — right-aligned.
+ * The track shows only while the clock runs (or finished on time): once a case is past its deadline the
+ * red words are its one red mark, and a full red bar under every overdue row read as a stripe (16/11).
+ */
 export function SlaCell({ c }: { c: CaseSummary }) {
   const sla = slaOf(c)
   const head = headline(sla)
+  const pastDeadline = sla.state === 'overdue' || sla.state === 'late'
   return (
     <div className="ml-auto flex w-36 flex-col items-end gap-1 text-right">
       <span className={cn('text-sm tabular-nums', head.tone)}>{head.text}</span>
-      <Track sla={sla} />
+      {!pastDeadline && <Track sla={sla} />}
       {c.dueAt && sla.state !== 'met' && (
         <span className="text-muted text-xs tabular-nums">Due {formatDateTime(c.dueAt)}</span>
       )}
@@ -69,6 +78,8 @@ export function SlaText({ c }: { c: CaseSummary }) {
 export function SlaPanel({ c }: { c: CaseDetail }) {
   const sla = slaOf(c)
   const head = headline(sla)
+  // Past the deadline the red figure is the case's one red mark: no full red bar under it (16/11).
+  const pastDeadline = sla.state === 'overdue' || sla.state === 'late'
 
   return (
     <Card>
@@ -77,10 +88,11 @@ export function SlaPanel({ c }: { c: CaseDetail }) {
         aside={sla.window ? `${formatDuration(sla.window)} window` : undefined}
       />
       <div className={cn('text-kpi tabular-nums', head.tone, 'font-normal')}>{head.text}</div>
-      <Track sla={sla} className="mt-3 h-1.5" />
+      {!pastDeadline && <Track sla={sla} className="mt-3 h-1.5" />}
       <dl className="mt-4 flex flex-col gap-2 text-sm">
         {c.slaStartedAt && <Row label="Clock started" value={formatDateTime(c.slaStartedAt)} />}
-        <Row label="Due" value={c.dueAt ? formatDateTime(c.dueAt) : 'Starts when work starts'} />
+        {/* "Starts with the work" is already the headline; the row would say it twice. */}
+        {c.dueAt && <Row label="Due" value={formatDateTime(c.dueAt)} />}
         {c.completedAt && <Row label="Reported done" value={formatDateTime(c.completedAt)} />}
       </dl>
     </Card>

@@ -1,3 +1,4 @@
+import { motion } from 'motion/react'
 import { useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router'
 import { navItemsFor } from '@/app/navigation'
@@ -5,6 +6,7 @@ import { useAuth } from '@/features/auth'
 import { ROLE_LABELS, ROLE_WORKSPACES } from '@/shared/types/role'
 import { Icon, ProductMark } from '@/shared/ui'
 import { cn } from '@/shared/utils/cn'
+import { pageFade } from '@/shared/utils/motion'
 
 /**
  * Signed-in shell (style "framed-sheet"): the sidebar sits on the tinted frame, the page on a white sheet
@@ -36,7 +38,7 @@ export function AppLayout() {
 
       <aside
         className={cn(
-          'bg-frame fixed inset-0 z-30 flex flex-col px-3 pt-4 pb-3 transition-transform duration-200 print:hidden',
+          'bg-frame ease-drawer fixed inset-0 z-30 flex flex-col px-3 pt-4 pb-3 transition-transform duration-300 print:hidden',
           'lg:sticky lg:top-0 lg:z-auto lg:h-screen lg:translate-x-0',
           menuOpen ? 'translate-x-0' : '-translate-x-full',
         )}
@@ -66,7 +68,7 @@ export function AppLayout() {
               className={({ isActive: exact }) => {
                 const isActive = exact || (item.also ?? []).some((p) => pathname.startsWith(p))
                 return cn(
-                  'flex h-8 items-center gap-2.5 rounded-lg px-2 text-sm transition-colors duration-150',
+                  'ease-snap flex h-8 items-center gap-2.5 rounded-lg px-2 text-sm transition-[color,background-color,transform] duration-150 active:scale-[0.98]',
                   isActive
                     ? 'bg-nav-active text-ink'
                     : 'text-muted hover:bg-nav-active/60 hover:text-ink',
@@ -101,7 +103,15 @@ export function AppLayout() {
 
       <main className="min-w-0 lg:py-2 lg:pr-2">
         <div className="bg-surface lg:border-border lg:rounded-sheet min-h-[calc(100vh-48px)] px-4 py-5 sm:px-6 lg:min-h-[calc(100vh-16px)] lg:border lg:p-6">
-          <Outlet />
+          {/* A new screen fades in over 150ms (opacity only, nothing travels) instead of flashing. */}
+          <motion.div
+            key={pathname}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={pageFade}
+          >
+            <Outlet />
+          </motion.div>
         </div>
       </main>
     </div>

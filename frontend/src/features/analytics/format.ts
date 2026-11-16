@@ -20,6 +20,8 @@ export function change(
   kind: 'rate' | 'number' | 'minutes' | 'hours',
 ): { text: string; good: boolean | null } | null {
   if (now === null || before === null) return null
+  // Growth from nothing is not a trend (taste §5): "+18 (new)" in grey, never a red "up 18".
+  if (before === 0 && now > 0 && kind === 'number') return { text: `+${now} (new)`, good: null }
   const diff = now - before
   if (Math.abs(diff) < (kind === 'rate' ? 0.005 : 0.05))
     return { text: 'same as before', good: null }

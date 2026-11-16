@@ -1,12 +1,14 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm, useWatch } from 'react-hook-form'
-import { useNavigate, useParams } from 'react-router'
+import { Link, useNavigate, useParams } from 'react-router'
 import { paths, planDetailPath } from '@/app/paths'
 import {
   Alert,
   Button,
-  Card,
   ErrorBlock,
+  FormActions,
+  FormSection,
+  Icon,
   LinkButton,
   LoadingBlock,
   PageHeader,
@@ -135,164 +137,175 @@ function PlanForm({
   })
 
   return (
-    <form onSubmit={onSubmit} noValidate className="flex max-w-[880px] flex-col gap-5">
+    <form onSubmit={onSubmit} noValidate className="flex max-w-[1040px] flex-col gap-6">
       <PageHeader
+        // the same back link as every other page ("‹ Cases"), not a bold ghost button
         above={
-          <LinkButton
-            variant="ghost"
+          <Link
             to={plan ? planDetailPath(plan.id) : paths.plans}
-            className="-ml-3"
+            className="hover:text-ink inline-flex items-center gap-1"
           >
+            <Icon name="back" className="size-3.5" />
             {plan ? plan.name : 'Maintenance plans'}
-          </LinkButton>
+          </Link>
         }
         title={plan ? 'Edit plan' : 'New maintenance plan'}
         description="The building manager approves it before any work order is made."
       />
 
-      <Card className="flex flex-col gap-4">
-        <h2 className="text-section font-semibold">What and how often</h2>
-        <Select
-          label="Checklist *"
-          placeholder="Choose…"
-          error={errors.checklistId?.message}
-          {...register('checklistId')}
-        >
-          {checklists.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name} ({c.tasks.length} items)
-            </option>
-          ))}
-        </Select>
-        <div className="grid gap-4 sm:grid-cols-4">
-          <TextField
-            label="Every *"
-            type="number"
-            min="1"
-            max="365"
-            inputMode="numeric"
-            error={errors.frequency?.message}
-            {...register('frequency')}
-          />
-          <Select label="Unit" {...register('frequencyType')}>
-            {FREQUENCY_UNITS.map((u) => (
-              <option key={u} value={u}>
-                {FREQUENCY_LABELS[u]}
-              </option>
-            ))}
-          </Select>
-          <TextField
-            label="Make it ahead (days)"
-            type="number"
-            min="0"
-            max="30"
-            inputMode="numeric"
-            error={errors.leadDays?.message}
-            {...register('leadDays')}
-          />
-          <Select label="Urgency" {...register('priority')}>
-            {URGENCIES.map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-4">
-          <TextField
-            label="First due day *"
-            type="date"
-            error={errors.startDate?.message}
-            {...register('startDate')}
-          />
-          <TextField label="Last day" type="date" hint="Empty: no end." {...register('endDate')} />
-          <TextField
-            label="Hours per asset"
-            type="number"
-            step="0.25"
-            min="0.25"
-            inputMode="decimal"
-            error={errors.estimatedHours?.message}
-            {...register('estimatedHours')}
-          />
+      <FormSection
+        title="What and how often"
+        description="Which checklist the technician follows, and when a work order is made for each asset."
+      >
+        <div className="flex flex-col gap-4">
           <Select
-            label="Technician"
-            hint="Empty: you assign each work order."
-            {...register('technicianId')}
+            label="Checklist *"
+            placeholder="Choose…"
+            error={errors.checklistId?.message}
+            {...register('checklistId')}
           >
-            <option value="">I assign each time</option>
-            {technicians.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.fullName} ({t.openCases} open)
+            {checklists.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name} ({c.tasks.length} items)
               </option>
             ))}
           </Select>
+          <div className="grid gap-4 sm:grid-cols-4">
+            <TextField
+              label="Every *"
+              type="number"
+              min="1"
+              max="365"
+              inputMode="numeric"
+              error={errors.frequency?.message}
+              {...register('frequency')}
+            />
+            <Select label="Unit" {...register('frequencyType')}>
+              {FREQUENCY_UNITS.map((u) => (
+                <option key={u} value={u}>
+                  {FREQUENCY_LABELS[u]}
+                </option>
+              ))}
+            </Select>
+            <TextField
+              label="Make it ahead (days)"
+              type="number"
+              min="0"
+              max="30"
+              inputMode="numeric"
+              error={errors.leadDays?.message}
+              {...register('leadDays')}
+            />
+            <Select label="Urgency" {...register('priority')}>
+              {URGENCIES.map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-4">
+            <TextField
+              label="First due day *"
+              type="date"
+              error={errors.startDate?.message}
+              {...register('startDate')}
+            />
+            <TextField
+              label="Last day"
+              type="date"
+              hint="Empty: no end."
+              {...register('endDate')}
+            />
+            <TextField
+              label="Hours per asset"
+              type="number"
+              step="0.25"
+              min="0.25"
+              inputMode="decimal"
+              error={errors.estimatedHours?.message}
+              {...register('estimatedHours')}
+            />
+            <Select
+              label="Technician"
+              hint="Empty: you assign each work order."
+              {...register('technicianId')}
+            >
+              <option value="">I assign each time</option>
+              {technicians.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.fullName} ({t.openCases} open)
+                </option>
+              ))}
+            </Select>
+          </div>
         </div>
-      </Card>
+      </FormSection>
 
-      <Card className="flex flex-col gap-4">
-        <div className="flex items-baseline justify-between gap-3">
-          <h2 className="text-section font-semibold">Assets *</h2>
-          <span className="text-muted text-xs tabular-nums">{picked.length} chosen</span>
-        </div>
-        {assets.isPending ? (
-          <LoadingBlock rows={4} />
-        ) : assets.error ? (
-          <ErrorBlock
-            what="the assets"
-            message={assets.error.message}
-            onRetry={() => void assets.refetch()}
-          />
-        ) : (
-          byBuilding.map(([building, rows]) => {
-            const other =
-              pickedBuilding !== undefined && rows[0]?.location.buildingId !== pickedBuilding
-            return (
-              <fieldset key={building} disabled={other} className="flex flex-col gap-1.5">
-                <legend className="text-muted mb-1 text-xs">
-                  {building}
-                  {other && ' · one building per plan'}
-                </legend>
-                <div className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
-                  {rows.map((a) => (
-                    <label
-                      key={a.id}
-                      className="flex items-center gap-2 text-sm has-disabled:opacity-50"
-                    >
-                      <input
-                        type="checkbox"
-                        value={a.id}
-                        className="accent-primary size-4"
-                        {...register('assetIds')}
-                      />
-                      <span className="min-w-0 truncate">
-                        {a.name}
-                        <span className="text-muted">
-                          {' '}
-                          · {a.location.floorName}, {a.location.roomName}
+      <FormSection
+        title="Assets *"
+        aside={`${picked.length} chosen`}
+        description="One work order per asset at each due day. A plan covers one building."
+      >
+        <div className="flex flex-col gap-4">
+          {assets.isPending ? (
+            <LoadingBlock rows={4} />
+          ) : assets.error ? (
+            <ErrorBlock
+              what="the assets"
+              message={assets.error.message}
+              onRetry={() => void assets.refetch()}
+            />
+          ) : (
+            byBuilding.map(([building, rows]) => {
+              const other =
+                pickedBuilding !== undefined && rows[0]?.location.buildingId !== pickedBuilding
+              return (
+                <fieldset key={building} disabled={other} className="flex flex-col gap-1.5">
+                  <legend className="text-muted mb-1 text-xs">
+                    {building}
+                    {other && ' · one building per plan'}
+                  </legend>
+                  <div className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
+                    {rows.map((a) => (
+                      <label
+                        key={a.id}
+                        className="flex items-center gap-2 text-sm has-disabled:opacity-50"
+                      >
+                        <input
+                          type="checkbox"
+                          value={a.id}
+                          className="accent-primary size-4"
+                          {...register('assetIds')}
+                        />
+                        <span className="min-w-0 truncate">
+                          {a.name}
+                          <span className="text-muted">
+                            {' '}
+                            · {a.location.floorName}, {a.location.roomName}
+                          </span>
                         </span>
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-            )
-          })
-        )}
-        {errors.assetIds?.message && (
-          <p className="text-negative text-xs">{errors.assetIds.message}</p>
-        )}
-      </Card>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+              )
+            })
+          )}
+          {errors.assetIds?.message && (
+            <p className="text-negative text-xs">{errors.assetIds.message}</p>
+          )}
+        </div>
+      </FormSection>
 
-      {save.error && <Alert>{save.error.message}</Alert>}
-      <div className="flex justify-end gap-2">
+      <FormActions error={save.error && <Alert>{save.error.message}</Alert>}>
         <LinkButton variant="ghost" to={plan ? planDetailPath(plan.id) : paths.plans}>
           Back
         </LinkButton>
         <Button type="submit" variant="primary" loading={save.isPending}>
           Send for approval
         </Button>
-      </div>
+      </FormActions>
     </form>
   )
 }

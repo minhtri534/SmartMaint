@@ -20,8 +20,9 @@ const VARIANTS: Record<Variant, string> = {
 
 const BASE = cn(
   'inline-flex h-8 items-center justify-center gap-2 rounded-control px-3 text-sm font-medium whitespace-nowrap',
-  'transition-colors duration-150 active:translate-y-px',
-  'disabled:cursor-not-allowed disabled:opacity-60',
+  // press feedback: a 3% squeeze, 150ms strong ease-out (emil-design-eng)
+  'transition-[color,background-color,border-color,transform] duration-150 ease-snap active:scale-[0.97]',
+  'disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100',
 )
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {

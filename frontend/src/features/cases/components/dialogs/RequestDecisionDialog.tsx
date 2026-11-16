@@ -4,7 +4,6 @@ import { Alert, Button, Dialog, DialogActions, TextArea } from '@/shared/ui'
 import { casesApi } from '../../api'
 import { useCaseMutation } from '../../hooks'
 import { requestDecisionSchema, type RequestDecisionFormValues } from '../../schemas'
-import { RECOMMENDATION_LABELS, type TechnicianRecommendation } from '../../types'
 import { PhotoPicker } from '../PhotoPicker'
 
 interface Props {
@@ -14,24 +13,25 @@ interface Props {
 }
 
 /**
- * F5 steps ①–②: the job is beyond the technician (or the asset should be replaced). The assessment goes to the
- * staff, who decide: continue, the manufacturer, a contractor, or replace. The case waits On Hold meanwhile.
+ * Meeting 07/11 (replaces the technician's assessment): the technician tells the staff the job needs an outside
+ * party — what is wrong, why they cannot do it, and photos. The staff agree it with the party outside the system;
+ * the case waits on hold and the work clock stops.
  */
 export function RequestDecisionDialog({ caseId, open, onClose }: Props) {
   return (
     <Dialog
       open={open}
       onClose={onClose}
-      title="Needs the staff's decision"
+      title="Needs an outside party"
       wide
-      description="The staff read your assessment and decide how to go on. The case waits on hold."
+      description="The staff read this and arrange the outside party. The case waits on hold."
     >
-      <AssessmentForm caseId={caseId} onDone={onClose} />
+      <RequestForm caseId={caseId} onDone={onClose} />
     </Dialog>
   )
 }
 
-function AssessmentForm({ caseId, onDone }: { caseId: number; onDone: () => void }) {
+function RequestForm({ caseId, onDone }: { caseId: number; onDone: () => void }) {
   const send = useCaseMutation(casesApi.requestDecision)
   const {
     register,
@@ -40,7 +40,7 @@ function AssessmentForm({ caseId, onDone }: { caseId: number; onDone: () => void
     formState: { errors },
   } = useForm<RequestDecisionFormValues>({
     resolver: zodResolver(requestDecisionSchema),
-    defaultValues: { condition: '', cause: '', recommendation: 'repairable', photos: [] },
+    defaultValues: { description: '', reason: '', photos: [] },
   })
 
   return (
@@ -50,33 +50,19 @@ function AssessmentForm({ caseId, onDone }: { caseId: number; onDone: () => void
       className="flex flex-col gap-4"
     >
       <TextArea
-        label="Condition *"
+        label="What is wrong *"
         placeholder="e.g. Compressor bearing worn, the unit trips on overload after 10 minutes"
         rows={3}
-        error={errors.condition?.message}
-        {...register('condition')}
+        error={errors.description?.message}
+        {...register('description')}
       />
       <TextArea
-        label="Cause *"
-        placeholder="e.g. Wear: the unit is old and runs all day"
+        label="Why it needs an outside party *"
+        placeholder="e.g. The compressor is only sold and fitted by the manufacturer"
         rows={2}
-        error={errors.cause?.message}
-        {...register('cause')}
+        error={errors.reason?.message}
+        {...register('reason')}
       />
-      <fieldset className="flex flex-col gap-2 text-sm">
-        <legend className="mb-1 font-medium">Your recommendation</legend>
-        {(Object.keys(RECOMMENDATION_LABELS) as TechnicianRecommendation[]).map((r) => (
-          <label key={r} className="flex items-center gap-2">
-            <input
-              type="radio"
-              value={r}
-              className="accent-primary size-4"
-              {...register('recommendation')}
-            />
-            {RECOMMENDATION_LABELS[r]}
-          </label>
-        ))}
-      </fieldset>
       <Controller
         control={control}
         name="photos"

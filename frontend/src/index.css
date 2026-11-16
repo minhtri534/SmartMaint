@@ -31,6 +31,7 @@
   --color-border: #e8eaec;
   --color-rule: #f0f1f2;
   --color-control: #cdced1;
+  --color-slab: #d3dbe1; /* the floors of the sign-in tower: one step darker than the frame */
 
   /* text in three tiers, all 4.5:1 or more on white and on the frame */
   --color-ink: #131416;
@@ -63,6 +64,15 @@
   --radius-card: 8px;
   --radius-control: 6px;
   --radius-sheet: 16px;
+
+  /*
+   * Motion (16/11/2026, values from the emil-design-eng skill). Motion is feedback, never an entrance on
+   * app screens: press, open / close, tab change, state change. UI stays under 300ms; dialogs up to 500ms.
+   * Classes: ease-snap, ease-glide, ease-drawer. The same curves for the motion library: shared/utils/motion.ts.
+   */
+  --ease-snap: cubic-bezier(0.23, 1, 0.32, 1); /* enter / exit, press */
+  --ease-glide: cubic-bezier(0.77, 0, 0.175, 1); /* something moving across the screen */
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1); /* the phone menu sheet */
 }
 
 @layer base {
@@ -81,6 +91,23 @@
     outline-offset: 2px;
   }
 
+  /* Native select: the browser's arrow replaced by the icon set's chevron (16px, muted). */
+  select.control-select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235d5f60' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 10l5 5 5-5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    background-size: 16px;
+  }
+
+  /* Dialog (native <dialog>): opens from 96% with a fade, centred (modals keep transform-origin: center). */
+  dialog.dialog-panel[open] {
+    animation: dialog-in 220ms var(--ease-snap);
+  }
+  dialog.dialog-panel[open]::backdrop {
+    animation: backdrop-in 220ms ease;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
@@ -88,5 +115,18 @@
       transition-duration: 0.01ms !important;
       animation: none !important;
     }
+  }
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+@keyframes backdrop-in {
+  from {
+    opacity: 0;
   }
 }

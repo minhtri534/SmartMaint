@@ -17,7 +17,8 @@ export function Badge({ tone = 'neutral', children }: { tone?: BadgeTone; childr
   return (
     <span
       className={cn(
-        'inline-flex h-[22px] flex-none items-center rounded-full px-2 text-xs font-medium whitespace-nowrap',
+        // colours cross-fade when a case changes status in place
+        'inline-flex h-[22px] flex-none items-center rounded-full px-2 text-xs font-medium whitespace-nowrap transition-colors duration-200',
         TONES[tone],
       )}
     >

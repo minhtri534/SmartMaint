@@ -59,7 +59,7 @@ export function FacilityTreePage() {
         title="Buildings"
         description={
           tree.data
-            ? `${buildings.length} ${buildings.length === 1 ? 'building' : 'buildings'}, ${rooms.length} rooms, ${assets} assets in service, ${vacant} rooms without a tenant`
+            ? `${buildings.length} ${buildings.length === 1 ? 'building' : 'buildings'}, ${rooms.length} rooms, ${assets} assets in service, ${vacant} ${vacant === 1 ? 'room' : 'rooms'} without a tenant`
             : undefined
         }
         actions={
@@ -176,6 +176,7 @@ export function FacilityTreePage() {
                               <>
                                 <Button
                                   variant="ghost"
+                                  className="text-muted! hover:text-ink!"
                                   onClick={() =>
                                     setEditing({ kind: 'room', parentId: f.id, item: r })
                                   }
@@ -184,6 +185,7 @@ export function FacilityTreePage() {
                                 </Button>
                                 <Button
                                   variant="ghost"
+                                  className="text-muted! hover:text-negative!"
                                   onClick={() =>
                                     setEditing({
                                       kind: 'delete',

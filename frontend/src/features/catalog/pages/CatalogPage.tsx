@@ -79,11 +79,7 @@ export function CatalogPage() {
               <div className="text-muted text-[13px]">{c.groupName}</div>
             </>,
             URGENCY_LABELS[c.defaultPriority],
-            [
-              c.isEmergency && 'Emergency (F4)',
-              c.photoRequired && 'Photo required',
-              c.defaultCostBearer === 'customer' && 'Customer pays',
-            ]
+            [c.isEmergency && 'Emergency (F4)', c.photoRequired && 'Photo required']
               .filter(Boolean)
               .join(', ') || '—',
           ]}
@@ -204,15 +200,20 @@ function ListSection<T extends { id: number; usedBy: number }>({
                   </td>
                 ))}
                 <td className="text-muted py-3 pr-4 text-right tabular-nums">{item.usedBy}</td>
+                {/* Delete (only when unused) sits before Edit, so every Edit lands on the same right edge. */}
                 <td className="py-2 text-right whitespace-nowrap">
-                  <Button variant="ghost" onClick={() => setEditing({ item })}>
-                    Edit
-                  </Button>
                   {item.usedBy === 0 && (
-                    <Button variant="ghost" onClick={() => (remove.reset(), setDeleting(item))}>
+                    <Button
+                      variant="ghost"
+                      className="text-muted! hover:text-negative!"
+                      onClick={() => (remove.reset(), setDeleting(item))}
+                    >
                       Delete
                     </Button>
                   )}
+                  <Button variant="ghost" onClick={() => setEditing({ item })}>
+                    Edit
+                  </Button>
                 </td>
               </tr>
             ))}
@@ -302,7 +303,6 @@ function CaseCategoryForm({ item, onDone }: { item: CaseCategory | null; onDone:
       description: item?.description ?? '',
       isEmergency: item?.isEmergency ?? false,
       defaultPriority: item?.defaultPriority ?? 'normal',
-      defaultCostBearer: item?.defaultCostBearer ?? 'building',
       photoRequired: item?.photoRequired ?? false,
     },
   )
@@ -347,10 +347,6 @@ function CaseCategoryForm({ item, onDone }: { item: CaseCategory | null; onDone:
               {URGENCY_LABELS[u]}
             </option>
           ))}
-        </Select>
-        <Select label="Who pays by default" {...register('defaultCostBearer')}>
-          <option value="building">The building</option>
-          <option value="customer">The customer</option>
         </Select>
       </div>
       <label className="flex items-center gap-2 text-sm">

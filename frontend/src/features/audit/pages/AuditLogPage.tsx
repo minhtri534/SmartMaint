@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import {
   Button,
+  controlClass,
   EmptyBlock,
   ErrorBlock,
+  FilterSelect,
   LoadingBlock,
   PageHeader,
-  Select,
-  TextField,
 } from '@/shared/ui'
 import { formatDateTime } from '@/shared/utils/format'
 import { useAuditLog } from '../hooks'
@@ -43,46 +43,51 @@ export function AuditLogPage() {
         }
       />
 
-      <div className="grid gap-3 sm:grid-cols-4">
-        <Select
+      {/* One 32px filter row (16/11): what, which action, then the day range. */}
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <FilterSelect
           label="Record"
-          placeholder="Any record"
           value={filters.targetType ?? ''}
           onChange={(e) =>
             set({ targetType: (e.target.value || undefined) as AuditTarget | undefined })
           }
         >
+          <option value="">Any</option>
           {AUDIT_TARGETS.map((t) => (
             <option key={t} value={t}>
               {TARGET_LABELS[t]}
             </option>
           ))}
-        </Select>
-        <Select
+        </FilterSelect>
+        <FilterSelect
           label="Action"
-          placeholder="Any action"
           value={filters.operation ?? ''}
           onChange={(e) =>
             set({ operation: (e.target.value || undefined) as AuditOperation | undefined })
           }
         >
+          <option value="">Any</option>
           {AUDIT_OPERATIONS.map((o) => (
             <option key={o} value={o}>
               {OPERATION_LABELS[o]}
             </option>
           ))}
-        </Select>
-        <TextField
-          label="From"
+        </FilterSelect>
+        <span className="text-muted ml-1">From</span>
+        <input
           type="date"
+          aria-label="From"
           value={filters.from ?? ''}
           onChange={(e) => set({ from: e.target.value || undefined })}
+          className={controlClass() + ' h-8 max-w-36'}
         />
-        <TextField
-          label="To"
+        <span className="text-muted">to</span>
+        <input
           type="date"
+          aria-label="To"
           value={filters.to ?? ''}
           onChange={(e) => set({ to: e.target.value || undefined })}
+          className={controlClass() + ' h-8 max-w-36'}
         />
       </div>
 
@@ -133,8 +138,8 @@ export function AuditLogPage() {
 /** The record changed, read from the JSON (the ERD has no TargetID column). */
 function subject(row: AuditRow) {
   const value = JSON.parse(row.newValue ?? row.oldValue ?? '{}') as Record<string, unknown>
-  if (row.targetType === 'priority_level') return String(value.name ?? '')
-  return String(value.username ?? value.fullName ?? '')
+  if (row.targetType === 'account') return String(value.username ?? value.fullName ?? '')
+  return String(value.name ?? value.roomNumber ?? value.floorNumber ?? '')
 }
 
 function AuditItem({ row }: { row: AuditRow }) {
@@ -143,8 +148,10 @@ function AuditItem({ row }: { row: AuditRow }) {
       <details>
         <summary className="flex cursor-pointer list-none items-start justify-between gap-3 text-sm">
           <span>
-            <span className="font-medium">{row.adminName}</span> · {OPERATION_LABELS[row.operation]}{' '}
-            {TARGET_LABELS[row.targetType].toLowerCase()}{' '}
+            {/* a value the page does not know yet prints as sent instead of crashing the page */}
+            <span className="font-medium">{row.adminName}</span> ·{' '}
+            {OPERATION_LABELS[row.operation] ?? row.operation}{' '}
+            {(TARGET_LABELS[row.targetType] ?? row.targetType).toLowerCase()}{' '}
             <span className="font-mono text-xs">{subject(row)}</span>
           </span>
           <span className="text-muted flex-none tabular-nums">

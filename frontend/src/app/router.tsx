@@ -18,6 +18,7 @@ import {
   EmergencyPage,
   MyRequestsPage,
   NewRequestPage,
+  WorkOrderFormPage,
   WorkOrdersPage,
 } from '@/features/cases'
 import { CatalogPage } from '@/features/catalog'
@@ -26,7 +27,6 @@ import { FacilityTreePage } from '@/features/facilities'
 import { HomePage } from '@/features/home/pages/HomePage'
 import { ChecklistsPage, PlanDetailPage, PlanFormPage, PlansPage } from '@/features/maintenance'
 import { NotificationsPage } from '@/features/notifications'
-import { OutsideWorkPage } from '@/features/outside-work'
 import { SlaSettingsPage } from '@/features/settings'
 import { AppLayout } from '@/shared/layout/AppLayout'
 import { AuthLayout } from '@/shared/layout/AuthLayout'
@@ -90,29 +90,29 @@ export const router = createBrowserRouter([
               </RequireAuth>
             ),
           },
-          // F6 — analytics (AnalyticsController: Staff, Manager)
+          // The staff's work order form: approve (technician, window, tasks) and Edit (meeting 07/11)
+          ...[paths.caseApprove, paths.caseEdit].map((path) => ({
+            path,
+            element: (
+              <RequireAuth roles={['staff']}>
+                <WorkOrderFormPage />
+              </RequireAuth>
+            ),
+          })),
+          // F6 — analytics. Meeting 07/11: not for the staff any more (their Home still shows their numbers).
           {
             path: paths.analytics,
             element: (
-              <RequireAuth roles={['staff', 'manager']}>
+              <RequireAuth roles={['manager']}>
                 <AnalyticsPage />
               </RequireAuth>
             ),
           },
-          // F5 — outside-work board (the actions are on the case page)
-          {
-            path: paths.outsideWork,
-            element: (
-              <RequireAuth roles={['staff', 'manager']}>
-                <OutsideWorkPage />
-              </RequireAuth>
-            ),
-          },
-          // F4 — emergency board (the actions are on the case page)
+          // F4 — emergency board. Meeting 07/11: the staff use Cases with the urgency filter.
           {
             path: paths.emergencies,
             element: (
-              <RequireAuth roles={['staff', 'manager']}>
+              <RequireAuth roles={['manager']}>
                 <EmergencyPage />
               </RequireAuth>
             ),
@@ -136,7 +136,6 @@ export const router = createBrowserRouter([
           // F1 — buildings and assets (FacilitiesController, AssetsController: read Staff/Manager/Admin, write Admin)
           ...[
             { path: paths.facilities, element: <FacilityTreePage /> },
-            { path: paths.assets, element: <AssetListPage /> },
             { path: paths.assetDetail, element: <AssetDetailPage /> },
             { path: paths.qrLabels, element: <QrLabelsPage /> },
           ].map((route) => ({
@@ -145,6 +144,15 @@ export const router = createBrowserRouter([
               <RequireAuth roles={['staff', 'manager', 'admin']}>{route.element}</RequireAuth>
             ),
           })),
+          // Meeting 07/11: the staff no longer browse the asset list.
+          {
+            path: paths.assets,
+            element: (
+              <RequireAuth roles={['manager', 'admin']}>
+                <AssetListPage />
+              </RequireAuth>
+            ),
+          },
           ...[
             { path: paths.assetNew, element: <AssetFormPage mode="create" /> },
             { path: paths.assetEdit, element: <AssetFormPage mode="edit" /> },

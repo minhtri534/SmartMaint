@@ -14,6 +14,7 @@ import {
   LoadingBlock,
   PageHeader,
 } from '@/shared/ui'
+import { formatAssetCode } from '@/shared/utils/asset-code'
 import { formatDate, formatDateTime } from '@/shared/utils/format'
 import { assetsApi } from '../api'
 import { QrCode } from '../components/QrCode'
@@ -68,7 +69,12 @@ function AssetView({ a }: { a: AssetDetail }) {
           </LinkButton>
         }
         title={a.name}
-        description={`${a.typeName}: ${finding.join(', ')}.`}
+        description={
+          <>
+            <span className="font-mono">{formatAssetCode(a.id)}</span> · {a.typeName}:{' '}
+            {finding.join(', ')}.
+          </>
+        }
         actions={
           <>
             {can('open_survey') && (

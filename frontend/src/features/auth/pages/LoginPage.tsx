@@ -2,7 +2,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { Navigate, useLocation, useNavigate, type Location } from 'react-router'
 import { paths } from '@/app/paths'
-import { Alert, Button, Card, TextField } from '@/shared/ui'
+import { Alert, Button, TextField } from '@/shared/ui'
 import { applyFieldErrors } from '@/shared/utils/apply-field-errors'
 import { useAuth, useLogin } from '../hooks'
 import { loginSchema, type LoginFormValues } from '../schemas'
@@ -38,7 +38,8 @@ export function LoginPage() {
   const showGenericError = login.error && Object.keys(login.error.fieldErrors).length === 0
 
   return (
-    <Card padding="roomy" className="w-full max-w-[400px]">
+    // AuthLayout already puts the page on the white sheet, so no card here.
+    <div className="w-full max-w-[360px]">
       <h1 className="text-title font-semibold tracking-[-0.01em]">Sign in</h1>
       <p className="text-muted mt-1 text-sm">Use the account your Administrator gave you.</p>
 
@@ -67,6 +68,6 @@ export function LoginPage() {
           Sign in
         </Button>
       </form>
-    </Card>
+    </div>
   )
 }

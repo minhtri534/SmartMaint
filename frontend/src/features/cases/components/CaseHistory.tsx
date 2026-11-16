@@ -1,46 +1,64 @@
+import { AnimatePresence, motion } from 'motion/react'
 import { Badge } from '@/shared/ui'
 import { formatDateTime } from '@/shared/utils/format'
+import { EASE_SNAP } from '@/shared/utils/motion'
 import { STATUS_LABELS, type CasePhoto, type Rejection, type StatusChange } from '../types'
 
-/** Status timeline, newest first: who changed what, when, and why. */
+/**
+ * Status timeline, newest first: who changed what, when, and why. When an action adds a change while the
+ * page is open, the new entry drops in at the top and the older ones slide down (not on first load).
+ */
 export function StatusTimeline({ history }: { history: StatusChange[] }) {
   return (
     <ol className="flex flex-col">
-      {[...history].reverse().map((h, i, list) => (
-        <li key={h.at + i} className="relative pb-4 pl-5 last:pb-0">
-          {i < list.length - 1 && (
-            <span className="bg-rule absolute top-3 bottom-0 left-[3px] w-0.5" aria-hidden="true" />
-          )}
-          <span
-            className={
-              i === 0
-                ? 'bg-accent absolute top-1.5 left-0 size-2 rounded-full'
-                : 'bg-control absolute top-1.5 left-0 size-2 rounded-full'
-            }
-            aria-hidden="true"
-          />
-          <div className="text-sm">
-            {h.from === h.to ? (
-              // Same status: an update with a reason (urgency, deadline, "not fixed", costs).
-              <>
-                <span className="font-medium">Update</span>
-                <span className="text-muted"> while {STATUS_LABELS[h.to]}</span>
-              </>
-            ) : (
-              <>
-                <span className="font-medium">{STATUS_LABELS[h.to]}</span>
-                {h.from && <span className="text-muted"> from {STATUS_LABELS[h.from]}</span>}
-              </>
+      <AnimatePresence initial={false}>
+        {[...history].reverse().map((h, i, list) => (
+          <motion.li
+            // stable per change (the index would shift when a new change arrives on top)
+            key={`${h.at}|${h.from ?? ''}|${h.to}`}
+            layout="position"
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.24, ease: EASE_SNAP }}
+            className="relative pb-4 pl-5 last:pb-0"
+          >
+            {i < list.length - 1 && (
+              <span
+                className="bg-rule absolute top-3 bottom-0 left-[3px] w-0.5"
+                aria-hidden="true"
+              />
             )}
-          </div>
-          <div className="text-muted text-xs tabular-nums">
-            {h.by.fullName} · {formatDateTime(h.at)}
-          </div>
-          {h.reason && (
-            <p className="bg-raised rounded-control mt-1.5 px-2.5 py-1.5 text-sm">{h.reason}</p>
-          )}
-        </li>
-      ))}
+            <span
+              className={
+                i === 0
+                  ? 'bg-accent absolute top-1.5 left-0 size-2 rounded-full'
+                  : 'bg-control absolute top-1.5 left-0 size-2 rounded-full'
+              }
+              aria-hidden="true"
+            />
+            <div className="text-sm">
+              {h.from === h.to ? (
+                // Same status: an update with a reason (urgency, deadline, "not fixed", costs).
+                <>
+                  <span className="font-medium">Update</span>
+                  <span className="text-muted"> while {STATUS_LABELS[h.to]}</span>
+                </>
+              ) : (
+                <>
+                  <span className="font-medium">{STATUS_LABELS[h.to]}</span>
+                  {h.from && <span className="text-muted"> from {STATUS_LABELS[h.from]}</span>}
+                </>
+              )}
+            </div>
+            <div className="text-muted text-xs tabular-nums">
+              {h.by.fullName} · {formatDateTime(h.at)}
+            </div>
+            {h.reason && (
+              <p className="bg-raised rounded-control mt-1.5 px-2.5 py-1.5 text-sm">{h.reason}</p>
+            )}
+          </motion.li>
+        ))}
+      </AnimatePresence>
     </ol>
   )
 }
