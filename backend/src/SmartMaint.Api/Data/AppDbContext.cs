@@ -45,6 +45,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<CaseStatusHistory> CaseStatusHistory => Set<CaseStatusHistory>();
     public DbSet<TechnicianRejection> TechnicianRejections => Set<TechnicianRejection>();
     public DbSet<Cost> Costs => Set<Cost>();
+    public DbSet<CaseFollower> CaseFollowers => Set<CaseFollower>();
 
     // Repair or replace (F5)
     public DbSet<CaseThirdParty> CaseThirdParties => Set<CaseThirdParty>();

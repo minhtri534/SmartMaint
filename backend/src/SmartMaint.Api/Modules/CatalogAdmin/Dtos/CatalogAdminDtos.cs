@@ -12,7 +12,6 @@ public sealed record CaseCategoryAdminResponse(
     string? Description,
     bool IsEmergency,
     CasePriority DefaultPriority,
-    CostBearer DefaultCostBearer,
     bool PhotoRequired,
     int UsedBy);
 
@@ -22,7 +21,6 @@ public sealed record CaseCategoryRequest(
     string? Description,
     bool IsEmergency,
     CasePriority DefaultPriority,
-    CostBearer DefaultCostBearer,
     bool PhotoRequired);
 
 /// <summary>ERD: AssetCategory(Code, CategoryName, Description).</summary>

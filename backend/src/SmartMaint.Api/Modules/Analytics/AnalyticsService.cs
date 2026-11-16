@@ -28,7 +28,7 @@ internal sealed class AnalyticsService(AppDbContext db, ICurrentUser currentUser
 
     private static readonly CaseStatus[] Open =
     [
-        CaseStatus.Approved, CaseStatus.Assigned, CaseStatus.Accepted, CaseStatus.InProgress, CaseStatus.OnHold,
+        CaseStatus.Approved, CaseStatus.Accepted, CaseStatus.InProgress, CaseStatus.OnHold,
         CaseStatus.Reopened,
     ];
 

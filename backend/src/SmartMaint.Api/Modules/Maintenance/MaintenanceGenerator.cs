@@ -98,9 +98,8 @@ internal sealed class MaintenanceGenerator(AppDbContext db, INotificationService
             CategoryId = detail.Checklist.CategoryId,
             Title = $"Preventive: {detail.Checklist.Name}",
             Description = $"Scheduled maintenance of {entry.Asset.Name}, due {due:yyyy-MM-dd} (plan #{plan.Id}). Go through every checklist item.",
-            Status = entry.TechnicianId is null ? CaseStatus.Approved : CaseStatus.Assigned,
+            Status = CaseStatus.Approved,
             PriorityLevelId = detail.PriorityLevelId,
-            CostBearer = CostBearer.Building,
             StaffId = plan.StaffId,
             AssignedTechnicianId = entry.TechnicianId,
             SubmittedAt = now,
@@ -118,18 +117,10 @@ internal sealed class MaintenanceGenerator(AppDbContext db, INotificationService
             NewStatus = CaseStatus.Approved,
             ChangedById = plan.StaffId,
             ChangedAt = now,
-            Reason = $"Made by maintenance plan #{plan.Id} (due {due:yyyy-MM-dd}).",
+            Reason = entry.Technician is { } technician
+                ? $"Made by maintenance plan #{plan.Id} (due {due:yyyy-MM-dd}), assigned to {technician.FullName}."
+                : $"Made by maintenance plan #{plan.Id} (due {due:yyyy-MM-dd}).",
         });
-        if (entry.Technician is { } technician)
-        {
-            c.History.Add(new CaseStatusHistory
-            {
-                NewStatus = CaseStatus.Assigned,
-                ChangedById = plan.StaffId,
-                ChangedAt = now,
-                Reason = $"Assigned to {technician.FullName} (default technician of the plan).",
-            });
-        }
 
         return c;
     }

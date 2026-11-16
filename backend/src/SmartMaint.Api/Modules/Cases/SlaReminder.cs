@@ -26,7 +26,7 @@ internal sealed class SlaReminder(AppDbContext db, INotificationService notifica
 
     private static readonly CaseStatus[] Running =
     [
-        CaseStatus.Assigned, CaseStatus.Accepted, CaseStatus.InProgress, CaseStatus.OnHold, CaseStatus.Reopened,
+        CaseStatus.Accepted, CaseStatus.InProgress, CaseStatus.OnHold, CaseStatus.Reopened,
     ];
 
     public async Task<int> RunOnceAsync(CancellationToken cancellationToken)

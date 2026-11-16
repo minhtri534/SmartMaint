@@ -1769,3 +1769,194 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261109011657_StaffWorkOrderMeeting0711') THEN
+    ALTER TABLE cases DROP CONSTRAINT ck_cases_cost_bearer;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261109011657_StaffWorkOrderMeeting0711') THEN
+    ALTER TABLE case_categories DROP CONSTRAINT ck_case_categories_default_cost_bearer;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261109011657_StaffWorkOrderMeeting0711') THEN
+    UPDATE cases SET status_id = 2 WHERE status_id = 3;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261109011657_StaffWorkOrderMeeting0711') THEN
+    UPDATE case_status_history SET new_status_id = 2 WHERE new_status_id = 3;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261109011657_StaffWorkOrderMeeting0711') THEN
+    DELETE FROM case_statuses
+    WHERE id = 3;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261109011657_StaffWorkOrderMeeting0711') THEN
+    ALTER TABLE cases DROP COLUMN cost_bearer;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261109011657_StaffWorkOrderMeeting0711') THEN
+    ALTER TABLE case_categories DROP COLUMN default_cost_bearer;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261109011657_StaffWorkOrderMeeting0711') THEN
+    ALTER TABLE cases ADD planned_end_at timestamp with time zone;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261109011657_StaffWorkOrderMeeting0711') THEN
+    ALTER TABLE cases ADD planned_start_at timestamp with time zone;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261109011657_StaffWorkOrderMeeting0711') THEN
+    ALTER TABLE cases ADD previous_case_id bigint;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261109011657_StaffWorkOrderMeeting0711') THEN
+    ALTER TABLE case_tasks ADD done_at timestamp with time zone;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261109011657_StaffWorkOrderMeeting0711') THEN
+    ALTER TABLE case_tasks ADD done_by character varying(32);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261109011657_StaffWorkOrderMeeting0711') THEN
+    CREATE TABLE case_followers (
+        case_id bigint NOT NULL,
+        customer_id bigint NOT NULL,
+        added_at timestamp with time zone NOT NULL,
+        CONSTRAINT pk_case_followers PRIMARY KEY (case_id, customer_id),
+        CONSTRAINT fk_case_followers_cases_case_id FOREIGN KEY (case_id) REFERENCES cases (id) ON DELETE CASCADE,
+        CONSTRAINT fk_case_followers_customers_customer_id FOREIGN KEY (customer_id) REFERENCES customers (id) ON DELETE RESTRICT
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261109011657_StaffWorkOrderMeeting0711') THEN
+    CREATE INDEX ix_cases_previous_case_id ON cases (previous_case_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261109011657_StaffWorkOrderMeeting0711') THEN
+    ALTER TABLE cases ADD CONSTRAINT ck_cases_planned_window CHECK (planned_start_at IS NULL OR planned_end_at IS NULL OR planned_end_at > planned_start_at);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261109011657_StaffWorkOrderMeeting0711') THEN
+    ALTER TABLE case_tasks ADD CONSTRAINT ck_case_tasks_done_by CHECK (done_by IN ('technician', 'third_party'));
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261109011657_StaffWorkOrderMeeting0711') THEN
+    CREATE INDEX ix_case_followers_customer_id ON case_followers (customer_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261109011657_StaffWorkOrderMeeting0711') THEN
+    ALTER TABLE cases ADD CONSTRAINT fk_cases_cases_previous_case_id FOREIGN KEY (previous_case_id) REFERENCES cases (id) ON DELETE RESTRICT;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261109011657_StaffWorkOrderMeeting0711') THEN
+    INSERT INTO case_tasks (case_id, name, status_id, done_by, done_at)
+    SELECT c.id, left(c.title, 200),
+           CASE WHEN c.status_id IN (7, 8) THEN 2 ELSE 1 END,
+           CASE WHEN c.status_id IN (7, 8) AND c.assigned_technician_id IS NOT NULL THEN 'technician' END,
+           CASE WHEN c.status_id IN (7, 8) THEN c.completed_at END
+    FROM cases c
+    WHERE c.status_id NOT IN (1, 10, 11)
+      AND NOT EXISTS (SELECT 1 FROM case_tasks t WHERE t.case_id = c.id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261109011657_StaffWorkOrderMeeting0711') THEN
+    INSERT INTO __ef_migrations_history (migration_id, product_version)
+    VALUES ('20261109011657_StaffWorkOrderMeeting0711', '10.0.13');
+    END IF;
+END $EF$;
+COMMIT;
+
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261109080818_TechnicianWorkClockAndReceipts') THEN
+    ALTER TABLE costs ADD receipt_code character varying(100);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261109080818_TechnicianWorkClockAndReceipts') THEN
+    ALTER TABLE costs ADD receipt_image character varying(300);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261109080818_TechnicianWorkClockAndReceipts') THEN
+    ALTER TABLE cases ADD clock_started_at timestamp with time zone;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261109080818_TechnicianWorkClockAndReceipts') THEN
+    INSERT INTO __ef_migrations_history (migration_id, product_version)
+    VALUES ('20261109080818_TechnicianWorkClockAndReceipts', '10.0.13');
+    END IF;
+END $EF$;
+COMMIT;
+

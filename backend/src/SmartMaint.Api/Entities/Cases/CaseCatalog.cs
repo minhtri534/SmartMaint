@@ -29,7 +29,6 @@ public class CaseCategory : AuditableEntity
 
     public long DefaultPriorityId { get; set; }
     public PriorityLevel DefaultPriority { get; set; } = null!;
-    public CostBearer DefaultCostBearer { get; set; }
 
     /// <summary>E.g. a leak needs a photo, so fewer requests are rejected for missing information (O05).</summary>
     public bool PhotoRequired { get; set; }

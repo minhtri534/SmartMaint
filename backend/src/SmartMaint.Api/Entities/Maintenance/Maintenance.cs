@@ -40,6 +40,13 @@ public enum CaseTaskStatus
     NotApplicable = 4,
 }
 
+/// <summary>Who finished a task (NOT IN ERD v5, meeting 07/11). Stored as text + CHECK.</summary>
+public enum TaskDoneBy
+{
+    Technician,
+    ThirdParty,
+}
+
 /// <summary>ERD: CaseChecklists(ID, Name, Description, Category) — a checklist template for a service type.</summary>
 public class CaseChecklist : AuditableEntity
 {
@@ -157,6 +164,13 @@ public class CaseTask : AuditableEntity
     /// </summary>
     public long? RepairCaseId { get; set; }
     public Case? RepairCase { get; set; }
+
+    /// <summary>
+    /// NOT IN ERD v5 (meeting 07/11): who finished the item and when, for the KPI and the costs. The staff marks the items
+    /// an outside party did; the technician can no longer change those.
+    /// </summary>
+    public TaskDoneBy? DoneBy { get; set; }
+    public DateTimeOffset? DoneAt { get; set; }
 
     public List<TaskNote> Notes { get; set; } = [];
     public List<TaskImage> Images { get; set; } = [];

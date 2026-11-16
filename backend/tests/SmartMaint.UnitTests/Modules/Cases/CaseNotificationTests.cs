@@ -22,9 +22,9 @@ public sealed class CaseNotificationTests : CaseTestBase
 
     [Fact]
     [Trait(TestType.Key, TestType.Normal)]
-    public async Task Assign_TellsTheTechnicianAndApproveTellsTheCustomer()
+    public async Task Approve_TellsTheCustomerAndTheTechnician()
     {
-        var id = await CaseAtAsync(CaseStatus.Assigned);
+        var id = await CaseAtAsync(CaseStatus.Approved);
 
         Assert.Contains(Db.Notifications, n => n.UserId == Customer.Id && n.Details.Contains("approved"));
         Assert.Contains(Db.Notifications, n => n.UserId == Technician.Id && n.Details.Contains("assigned to you"));
@@ -33,7 +33,7 @@ public sealed class CaseNotificationTests : CaseTestBase
 
     [Fact]
     [Trait(TestType.Key, TestType.Normal)]
-    public async Task Accept_TellsTheStaffMemberWhoAssigned()
+    public async Task Accept_TellsTheStaffMemberWhoApproved()
     {
         await CaseAtAsync(CaseStatus.Accepted);
 
@@ -68,7 +68,7 @@ public sealed class CaseNotificationTests : CaseTestBase
     [Trait(TestType.Key, TestType.Normal)]
     public async Task ListMine_ReturnsOnlyTheCallersNotificationsNewestFirst()
     {
-        await CaseAtAsync(CaseStatus.Assigned);
+        await CaseAtAsync(CaseStatus.Approved);
         As(Customer);
 
         var page = await Notifications.ListMineAsync(new PageRequest(), default);

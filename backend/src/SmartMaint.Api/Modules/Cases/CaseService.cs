@@ -22,6 +22,8 @@ internal sealed partial class CaseService(
     private static readonly TimeSpan ReopenWindow = TimeSpan.FromDays(7);
 
     private const string PhotoFolder = "cases";
+    private const string ReceiptFolder = "receipts";
+    private const string LabourLine = "Labour";
 
     private static readonly Dictionary<RejectReason, string> RejectLabels = new()
     {
@@ -36,14 +38,6 @@ internal sealed partial class CaseService(
         [ExtendDueReason.CustomerRescheduled] = "the customer asked for another time",
         [ExtendDueReason.LargerThanExpected] = "the work is larger than expected",
         [ExtendDueReason.Other] = "other reason",
-    };
-
-    private static readonly Dictionary<HoldReason, string> HoldLabels = new()
-    {
-        [HoldReason.WaitingParts] = CaseHistoryTags.WaitingParts,
-        [HoldReason.WaitingCustomer] = CaseHistoryTags.WaitingCustomer,
-        [HoldReason.WaitingStaffDecision] = "Waiting for the staff member's decision",
-        [HoldReason.WaitingThirdParty] = "Waiting for an outside party",
     };
 
     // ----- reads ------------------------------------------------------------------------------------------------
@@ -72,18 +66,24 @@ internal sealed partial class CaseService(
             [
                 .. c.Images.Select(i => i.Image),
                 .. c.Tasks.SelectMany(t => t.Images).Select(i => i.Image),
+                .. c.Costs.Where(x => x.ReceiptImage != null).Select(x => x.ReceiptImage!),
                 .. c.ThirdParties.Where(t => t.EvidenceImage != null).Select(t => t.EvidenceImage!),
             ],
             cancellationToken);
-        // Costs: staff, managers and the technician; the customer only when the customer pays.
-        var showCosts = scope.Role != UserRole.Customer || c.CostBearer == CostBearer.Customer;
         var mergedCaseIds = await db.Cases.Where(x => x.MergedIntoCaseId == c.Id).OrderBy(x => x.Id).Select(x => x.Id)
             .ToListAsync(cancellationToken);
+        var nextCaseId = await db.Cases.Where(x => x.PreviousCaseId == c.Id).Select(x => (long?)x.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+        var now = clock.GetUtcNow();
+        var allowed = AllowedActions(c, scope, now);
         var extras = new CaseMapper.DetailExtras(
             mergedCaseIds,
             scope.Role is UserRole.Staff or UserRole.Manager ? await DecisionInfoAsync(c, cancellationToken) : null,
-            await db.AssetReplacementRequests.AsNoTracking().SingleOrDefaultAsync(r => r.CaseId == c.Id, cancellationToken));
-        return CaseMapper.ToDetail(c, AllowedActions(c, scope, clock.GetUtcNow()), photoUrls, showCosts, extras);
+            await db.AssetReplacementRequests.AsNoTracking().SingleOrDefaultAsync(r => r.CaseId == c.Id, cancellationToken),
+            nextCaseId,
+            allowed.Contains(CaseAction.Edit) ? StatusChangesOf(c, now) : []);
+        // Meeting 07/11: how the work is done (tasks, costs, repair record) is for the building's people only.
+        return CaseMapper.ToDetail(c, allowed, photoUrls, showWork: scope.Role != UserRole.Customer, extras);
     }
 
     // ----- create -----------------------------------------------------------------------------------------------
@@ -122,9 +122,13 @@ internal sealed partial class CaseService(
         }
 
         // N26: an emergency service type is saved as an emergency case; F4 handles it, F3 offers no actions on it.
+        // Otherwise the customer's own choice (meeting 07/11), kept Pending even when it is "Emergency": the staff
+        // confirms it on approval and only then does it go to F4 (Leader 09/11).
         var priority = category.IsEmergency
             ? await db.PriorityLevels.SingleAsync(p => p.Code == CasePriority.Emergency, cancellationToken)
-            : category.DefaultPriority;
+            : request.Urgency is { } chosen
+                ? await db.PriorityLevels.SingleAsync(p => p.Code == chosen, cancellationToken)
+                : category.DefaultPriority;
 
         var now = clock.GetUtcNow();
         var c = new Case
@@ -138,12 +142,13 @@ internal sealed partial class CaseService(
             // F4 page 1 ①: an emergency skips Pending, the system approves it and starts the 24/7 clock.
             Status = category.IsEmergency ? CaseStatus.Approved : CaseStatus.Pending,
             PriorityLevelId = priority.Id,
-            CostBearer = category.DefaultCostBearer,
             SubmittedAt = now,
         };
         if (category.IsEmergency)
         {
             EnterEmergency(c, priority, now, acknowledged: false);
+            // The staff names the technician (and the tasks) with Edit; until then there is one task.
+            c.Tasks.Add(new CaseTask { Name = c.Title, Status = CaseTaskStatus.Pending });
         }
 
         await AddPhotosAsync(c, CaseImageKind.Report, photos, cancellationToken);
@@ -177,51 +182,14 @@ internal sealed partial class CaseService(
     }
 
     // ----- status changes (one method per arrow of the state machine) ---------------------------------------------
+    // Approve, Reject, Edit and the task / follower steps of the staff are in CaseService.WorkOrder.cs.
 
     public Task<CaseDetailResponse> CancelAsync(long id, ReasonRequest request, CancellationToken cancellationToken) =>
         ActAsync(id, CaseAction.Cancel, (c, now) =>
         {
             StopThirdParties(c, now);
+            StopClock(c, now);
             return Task.FromResult<string?>(request.Reason.Trim());
-        }, cancellationToken);
-
-    public Task<CaseDetailResponse> ApproveAsync(long id, ApproveCaseRequest request, CancellationToken cancellationToken) =>
-        ActAsync(id, CaseAction.Approve, async (c, now) =>
-        {
-            var priority = await db.PriorityLevels.SingleAsync(p => p.Code == request.Urgency, cancellationToken);
-            c.PriorityLevelId = priority.Id;
-            c.Priority = priority;
-            c.CostBearer = request.CostBearer;
-            c.StaffId ??= currentUser.Id;
-            if (request.Urgency != CasePriority.Emergency)
-            {
-                return null;
-            }
-
-            // F3 page 1: the staff member decides it is an emergency → F4, already acknowledged (it is their decision).
-            EnterEmergency(c, priority, now, acknowledged: true);
-            return "Escalated to Emergency, handed over to F4.";
-        }, cancellationToken);
-
-    public Task<CaseDetailResponse> RejectAsync(long id, RejectCaseRequest request, CancellationToken cancellationToken) =>
-        ActAsync(id, CaseAction.Reject, (c, _) =>
-        {
-            c.StaffId ??= currentUser.Id;
-            return Task.FromResult<string?>($"{RejectLabels[request.Reason]}: {request.Note.Trim()}");
-        }, cancellationToken);
-
-    public Task<CaseDetailResponse> AssignAsync(long id, AssignCaseRequest request, CancellationToken cancellationToken) =>
-        ActAsync(id, CaseAction.Assign, async (c, _) =>
-        {
-            var technician = await db.Technicians.SingleOrDefaultAsync(
-                t => t.Id == request.TechnicianId && t.Status == UserStatus.Active, cancellationToken)
-                ?? throw CaseErrors.InvalidTechnician();
-
-            c.AssignedTechnicianId = technician.Id;
-            c.AcceptRemindedAt = null;
-            c.Technician = technician;
-            // The ERD keeps only the last technician on the case, so the history row says who got it.
-            return $"Assigned to {technician.FullName}.";
         }, cancellationToken);
 
     public Task<CaseDetailResponse> AcceptAsync(long id, CancellationToken cancellationToken) =>
@@ -237,57 +205,49 @@ internal sealed partial class CaseService(
                 RejectedAt = now,
                 Reason = request.Reason.Trim(),
             });
-            // Back to the staff member (status Approved) to assign someone else.
+            // Back to the staff member (status Approved, nobody named) who chooses someone else with Edit.
             c.AssignedTechnicianId = null;
             c.Technician = null;
             return Task.FromResult<string?>(request.Reason.Trim());
         }, cancellationToken);
 
+    // Meeting 07/11: the technician moves the status with one dropdown (In progress / On hold / Completed). In progress
+    // runs the work clock; On hold and Completed stop it. Nothing else is asked (no hold reason, no repair record).
+
     public Task<CaseDetailResponse> StartAsync(long id, CancellationToken cancellationToken) =>
         ActAsync(id, CaseAction.Start, (c, now) =>
         {
-            // After a reassignment the clock keeps running from the first start.
+            // A case that continues another one keeps that one's SLA clock.
             c.StartedAt ??= now;
             c.DueAt ??= c.StartedAt.Value.AddHours(c.Priority.SlaHours);
+            StartClock(c, now);
             return Task.FromResult<string?>(null);
         }, cancellationToken);
 
-    public Task<CaseDetailResponse> HoldAsync(long id, HoldCaseRequest request, CancellationToken cancellationToken) =>
+    public Task<CaseDetailResponse> HoldAsync(long id, CancellationToken cancellationToken) =>
         ActAsync(id, CaseAction.Hold, (c, now) =>
         {
-            c.HoldReason = request.Reason;
-            c.HoldUntil = request.ExpectedResumeOn;
-            if (request.Reason == HoldReason.WaitingThirdParty)
-            {
-                // F5 hand-over: all the system keeps is "this case has an outside party" (E4, E6).
-                c.OutsourcedAt ??= now;
-            }
-
-            return Task.FromResult<string?>($"{HoldLabels[request.Reason]}, expected back {request.ExpectedResumeOn:yyyy-MM-dd}.");
+            StopClock(c, now);
+            c.HoldReason = null;
+            c.HoldUntil = null;
+            return Task.FromResult<string?>(null);
         }, cancellationToken);
 
     public Task<CaseDetailResponse> ResumeAsync(long id, CancellationToken cancellationToken) =>
         ActAsync(id, CaseAction.Resume, (c, now) =>
         {
-            var decided = c.HoldReason is HoldReason.WaitingStaffDecision or HoldReason.WaitingThirdParty;
             c.HoldReason = null;
             c.HoldUntil = null;
-            // F5 step ⑤ "the technician continues": the staff drop any outside party still on the case.
-            var stopped = StopThirdParties(c, now);
-            return Task.FromResult(decided && currentUser.Role == UserRole.Staff
-                ? $"Decision: the technician continues the repair.{(stopped > 0 ? " Outside party stopped." : string.Empty)}"
-                : null);
+            StartClock(c, now);
+            return Task.FromResult<string?>(null);
         }, cancellationToken);
 
     public Task<CaseDetailResponse> CompleteAsync(long id, CompleteWorkRequest request, CancellationToken cancellationToken) =>
-        ActAsync(id, CaseAction.Complete, async (c, now) =>
+        ActAsync(id, CaseAction.Complete, (c, now) =>
         {
-            c.RootCause = request.RootCause.Trim();
-            c.PartsUsed = string.IsNullOrWhiteSpace(request.PartsUsed) ? null : request.PartsUsed.Trim();
+            StopClock(c, now);
             c.CompletedAt = now;
-            // Hours typed by the technician win; otherwise the system measures start to finish.
-            c.ActualCompletionHours = request.LaborHours ?? MeasuredHours(c.StartedAt, now);
-            // F5 step ⑨: an outside party replaced the asset → the new model goes to the replacement request.
+            // F5 step ⑨ (old flow): an outside party replaced the asset → the new model goes to the replacement request.
             if (c.ThirdParties.Any(t => t.Status == OutsideWorkStatus.Done && t.Job == OutsideWorkJob.Replace))
             {
                 if (string.IsNullOrWhiteSpace(request.ReplacementModel))
@@ -299,13 +259,83 @@ internal sealed partial class CaseService(
                 c.ReplacementSerial = string.IsNullOrWhiteSpace(request.ReplacementSerial) ? null : request.ReplacementSerial.Trim();
             }
 
-            await AddPhotosAsync(c, CaseImageKind.Before, request.BeforePhotos ?? [], cancellationToken);
-            await AddPhotosAsync(c, CaseImageKind.After, request.AfterPhotos, cancellationToken);
-            AddCosts(c, request.Parts);
+            SetLabourCost(c);
+            return Task.FromResult<string?>(null);
+        }, cancellationToken);
+
+    // ----- work hours and the technician's costs (meeting 07/11) -----------------------------------------------
+
+    public Task<CaseDetailResponse> LogHoursAsync(long id, LogHoursRequest request, CancellationToken cancellationToken) =>
+        ActAsync(id, CaseAction.LogHours, (c, now) =>
+        {
+            c.ActualCompletionHours = Math.Round(request.Hours, 2);
+            // A running clock goes on from the typed total.
+            if (c.ClockStartedAt is not null)
+            {
+                c.ClockStartedAt = now;
+            }
+
+            return Task.FromResult<string?>(null);
+        }, cancellationToken);
+
+    public Task<CaseDetailResponse> AddCostAsync(long id, AddCostRequest request, CancellationToken cancellationToken) =>
+        ActAsync(id, CaseAction.AddCost, async (c, _) =>
+        {
+            var receipt = string.IsNullOrWhiteSpace(request.ReceiptPhoto)
+                ? null
+                : await storage.SaveAsync(ReceiptFolder, DataUrl.ParseImage(request.ReceiptPhoto), cancellationToken);
+            c.Costs.Add(new Cost
+            {
+                Name = request.Name.Trim(),
+                Description = Clean(request.Description),
+                Amount = request.Amount,
+                ReceiptCode = Clean(request.ReceiptCode),
+                ReceiptImage = receipt,
+            });
+            notifications.Send(
+                c.StaffId is { } s ? [s] : await StaffOfBuildingAsync(c.Room.Floor.BuildingId, cancellationToken),
+                $"{c.Technician?.FullName} added a cost to {Case.CodeOf(c.Id)}: {request.Name.Trim()}, {request.Amount:N0} VND.");
             return null;
         }, cancellationToken);
 
-    // ----- F2: preventive work orders ---------------------------------------------------------------------------
+    /// <summary>The work clock runs from now (In progress).</summary>
+    private static void StartClock(Case c, DateTimeOffset now) => c.ClockStartedAt ??= now;
+
+    /// <summary>Adds the running stretch to the work hours and stops the clock.</summary>
+    private static void StopClock(Case c, DateTimeOffset now)
+    {
+        if (c.ClockStartedAt is not { } started)
+        {
+            return;
+        }
+
+        var stretch = (decimal)(now - started).TotalHours;
+        c.ActualCompletionHours = Math.Max(0.01m, Math.Round((c.ActualCompletionHours ?? 0) + stretch, 2));
+        c.ClockStartedAt = null;
+    }
+
+    /// <summary>One labour line = work hours × the technician's hourly rate (E9); replaced when the case is completed again.</summary>
+    private void SetLabourCost(Case c)
+    {
+        var old = c.Costs.Where(x => x.Name == LabourLine && x.ReceiptCode == null && x.ReceiptImage == null).ToList();
+        foreach (var line in old)
+        {
+            c.Costs.Remove(line);
+            db.Costs.Remove(line);
+        }
+
+        if (c.Technician?.HourlyRate is { } rate && rate > 0 && c.ActualCompletionHours is { } hours)
+        {
+            c.Costs.Add(new Cost
+            {
+                Name = LabourLine,
+                Description = $"{c.Technician.FullName}: {hours:0.##} h × {rate:N0} VND",
+                Amount = Math.Round(hours * rate, 0),
+            });
+        }
+    }
+
+    // ----- tasks ------------------------------------------------------------------------------------------------
 
     public Task<CaseDetailResponse> UpdateTaskAsync(
         long id, long taskId, UpdateTaskRequest request, CancellationToken cancellationToken) =>
@@ -313,6 +343,12 @@ internal sealed partial class CaseService(
         {
             var task = await db.CaseTasks.Include(t => t.Images).SingleOrDefaultAsync(t => t.Id == taskId && t.CaseId == c.Id, cancellationToken)
                 ?? throw CaseErrors.TaskNotFound();
+            if (task.DoneBy == TaskDoneBy.ThirdParty)
+            {
+                // Meeting 07/11: the staff marked it as done by an outside party.
+                throw CaseErrors.TaskByThirdParty(task.Name);
+            }
+
             var photos = request.Photos ?? [];
             if (request.Status == CaseTaskStatus.Fail && photos.Count == 0 && task.Images.Count == 0)
             {
@@ -321,15 +357,18 @@ internal sealed partial class CaseService(
             }
 
             task.Status = request.Status;
+            task.DoneBy = request.Status == CaseTaskStatus.Pending ? null : TaskDoneBy.Technician;
+            task.DoneAt = request.Status == CaseTaskStatus.Pending ? null : now;
             if (!string.IsNullOrWhiteSpace(request.Note))
             {
                 task.Notes.Add(new TaskNote { Note = request.Note.Trim() });
             }
 
+            // Meeting 07/11: each photo may carry a caption (ERD: TaskImages.Notes).
             foreach (var photo in photos)
             {
-                var path = await storage.SaveAsync("tasks", DataUrl.ParseImage(photo), cancellationToken);
-                task.Images.Add(new TaskImage { Image = path });
+                var path = await storage.SaveAsync("tasks", DataUrl.ParseImage(photo.Image), cancellationToken);
+                task.Images.Add(new TaskImage { Image = path, Notes = Clean(photo.Caption) });
             }
 
             if (request.Status != CaseTaskStatus.Fail || request.FailAction != FailAction.CreateCase || task.RepairCaseId is not null)
@@ -337,7 +376,8 @@ internal sealed partial class CaseService(
                 return null;
             }
 
-            // BR-07: a repair case from the failed item — F3 at Approved for the staff to assign, F4 when dangerous.
+            // BR-07: a repair case from the failed item — F3 at Approved for the staff to name a technician (Edit),
+            // F4 when dangerous.
             var urgency = request.Dangerous ? CasePriority.Emergency : CasePriority.Normal;
             var priority = await db.PriorityLevels.SingleAsync(p => p.Code == urgency, cancellationToken);
             var repair = new Case
@@ -346,13 +386,13 @@ internal sealed partial class CaseService(
                 AssetId = c.AssetId,
                 CategoryId = c.CategoryId,
                 Title = $"Repair: {task.Name}",
-                Description = $"{request.Note?.Trim()}\nFound during preventive work order {Case.CodeOf(c.Id)}.",
+                Description = $"{request.Note?.Trim()}\nFound during work order {Case.CodeOf(c.Id)}.",
                 Status = CaseStatus.Approved,
                 PriorityLevelId = priority.Id,
-                CostBearer = CostBearer.Building,
                 StaffId = c.StaffId,
                 SubmittedAt = now,
             };
+            repair.Tasks.Add(new CaseTask { Name = repair.Title, Status = CaseTaskStatus.Pending });
             if (request.Dangerous)
             {
                 // The staff still has to acknowledge it: the watch job escalates if nobody does.
@@ -363,7 +403,7 @@ internal sealed partial class CaseService(
                 NewStatus = CaseStatus.Approved,
                 ChangedById = currentUser.Id,
                 ChangedAt = now,
-                Reason = $"Failed checklist item \"{task.Name}\" of {Case.CodeOf(c.Id)}.",
+                Reason = $"Failed task \"{task.Name}\" of {Case.CodeOf(c.Id)}.",
             });
             db.Cases.Add(repair);
             await db.SaveChangesAsync(cancellationToken);
@@ -372,48 +412,8 @@ internal sealed partial class CaseService(
             var kind = request.Dangerous ? "Emergency repair" : "Repair";
             notifications.Send(
                 await StaffOfBuildingAsync(c.Room.Floor.BuildingId, cancellationToken),
-                $"{kind} case {Case.CodeOf(repair.Id)} \"{repair.Title}\" was made from {Case.CodeOf(c.Id)}. Assign a technician.");
-            return $"Item \"{task.Name}\" failed: repair case {Case.CodeOf(repair.Id)} made.";
-        }, cancellationToken);
-
-    public Task<CaseDetailResponse> CompleteChecklistAsync(long id, CompleteChecklistRequest request, CancellationToken cancellationToken) =>
-        ActAsync(id, CaseAction.CompleteChecklist, (c, now) =>
-        {
-            c.RootCause = string.IsNullOrWhiteSpace(request.Note) ? "Preventive maintenance done." : request.Note.Trim();
-            c.CompletedAt = now;
-            c.ActualCompletionHours = request.LaborHours ?? MeasuredHours(c.StartedAt, now);
-            AddCosts(c, request.Parts);
-            return Task.FromResult<string?>(null);
-        }, cancellationToken);
-
-    /// <summary>ERD: Costs — the parts the technician bought + one labour line (hours × hourly rate, E9).</summary>
-    private static void AddCosts(Case c, IReadOnlyList<CostLineRequest>? parts)
-    {
-        c.Costs.AddRange((parts ?? []).Select(ToCost));
-        if (c.Technician?.HourlyRate is { } rate && rate > 0 && c.ActualCompletionHours is { } hours)
-        {
-            c.Costs.Add(new Cost
-            {
-                Name = "Labour",
-                Description = $"{c.Technician.FullName}: {hours:0.##} h × {rate:N0} VND",
-                Amount = Math.Round(hours * rate, 0),
-            });
-        }
-    }
-
-    public Task<CaseDetailResponse> CloseAsync(long id, CancellationToken cancellationToken) =>
-        ActAsync(id, CaseAction.Close, async (c, now) =>
-        {
-            c.ClosedAt = now;
-            await AddReplacementRequestAsync(c, cancellationToken);
+                $"{kind} case {Case.CodeOf(repair.Id)} \"{repair.Title}\" was made from {Case.CodeOf(c.Id)}. Choose a technician.");
             return null;
-        }, cancellationToken);
-
-    public Task<CaseDetailResponse> ReopenAsync(long id, ReasonRequest request, CancellationToken cancellationToken) =>
-        ActAsync(id, CaseAction.Reopen, (c, now) =>
-        {
-            ClearForReopen(c, now);
-            return Task.FromResult<string?>(request.Reason.Trim());
         }, cancellationToken);
 
     /// <summary>
@@ -439,58 +439,7 @@ internal sealed partial class CaseService(
         }
     }
 
-    private static Cost ToCost(CostLineRequest line) =>
-        new() { Name = line.Name.Trim(), Description = string.IsNullOrWhiteSpace(line.Description) ? null : line.Description.Trim(), Amount = line.Amount };
-
-    // ----- Part 4: staff steps in, "not fixed", costs ------------------------------------------------------------
-
-    public Task<CaseDetailResponse> ReassignAsync(long id, ReassignCaseRequest request, CancellationToken cancellationToken) =>
-        ActAsync(id, CaseAction.Reassign, async (c, _) =>
-        {
-            var technician = await db.Technicians.SingleOrDefaultAsync(
-                t => t.Id == request.TechnicianId && t.Status == UserStatus.Active, cancellationToken)
-                ?? throw CaseErrors.InvalidTechnician();
-            if (technician.Id == c.AssignedTechnicianId)
-            {
-                throw CaseErrors.SameTechnician();
-            }
-
-            var previous = c.Technician?.FullName ?? "nobody";
-            c.AssignedTechnicianId = technician.Id;
-            c.AcceptRemindedAt = null;
-            c.Technician = technician;
-            // The SLA clock keeps running: StartedAt / DueAt stay (Start does not reset them).
-            return $"Reassigned from {previous} to {technician.FullName}: {request.Reason.Trim()}";
-        }, cancellationToken);
-
-    public Task<CaseDetailResponse> ChangeUrgencyAsync(long id, ChangeUrgencyRequest request, CancellationToken cancellationToken) =>
-        ActAsync(id, CaseAction.ChangeUrgency, async (c, now) =>
-        {
-            if (c.Priority.Code == request.Urgency)
-            {
-                throw CaseErrors.SameUrgency();
-            }
-
-            var before = c.Priority.Name;
-            var priority = await db.PriorityLevels.SingleAsync(p => p.Code == request.Urgency, cancellationToken);
-            c.PriorityLevelId = priority.Id;
-            c.Priority = priority;
-            if (request.Urgency == CasePriority.Emergency)
-            {
-                // F4 counts 24/7 from now, not from the start of work.
-                EnterEmergency(c, priority, now, acknowledged: true);
-            }
-            else if (c.StartedAt is { } started)
-            {
-                // O08: the deadline follows the new level, counted from the start of work.
-                c.DueAt = started.AddHours(priority.SlaHours);
-                c.SlaWarnedAt = null;
-                c.SlaOverdueNotifiedAt = null;
-            }
-
-            var f4 = request.Urgency == CasePriority.Emergency ? " Handed over to F4." : string.Empty;
-            return $"Urgency {before} → {priority.Name}: {request.Reason.Trim()}{f4}";
-        }, cancellationToken);
+    // ----- the deadline, "not fixed", costs ---------------------------------------------------------------------
 
     public Task<CaseDetailResponse> ExtendDueAsync(long id, ExtendDueRequest request, CancellationToken cancellationToken) =>
         ActAsync(id, CaseAction.ExtendDue, (c, _) =>
@@ -533,11 +482,31 @@ internal sealed partial class CaseService(
         }, cancellationToken);
 
     public Task<CaseDetailResponse> UpdateCostsAsync(long id, UpdateCostsRequest request, CancellationToken cancellationToken) =>
-        ActAsync(id, CaseAction.UpdateCosts, async (c, _) =>
+        ActAsync(id, CaseAction.UpdateCosts, (c, _) =>
         {
-            db.Costs.RemoveRange(await db.Costs.Where(x => x.CaseId == c.Id).ToListAsync(cancellationToken));
-            c.Costs.AddRange(request.Lines.Select(ToCost));
-            return $"Costs corrected, total {request.Lines.Sum(l => l.Amount):N0} VND.";
+            // The list becomes the form's lines: kept lines (by id) keep their receipt, the others are new.
+            var keep = request.Lines.Where(l => l.Id is not null).Select(l => l.Id!.Value).ToHashSet();
+            foreach (var line in c.Costs.Where(x => !keep.Contains(x.Id)).ToList())
+            {
+                c.Costs.Remove(line);
+                db.Costs.Remove(line);
+            }
+
+            foreach (var line in request.Lines)
+            {
+                var cost = line.Id is { } costId
+                    ? c.Costs.SingleOrDefault(x => x.Id == costId) ?? throw CaseErrors.CostNotFound()
+                    : new Cost();
+                cost.Name = line.Name.Trim();
+                cost.Description = Clean(line.Description);
+                cost.Amount = line.Amount;
+                if (line.Id is null)
+                {
+                    c.Costs.Add(cost);
+                }
+            }
+
+            return Task.FromResult<string?>(null);
         }, cancellationToken);
 
     public Task<CaseDetailResponse> RateAsync(long id, RateCaseRequest request, CancellationToken cancellationToken) =>
@@ -553,7 +522,9 @@ internal sealed partial class CaseService(
 
     /// <summary>
     /// Loads the case inside the caller's scope, checks the action against the state machine, runs <paramref name="apply"/>
-    /// (which changes the fields and returns the reason for the history, if any), moves the status, writes one history row.
+    /// (which changes the fields and returns the reason for the history, if any), moves the status and writes one history
+    /// row when the status changed. Meeting 07/11: only status changes are kept; the exceptions are the F4 emergency log
+    /// (its lines are its content) and the rows F6 counts (CaseHistoryTags.IsCounted).
     /// </summary>
     private async Task<CaseDetailResponse> ActAsync(
         long id,
@@ -571,17 +542,16 @@ internal sealed partial class CaseService(
             throw CaseErrors.InvalidTransition();
         }
 
-        // Read before apply: a decline clears the technician, a passed outside-work check moves the status itself.
+        // Read before apply: a decline clears the technician; Edit may move the status itself.
         var technicianBefore = c.AssignedTechnicianId;
+        var statusBefore = c.Status;
         var rule = CaseTransitions.Find(action, scope.Role, c.Status)!;
         var reason = await apply(c, now);
 
-        // A status change always writes a history row; an action that keeps the status (urgency, deadline, "not fixed",
-        // costs) writes one with the same status when it has a reason, so the timeline shows who did it and why.
-        var to = rule.To;
-        if (to is not null || reason is not null)
+        c.Status = rule.To ?? c.Status;
+        var kept = reason is not null && (action == CaseAction.AddLog || CaseHistoryTags.IsCounted(reason));
+        if (c.Status != statusBefore || kept)
         {
-            c.Status = to ?? c.Status;
             c.History.Add(new CaseStatusHistory
             {
                 NewStatus = c.Status,
@@ -598,57 +568,47 @@ internal sealed partial class CaseService(
 
     // ----- notifications (SRS 5.4.2, in-app only) ---------------------------------------------------------------
 
+    /// <summary>The requester and every follower (meeting 07/11).</summary>
+    private static long[] CustomersOf(Case c) =>
+        [.. (c.RequestingCustomerId is { } r ? new[] { r } : []), .. c.Followers.Select(f => f.CustomerId)];
+
     /// <summary>Who hears about each arrow. The person who acted is never notified (NotificationService skips them).</summary>
     private async Task NotifyAsync(
         Case c, CaseAction action, string? reason, long? technicianBefore, CancellationToken cancellationToken)
     {
         var code = Case.CodeOf(c.Id);
-        var customer = c.RequestingCustomerId is { } customerId ? new[] { customerId } : [];
+        var customer = CustomersOf(c);
         var technician = c.AssignedTechnicianId is { } technicianId ? new[] { technicianId } : [];
         var staffOfBuilding = await StaffOfBuildingAsync(c.Room.Floor.BuildingId, cancellationToken);
 
         switch (action)
         {
             case CaseAction.Approve:
-                notifications.Send(customer, $"{code} \"{c.Title}\" was approved and will be assigned to a technician.");
-                break;
-            case CaseAction.Reject:
-                notifications.Send(customer, $"{code} \"{c.Title}\" was rejected. {reason}");
-                break;
-            case CaseAction.Assign:
+                notifications.Send(customer, $"{code} \"{c.Title}\" was approved and given to a technician.");
                 notifications.Send(technician, CaseMapper.IsEmergencyFlow(c)
                     ? $"EMERGENCY {code} \"{c.Title}\" in {c.Room.Floor.DisplayName}, {c.Room.RoomNumber} was assigned to you. Accept it now."
                     : $"{code} \"{c.Title}\" was assigned to you.");
                 break;
+            case CaseAction.Reject:
+                notifications.Send(customer, $"{code} \"{c.Title}\" was rejected. {reason}");
+                break;
             case CaseAction.Accept:
-                // 5.4.2: the staff member who assigned it (the last "assigned" row of the history).
-                var assignedBy = await db.CaseStatusHistory
-                    .Where(h => h.CaseId == c.Id && h.NewStatus == CaseStatus.Assigned)
-                    .OrderByDescending(h => h.ChangedAt).Select(h => (long?)h.ChangedById)
-                    .FirstOrDefaultAsync(cancellationToken);
-                notifications.Send(assignedBy is { } by ? [by] : [], $"{c.Technician?.FullName} accepted {code}.");
+                // 5.4.2: the staff member who approved it.
+                notifications.Send(c.StaffId is { } staffId ? [staffId] : staffOfBuilding, $"{c.Technician?.FullName} accepted {code}.");
                 break;
             case CaseAction.Decline:
-                notifications.Send(staffOfBuilding, $"A technician declined {code}: {reason} Assign someone else.");
+                notifications.Send(staffOfBuilding, $"A technician declined {code}: {reason} Choose someone else with Edit.");
                 break;
             case CaseAction.Hold:
                 notifications.Send([.. staffOfBuilding, .. customer], $"{code} \"{c.Title}\" is on hold. {reason}");
                 break;
-            case CaseAction.Complete or CaseAction.CompleteChecklist:
+            case CaseAction.Complete:
                 notifications.Send(staffOfBuilding, $"{code} \"{c.Title}\" is done and waits for your check.");
                 break;
-            case CaseAction.Close:
-                notifications.Send(customer, $"{code} \"{c.Title}\" was closed. Please rate the repair.");
-                await NotifyEmergencyClosedAsync(c, staffOfBuilding, cancellationToken);
-                break;
-            case CaseAction.Reopen or CaseAction.AcceptNotFixed:
+            case CaseAction.AcceptNotFixed:
                 notifications.Send([.. technician, .. customer], $"{code} \"{c.Title}\" was reopened: {reason}");
                 break;
-            case CaseAction.Reassign:
-                notifications.Send(technicianBefore is { } old ? [old] : [], $"{code} \"{c.Title}\" was taken back from you and given to another technician.");
-                notifications.Send(technician, $"{code} \"{c.Title}\" was assigned to you.");
-                break;
-            case CaseAction.ChangeUrgency or CaseAction.ExtendDue:
+            case CaseAction.ExtendDue:
                 notifications.Send([.. technician, .. customer], $"{code} \"{c.Title}\": {reason}");
                 break;
             case CaseAction.ReportNotFixed:
@@ -658,11 +618,14 @@ internal sealed partial class CaseService(
                 notifications.Send(customer, $"{code} \"{c.Title}\": {reason}");
                 break;
             case CaseAction.Cancel:
-                long[] involved = [.. customer, .. (c.StaffId is { } staffId ? new[] { staffId } : []), .. (technicianBefore is { } t ? new[] { t } : [])];
+                long[] involved = [.. customer, .. (c.StaffId is { } s ? new[] { s } : []), .. (technicianBefore is { } t ? new[] { t } : [])];
                 notifications.Send(involved, $"{code} \"{c.Title}\" was cancelled: {reason}");
                 break;
+            case CaseAction.Edit:
+                // EditAsync tells the people concerned itself (who it is depends on what changed).
+                break;
             default:
-                NotifyEmergency(c, action, reason, technicianBefore, staffOfBuilding);
+                NotifyEmergency(c, action, staffOfBuilding);
                 break;
         }
     }
@@ -685,6 +648,7 @@ internal sealed partial class CaseService(
         }
 
         var emergency = CaseMapper.IsEmergencyFlow(c);
+        // A follower only reads the case: acting needs the requester (meeting 07/11).
         var involved = scope.Role switch
         {
             UserRole.Customer => c.RequestingCustomerId == scope.UserId,
@@ -697,33 +661,27 @@ internal sealed partial class CaseService(
             return false;
         }
 
+        var reopenable = c.ClosedAt is { } closedAt && now - closedAt <= ReopenWindow;
         return action switch
         {
             CaseAction.Rate => c.RatingStars is null,
             // F2: a preventive work order is done through its checklist, an incident through the repair record.
-            CaseAction.Complete => !c.IsPreventive,
-            CaseAction.UpdateTask => c.IsPreventive,
-            CaseAction.CompleteChecklist => c.IsPreventive && c.Tasks.All(t => t.Status != CaseTaskStatus.Pending),
+            // A work order is done when every checklist item has a result (F2); an incident whenever the technician says so.
+            CaseAction.Complete => !c.IsPreventive || c.Tasks.All(t => t.Status != CaseTaskStatus.Pending),
+            CaseAction.SetTaskThirdParty => c.Tasks.Count > 0,
+            // A closed case is only edited to reopen it, within 7 days.
+            CaseAction.Edit when c.Status == CaseStatus.Closed => reopenable,
+            CaseAction.UpdateCosts when c.Status == CaseStatus.Closed => reopenable,
             // O09: only before the deadline passes.
             CaseAction.ExtendDue => c.DueAt is { } due && now < due,
-            CaseAction.ReportNotFixed => c.NotFixedAt is null && c.ClosedAt is { } closedAt && now - closedAt <= ReopenWindow,
+            CaseAction.ReportNotFixed => c.NotFixedAt is null && reopenable,
             CaseAction.AcceptNotFixed or CaseAction.DeclineNotFixed => c.NotFixedAt is not null,
-            CaseAction.Reopen when c.Status == CaseStatus.Closed => c.ClosedAt is { } closed && now - closed <= ReopenWindow,
             // F5: while the case waits for the staff's decision or an outside party, the technician does not resume it.
-            CaseAction.Resume when scope.Role == UserRole.Technician =>
-                c.HoldReason is not (HoldReason.WaitingStaffDecision or HoldReason.WaitingThirdParty),
+            CaseAction.Resume => c.HoldReason is not (HoldReason.WaitingStaffDecision or HoldReason.WaitingThirdParty),
             CaseAction.RequestDecision => !c.IsPreventive,
-            CaseAction.Outsource => !c.IsPreventive && !c.ThirdParties.Any(t => t.Status is
-                OutsideWorkStatus.Quoting or OutsideWorkStatus.AwaitingDecision or OutsideWorkStatus.Working),
-            CaseAction.RecordQuote => ActiveThirdParty(c)?.Status == OutsideWorkStatus.Quoting,
-            CaseAction.DecideQuote => ActiveThirdParty(c)?.Status == OutsideWorkStatus.AwaitingDecision,
-            CaseAction.OutsideDeclined => ActiveThirdParty(c)?.Status is OutsideWorkStatus.Quoting or OutsideWorkStatus.Working,
-            CaseAction.CheckOutsideWork => ActiveThirdParty(c)?.Status == OutsideWorkStatus.Working,
-            CaseAction.RedoOutsideWork => ActiveThirdParty(c)?.Status == OutsideWorkStatus.FailedCheck,
-            // F4: an emergency leaves its level only through "downgrade" (K04), which needs a cost bearer.
-            CaseAction.ChangeUrgency => !emergency,
+            CaseAction.Outsource => !(c.Status == CaseStatus.OnHold && c.HoldReason == HoldReason.WaitingThirdParty),
             CaseAction.Acknowledge => emergency && c.AcknowledgedAt is null,
-            CaseAction.Downgrade or CaseAction.Merge or CaseAction.AddLog => emergency,
+            CaseAction.AddLog => emergency,
             CaseAction.MarkSafe => emergency && c.MadeSafeAt is null,
             CaseAction.WriteIncidentReport => emergency && c.EmergencyAt is not null,
             _ => true,
@@ -757,7 +715,8 @@ internal sealed partial class CaseService(
         var buildingIds = scope.BuildingIds;
         return scope.Role switch
         {
-            UserRole.Customer => query.Where(c => c.RequestingCustomerId == userId),
+            // Own requests and the cases the customer follows (meeting 07/11).
+            UserRole.Customer => query.Where(c => c.RequestingCustomerId == userId || c.Followers.Any(f => f.CustomerId == userId)),
             UserRole.Staff or UserRole.Manager => query.Where(c => buildingIds.Contains(c.Room.Floor.BuildingId)),
             // A technician who declined still sees the case (read only), so the decline does not "lose" it.
             UserRole.Technician => query.Where(c =>
@@ -775,16 +734,18 @@ internal sealed partial class CaseService(
         .Include(c => c.Technician)
         .Include(c => c.TriggerWorkOrder)
         .Include(c => c.Tasks)
-        .Include(c => c.ThirdParties);
+        .Include(c => c.ThirdParties)
+        .Include(c => c.Followers)
+        .Include(c => c.Costs);
 
     private IQueryable<Case> WithDetail() => WithRefs()
         .Include(c => c.Asset)
         .Include(c => c.Images)
         .Include(c => c.History).ThenInclude(h => h.ChangedBy)
         .Include(c => c.Rejections).ThenInclude(r => r.Technician)
-        .Include(c => c.Costs)
         .Include(c => c.Tasks).ThenInclude(t => t.Notes)
         .Include(c => c.Tasks).ThenInclude(t => t.Images)
+        .Include(c => c.Followers).ThenInclude(f => f.Customer)
         .AsSplitQuery();
 
     /// <summary>Uploads each data URL to storage (validated already) and links it to the case.</summary>
@@ -797,6 +758,4 @@ internal sealed partial class CaseService(
         }
     }
 
-    private static decimal MeasuredHours(DateTimeOffset? started, DateTimeOffset now) =>
-        started is null ? 0.01m : Math.Max(0.01m, Math.Round((decimal)(now - started.Value).TotalHours, 2));
 }

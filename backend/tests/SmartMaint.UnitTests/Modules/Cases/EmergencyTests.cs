@@ -8,7 +8,7 @@ using SmartMaint.UnitTests.Common;
 
 namespace SmartMaint.UnitTests.Modules.Cases;
 
-/// <summary>F4 emergency: intake, acknowledgement and escalation, downgrade, merge, milestones, 24/7 clock, report.</summary>
+/// <summary>F4 emergency: intake, acknowledgement and escalation, lowering it with Edit, milestones, 24/7 clock, report.</summary>
 public sealed class EmergencyTests : CaseTestBase
 {
     private readonly Staff _backup;
@@ -38,19 +38,22 @@ public sealed class EmergencyTests : CaseTestBase
 
     private bool Told(Account user, string text) => Db.Notifications.Any(n => n.UserId == user.Id && n.Details.Contains(text));
 
-    /// <summary>A burst pipe reported by the customer of room 501, driven to <paramref name="target"/> by the staff and the technician.</summary>
-    private async Task<long> EmergencyAtAsync(CaseStatus target)
+    /// <summary>
+    /// A burst pipe reported by the customer of room 501, driven to <paramref name="target"/> by the staff and the
+    /// technician. At Approved, <paramref name="named"/> = the staff already named the technician (with Edit).
+    /// </summary>
+    private async Task<long> EmergencyAtAsync(CaseStatus target, bool named = false)
     {
         var id = (await NewCaseAsync(BurstPipe)).Id;
-        if (target == CaseStatus.Approved)
+        if (target == CaseStatus.Approved && !named)
         {
             return id;
         }
 
         As(Staff);
         await Sut.AcknowledgeAsync(id, default);
-        await Sut.AssignAsync(id, new AssignCaseRequest(Technician.Id), default);
-        if (target == CaseStatus.Assigned)
+        await Sut.EditAsync(id, await EditOfAsync(id) with { TechnicianId = Technician.Id }, default);
+        if (target == CaseStatus.Approved)
         {
             return id;
         }
@@ -68,14 +71,13 @@ public sealed class EmergencyTests : CaseTestBase
             return id;
         }
 
-        await Sut.CompleteAsync(id, new CompleteWorkRequest("Pipe joint burst", null, null, null, Photo), default);
+        await Sut.CompleteAsync(id, new CompleteWorkRequest(), default);
         if (target == CaseStatus.Completed)
         {
             return id;
         }
 
-        As(Staff);
-        await Sut.CloseAsync(id, default);
+        await Sut.EditAsync(id, await EditOfAsync(id) with { StatusChange = EditStatusChange.Close }, default);
         return id;
     }
 
@@ -104,7 +106,7 @@ public sealed class EmergencyTests : CaseTestBase
         Assert.Equal(Clock.Now, result.Emergency!.AcknowledgedAt);
         Assert.Equal(Staff.Id, result.Staff!.Id);
         Assert.DoesNotContain(CaseAction.Acknowledge, result.AllowedActions);
-        Assert.Contains("after 4 min", result.History.Last().Reason);
+        Assert.Single(result.History); // meeting 07/11: no history row, the time is on the case
         Assert.True(Told(Customer, "is handling your emergency"));
     }
 
@@ -163,7 +165,7 @@ public sealed class EmergencyTests : CaseTestBase
     [Trait(TestType.Key, TestType.Boundary)]
     public async Task Watch_TechnicianNotAcceptingForTenMinutes_IsReminded()
     {
-        await EmergencyAtAsync(CaseStatus.Assigned);
+        await EmergencyAtAsync(CaseStatus.Approved, named: true);
         Clock.Now = Clock.Now.AddMinutes(10);
 
         await RunWatchAsync();
@@ -172,108 +174,47 @@ public sealed class EmergencyTests : CaseTestBase
         Assert.True(Told(Staff, "has not accepted EMERGENCY"));
     }
 
-    // ----- downgrade -----
+    // ----- not an emergency after all: the staff lowers the urgency with Edit (meeting 07/11) -----
 
     [Fact]
     [Trait(TestType.Key, TestType.Normal)]
-    public async Task Downgrade_BeforeAccepted_MovesTheCaseToF3WithoutADeadline()
+    public async Task Edit_LowerUrgencyOfAnEmergency_MovesTheCaseToF3WithoutADeadline()
     {
         var id = await EmergencyAtAsync(CaseStatus.Approved);
-        As(Staff);
 
-        var result = await Sut.DowngradeAsync(id, new DowngradeRequest(CasePriority.High, CostBearer.Customer, "Only a dripping tap, no flooding"), default);
+        var result = await Sut.EditAsync(id, await EditOfAsync(id) with { Urgency = CasePriority.High }, default);
 
         Assert.False(result.IsEmergencyFlow);
         Assert.Null(result.Emergency);
         Assert.Null(result.DueAt);
-        Assert.Equal(CostBearer.Customer, result.CostBearer);
         Assert.Equal(CaseStatus.Approved, result.Status);
-        Assert.Contains(CaseAction.Assign, result.AllowedActions);
+        Assert.Contains(CaseAction.Edit, result.AllowedActions);
+        Assert.DoesNotContain(CaseAction.Acknowledge, result.AllowedActions);
     }
 
     [Fact]
     [Trait(TestType.Key, TestType.Abnormal)]
-    public async Task Downgrade_AfterTheTechnicianAccepted_IsNotAllowed()
+    public async Task Edit_EmergencyOfAnotherBuilding_IsNotFound()
     {
-        var id = await EmergencyAtAsync(CaseStatus.Accepted);
-        As(Staff);
+        var id = await EmergencyAtAsync(CaseStatus.Approved);
+        var edit = await EditOfAsync(id);
+        As(StaffB);
 
-        Assert.Equal("case.invalid_transition", await ErrorCodeAsync(() =>
-            Sut.DowngradeAsync(id, new DowngradeRequest(CasePriority.High, CostBearer.Building, "Not that bad after all"), default)));
+        Assert.Equal("case.not_found", await ErrorCodeAsync(() => Sut.EditAsync(id, edit with { Urgency = CasePriority.Low }, default)));
     }
 
     [Fact]
     [Trait(TestType.Key, TestType.Boundary)]
-    public void DowngradeValidator_ToEmergencyOrShortReason_Fails()
-    {
-        var validator = new DowngradeRequestValidator();
-
-        Assert.False(validator.Validate(new DowngradeRequest(CasePriority.Emergency, CostBearer.Building, "Long enough reason")).IsValid);
-        Assert.False(validator.Validate(new DowngradeRequest(CasePriority.Low, CostBearer.Building, "too short")).IsValid);
-        Assert.True(validator.Validate(new DowngradeRequest(CasePriority.Low, CostBearer.Building, "ten chars!")).IsValid);
-    }
-
-    [Fact]
-    [Trait(TestType.Key, TestType.Abnormal)]
-    public async Task ChangeUrgency_OnAnEmergency_IsNotOffered()
+    public async Task Edit_EmergencyKeptAsEmergency_KeepsTheTwentyFourSevenClock()
     {
         var id = await EmergencyAtAsync(CaseStatus.Approved);
-        As(Staff);
+        var due = (await Sut.GetAsync(id, default)).DueAt;
+        Clock.Now = Clock.Now.AddMinutes(20);
 
-        var detail = await Sut.GetAsync(id, default);
+        var result = await Sut.EditAsync(id, await EditOfAsync(id) with { TechnicianId = Technician.Id }, default);
 
-        Assert.DoesNotContain(CaseAction.ChangeUrgency, detail.AllowedActions);
-        Assert.Contains(CaseAction.Downgrade, detail.AllowedActions);
-    }
-
-    // ----- merge -----
-
-    [Fact]
-    [Trait(TestType.Key, TestType.Normal)]
-    public async Task Merge_IntoAnOpenNormalCase_RaisesItAndTellsBothCustomersWhenFixed()
-    {
-        var main = await CaseAtAsync(CaseStatus.InProgress);
-        As(Customer2);
-        var report = (await Sut.CreateAsync(NewRequest(BurstPipe, RoomA2), default)).Id;
-        As(Staff);
-
-        var merged = await Sut.MergeAsync(report, new MergeCaseRequest(main, null), default);
-
-        Assert.Equal(CaseStatus.Cancelled, merged.Status);
-        Assert.Equal(main, merged.Emergency!.MergedInto!.Id);
-        var target = await Sut.GetAsync(main, default);
-        Assert.True(target.IsEmergencyFlow);
-        Assert.Equal(report, Assert.Single(target.MergedCases).Id);
-        Assert.True(Told(Customer2, "already being handled"));
-
-        As(Technician);
-        await Sut.CompleteAsync(main, new CompleteWorkRequest("Pipe joint burst", null, null, null, Photo), default);
-        As(Staff);
-        await Sut.CloseAsync(main, default);
-        Assert.True(Told(Customer2, "was fixed under"));
-    }
-
-    [Fact]
-    [Trait(TestType.Key, TestType.Abnormal)]
-    public async Task Merge_IntoACaseOfAnotherBuilding_Throws()
-    {
-        var other = (await NewCaseAsync(room: RoomB)).Id;
-        var id = await EmergencyAtAsync(CaseStatus.Approved);
-        As(Staff);
-
-        Assert.Equal("case.invalid_merge_target",
-            await ErrorCodeAsync(() => Sut.MergeAsync(id, new MergeCaseRequest(other, null), default)));
-    }
-
-    [Fact]
-    [Trait(TestType.Key, TestType.Boundary)]
-    public async Task Merge_IntoItself_Throws()
-    {
-        var id = await EmergencyAtAsync(CaseStatus.Approved);
-        As(Staff);
-
-        Assert.Equal("case.invalid_merge_target",
-            await ErrorCodeAsync(() => Sut.MergeAsync(id, new MergeCaseRequest(id, null), default)));
+        Assert.True(result.IsEmergencyFlow);
+        Assert.Equal(due, result.DueAt);
     }
 
     // ----- log, made safe, 24/7 clock -----
@@ -282,7 +223,7 @@ public sealed class EmergencyTests : CaseTestBase
     [Trait(TestType.Key, TestType.Normal)]
     public async Task AddLog_ThirdPartyCalled_IsInTheHistoryAndTellsTheTechnician()
     {
-        var id = await EmergencyAtAsync(CaseStatus.Assigned);
+        var id = await EmergencyAtAsync(CaseStatus.Approved, named: true);
         As(Staff);
 
         var result = await Sut.AddLogAsync(id, new EmergencyLogRequest(EmergencyLogKind.ThirdParty, "Plumbing contractor, 0901 234 567, in 30 min"), default);
@@ -320,13 +261,12 @@ public sealed class EmergencyTests : CaseTestBase
 
     [Fact]
     [Trait(TestType.Key, TestType.Boundary)]
-    public async Task Reopen_Emergency_RestartsTheTwentyFourSevenClock()
+    public async Task EditReopen_Emergency_RestartsTheTwentyFourSevenClock()
     {
         var id = await EmergencyAtAsync(CaseStatus.Closed);
         Clock.Now = Clock.Now.AddDays(1);
-        As(Staff);
 
-        var result = await Sut.ReopenAsync(id, new ReasonRequest("Water is leaking again from the joint"), default);
+        var result = await Sut.EditAsync(id, await EditOfAsync(id) with { StatusChange = EditStatusChange.Reopen, Reason = "Water is leaking again from the joint" }, default);
 
         Assert.Equal(Clock.Now.AddHours(2), result.DueAt);
         Assert.Null(result.Emergency!.MadeSafeAt);

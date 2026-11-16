@@ -27,13 +27,12 @@ internal sealed class CaseCategoryConfiguration : IEntityTypeConfiguration<CaseC
 {
     public void Configure(EntityTypeBuilder<CaseCategory> builder)
     {
-        builder.ToTable("case_categories", t => t.HasEnumCheck<CostBearer>("default_cost_bearer"));
+        builder.ToTable("case_categories");
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).UseIdentityAlwaysColumn();
         builder.Property(x => x.GroupName).HasMaxLength(60);
         builder.Property(x => x.Name).HasMaxLength(100);
         builder.Property(x => x.Description).HasMaxLength(300);
-        builder.Property(x => x.DefaultCostBearer).HasEnumText();
         builder.HasOne(x => x.DefaultPriority).WithMany().HasForeignKey(x => x.DefaultPriorityId).OnDelete(DeleteBehavior.Restrict);
         builder.HasIndex(x => new { x.GroupName, x.Name }).IsUnique();
     }
@@ -45,8 +44,9 @@ internal sealed class CaseConfiguration : IEntityTypeConfiguration<Case>
     {
         builder.ToTable("cases", t =>
         {
-            t.HasEnumCheck<CostBearer>("cost_bearer");
             t.HasEnumCheck<HoldReason>("hold_reason");
+            t.HasCheckConstraint("ck_cases_planned_window",
+                "planned_start_at IS NULL OR planned_end_at IS NULL OR planned_end_at > planned_start_at");
             t.HasEnumCheck<IncidentFollowUp>("incident_follow_up");
             t.HasEnumCheck<TechnicianRecommendation>("assessment_recommendation");
             t.HasCheckConstraint("ck_cases_rating_stars", "rating_stars IS NULL OR rating_stars BETWEEN 1 AND 5");
@@ -62,7 +62,6 @@ internal sealed class CaseConfiguration : IEntityTypeConfiguration<Case>
         builder.Property(x => x.Title).HasMaxLength(120);
         builder.Property(x => x.Description).HasMaxLength(2000);
         builder.HasLookup(x => x.Status, "status_id");
-        builder.Property(x => x.CostBearer).HasEnumText();
         builder.Property(x => x.HoldReason).HasEnumText();
         builder.Property(x => x.EstimatedCompletionHours).HasPrecision(6, 2);
         builder.Property(x => x.ActualCompletionHours).HasPrecision(6, 2);
@@ -88,7 +87,9 @@ internal sealed class CaseConfiguration : IEntityTypeConfiguration<Case>
         builder.HasOne(x => x.Technician).WithMany().HasForeignKey(x => x.AssignedTechnicianId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.TriggerWorkOrder).WithMany().HasForeignKey(x => x.TriggerWorkOrderId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.MergedInto).WithMany().HasForeignKey(x => x.MergedIntoCaseId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.PreviousCase).WithMany().HasForeignKey(x => x.PreviousCaseId).OnDelete(DeleteBehavior.Restrict);
         builder.Ignore(x => x.IsPreventive);
+        builder.HasIndex(x => x.PreviousCaseId);
 
         builder.HasIndex(x => x.RequestingCustomerId);
         builder.HasIndex(x => x.AssignedTechnicianId);
@@ -138,8 +139,22 @@ internal sealed class CostConfiguration : IEntityTypeConfiguration<Cost>
         builder.Property(x => x.Name).HasMaxLength(150);
         builder.Property(x => x.Description).HasMaxLength(300);
         builder.Property(x => x.Amount).HasPrecision(14, 2);
+        builder.Property(x => x.ReceiptCode).HasMaxLength(100);
+        builder.Property(x => x.ReceiptImage).HasMaxLength(300);
         builder.HasOne(x => x.Case).WithMany(x => x.Costs).HasForeignKey(x => x.CaseId).OnDelete(DeleteBehavior.Cascade);
         builder.HasIndex(x => x.CaseId);
+    }
+}
+
+internal sealed class CaseFollowerConfiguration : IEntityTypeConfiguration<CaseFollower>
+{
+    public void Configure(EntityTypeBuilder<CaseFollower> builder)
+    {
+        builder.ToTable("case_followers");
+        builder.HasKey(x => new { x.CaseId, x.CustomerId });
+        builder.HasOne(x => x.Case).WithMany(x => x.Followers).HasForeignKey(x => x.CaseId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne(x => x.Customer).WithMany().HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasIndex(x => x.CustomerId);
     }
 }
 

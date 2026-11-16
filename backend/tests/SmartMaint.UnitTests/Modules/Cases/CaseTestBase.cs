@@ -94,7 +94,6 @@ public abstract class CaseTestBase : IDisposable
             GroupName = group,
             Name = name,
             DefaultPriority = priority,
-            DefaultCostBearer = CostBearer.Building,
             IsEmergency = emergency,
             PhotoRequired = photo,
         };
@@ -130,11 +129,8 @@ public abstract class CaseTestBase : IDisposable
         if (target == CaseStatus.Pending) return id;
 
         As(Staff);
-        await Sut.ApproveAsync(id, new ApproveCaseRequest(CasePriority.Normal, CostBearer.Building), default);
+        await Sut.ApproveAsync(id, Approval(), default);
         if (target == CaseStatus.Approved) return id;
-
-        await Sut.AssignAsync(id, new AssignCaseRequest(Technician.Id), default);
-        if (target == CaseStatus.Assigned) return id;
 
         As(Technician);
         await Sut.AcceptAsync(id, default);
@@ -145,16 +141,39 @@ public abstract class CaseTestBase : IDisposable
 
         if (target == CaseStatus.OnHold)
         {
-            await Sut.HoldAsync(id, new HoldCaseRequest(HoldReason.WaitingParts, DateOnly.FromDateTime(Clock.Now.UtcDateTime)), default);
+            await Sut.HoldAsync(id, default);
             return id;
         }
 
-        await Sut.CompleteAsync(id, new CompleteWorkRequest("Worn part", null, null, null, Photo), default);
+        await Sut.CompleteAsync(id, new CompleteWorkRequest(), default);
         if (target == CaseStatus.Completed) return id;
 
         As(Staff);
-        await Sut.CloseAsync(id, default);
+        await Sut.EditAsync(id, EditOf(await Sut.GetAsync(id, default)) with { StatusChange = EditStatusChange.Close }, default);
         return id;
+    }
+
+    /// <summary>Approve (the work order form) giving the case to <paramref name="technician"/> (default: Technician).</summary>
+    protected ApproveCaseRequest Approval(CasePriority urgency = CasePriority.Normal, Account? technician = null) =>
+        new(urgency, (technician ?? Technician).Id);
+
+    /// <summary>The Edit form filled in with the case as it is (tests change what they need with "with").</summary>
+    protected static EditCaseRequest EditOf(CaseDetailResponse c) => new(
+        c.Urgency,
+        c.Technician?.Id,
+        c.ServiceTypeId,
+        c.PlannedStartAt,
+        c.PlannedEndAt,
+        c.Tasks.Select(t => new TaskLineRequest(t.Id, t.Name, t.Description)).ToList(),
+        c.Title,
+        c.Description,
+        c.Followers.Select(f => f.Id).ToList());
+
+    /// <summary>The Edit form of case <paramref name="id"/> as it is now, read as the staff.</summary>
+    protected async Task<EditCaseRequest> EditOfAsync(long id)
+    {
+        As(Staff);
+        return EditOf(await Sut.GetAsync(id, default));
     }
 
     protected static async Task<string> ErrorCodeAsync(Func<Task> action) =>

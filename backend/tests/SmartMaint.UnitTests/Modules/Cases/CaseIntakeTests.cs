@@ -122,7 +122,52 @@ public sealed class CaseIntakeTests : CaseTestBase
         Assert.Empty(created.AllowedActions); // the customer cannot cancel an emergency
         As(Staff);
         Assert.Equal("case.invalid_transition",
-            await ErrorCodeAsync(() => Sut.ApproveAsync(created.Id, new ApproveCaseRequest(CasePriority.Normal, CostBearer.Building), default)));
+            await ErrorCodeAsync(() => Sut.ApproveAsync(created.Id, Approval(CasePriority.Normal), default)));
+    }
+
+    // ----- Create: the urgency the customer chose (meeting 07/11) -----
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Normal)]
+    public async Task Create_WithChosenUrgency_KeepsItInsteadOfTheTypeDefault()
+    {
+        As(Customer);
+
+        var result = await Sut.CreateAsync(NewRequest(NotCooling, RoomA) with { Urgency = CasePriority.High }, default);
+
+        Assert.Equal(CasePriority.High, result.Urgency);
+        Assert.Equal(CaseStatus.Pending, result.Status);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Boundary)]
+    public async Task Create_CustomerChoosesEmergency_StaysPendingForTheStaffToConfirm()
+    {
+        As(Customer);
+
+        var result = await Sut.CreateAsync(NewRequest(NotCooling, RoomA) with { Urgency = CasePriority.Emergency }, default);
+
+        Assert.Equal(CasePriority.Emergency, result.Urgency);
+        Assert.Equal(CaseStatus.Pending, result.Status);
+        Assert.False(result.IsEmergencyFlow);
+        Assert.Null(result.DueAt);
+
+        // The staff confirms it: only now does it go to F4.
+        As(Staff);
+        var approved = await Sut.ApproveAsync(result.Id, Approval(CasePriority.Emergency), default);
+        Assert.True(approved.IsEmergencyFlow);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Abnormal)]
+    public async Task Create_EmergencyServiceTypeWithLowUrgency_IsStillAnEmergency()
+    {
+        As(Customer);
+
+        var result = await Sut.CreateAsync(NewRequest(BurstPipe, RoomA) with { Urgency = CasePriority.Low }, default);
+
+        Assert.True(result.IsEmergencyFlow);
+        Assert.Equal(CasePriority.Emergency, result.Urgency);
     }
 
     // ----- List / Get: data scope -----
@@ -199,7 +244,7 @@ public sealed class CaseIntakeTests : CaseTestBase
     [Trait(TestType.Key, TestType.Normal)]
     public async Task Get_Technician_SeesOnlyCasesAssignedToThem()
     {
-        var id = await CaseAtAsync(CaseStatus.Assigned);
+        var id = await CaseAtAsync(CaseStatus.Approved);
 
         As(Technician);
         Assert.Equal(id, (await Sut.GetAsync(id, default)).Id);
@@ -249,16 +294,18 @@ public sealed class CaseIntakeTests : CaseTestBase
 
     [Fact]
     [Trait(TestType.Key, TestType.Normal)]
-    public async Task Approve_StaffOfTheBuilding_SetsUrgencyCostBearerAndStaff()
+    public async Task Approve_StaffOfTheBuilding_SetsUrgencyTechnicianTasksAndStaff()
     {
         var id = (await NewCaseAsync()).Id;
         As(Staff);
 
-        var result = await Sut.ApproveAsync(id, new ApproveCaseRequest(CasePriority.High, CostBearer.Customer), default);
+        var result = await Sut.ApproveAsync(id, Approval(CasePriority.High), default);
 
         Assert.Equal(CaseStatus.Approved, result.Status);
         Assert.Equal(CasePriority.High, result.Urgency);
-        Assert.Equal(CostBearer.Customer, result.CostBearer);
+        Assert.Equal(Technician.Id, result.Technician?.Id); // no separate "assign" step (meeting 07/11)
+        Assert.Equal("Air conditioner blows warm air", Assert.Single(result.Tasks).Name); // no task given: one named after the case
+        Assert.Contains("Assigned to", result.History.Last().Reason);
         Assert.Equal(Staff.Id, result.Staff?.Id);
         Assert.Null(result.DueAt); // the SLA clock starts when work starts, not at approval
     }
@@ -271,7 +318,7 @@ public sealed class CaseIntakeTests : CaseTestBase
         As(StaffB);
 
         Assert.Equal("case.not_found",
-            await ErrorCodeAsync(() => Sut.ApproveAsync(id, new ApproveCaseRequest(CasePriority.Normal, CostBearer.Building), default)));
+            await ErrorCodeAsync(() => Sut.ApproveAsync(id, Approval(CasePriority.Normal), default)));
     }
 
     [Fact]
@@ -282,7 +329,7 @@ public sealed class CaseIntakeTests : CaseTestBase
         As(Staff);
 
         Assert.Equal("case.invalid_transition",
-            await ErrorCodeAsync(() => Sut.ApproveAsync(id, new ApproveCaseRequest(CasePriority.Normal, CostBearer.Building), default)));
+            await ErrorCodeAsync(() => Sut.ApproveAsync(id, Approval(CasePriority.Normal), default)));
     }
 
     [Fact]
@@ -292,12 +339,50 @@ public sealed class CaseIntakeTests : CaseTestBase
         var id = (await NewCaseAsync()).Id;
         As(Staff);
 
-        var result = await Sut.ApproveAsync(id, new ApproveCaseRequest(CasePriority.Emergency, CostBearer.Building), default);
+        var result = await Sut.ApproveAsync(id, Approval(CasePriority.Emergency), default);
 
         Assert.True(result.IsEmergencyFlow);
         Assert.Equal(Clock.Now.AddHours(2), result.DueAt);
         Assert.NotNull(result.Emergency!.AcknowledgedAt); // the staff decided it, nobody to chase
         Assert.Contains("F4", result.History.Last().Reason);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Normal)]
+    public async Task Approve_WithAnotherCategory_CorrectsItAndWritesItInTheHistory()
+    {
+        var id = (await NewCaseAsync()).Id;
+        As(Staff);
+
+        var result = await Sut.ApproveAsync(id, Approval(CasePriority.Normal) with { ServiceTypeId = Leak.Id }, default);
+
+        Assert.Equal(Leak.Id, result.ServiceTypeId);
+        Assert.Equal("Water · Leaking pipe or tap", result.ServiceTypeName);
+        Assert.Contains("Category corrected from Air conditioning · Not cooling", result.History.Last().Reason);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Abnormal)]
+    public async Task Approve_WithUnknownCategory_Throws()
+    {
+        var id = (await NewCaseAsync()).Id;
+        As(Staff);
+
+        Assert.Equal("case.unknown_service_type",
+            await ErrorCodeAsync(() => Sut.ApproveAsync(id, Approval(CasePriority.Normal) with { ServiceTypeId = 9999 }, default)));
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Boundary)]
+    public async Task Approve_WithTheSameCategory_WritesNoCorrection()
+    {
+        var id = (await NewCaseAsync()).Id;
+        As(Staff);
+
+        var result = await Sut.ApproveAsync(id, Approval(CasePriority.Normal) with { ServiceTypeId = NotCooling.Id }, default);
+
+        Assert.Equal(NotCooling.Id, result.ServiceTypeId);
+        Assert.DoesNotContain("Category corrected", result.History.Last().Reason);
     }
 
     // ----- Reject -----

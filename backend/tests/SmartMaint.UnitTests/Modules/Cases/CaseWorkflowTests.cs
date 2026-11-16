@@ -5,59 +5,60 @@ using SmartMaint.UnitTests.Common;
 
 namespace SmartMaint.UnitTests.Modules.Cases;
 
-/// <summary>From assignment to rating: assign, accept, decline, start, hold, resume, complete, close, reopen, rate.</summary>
+/// <summary>From approval to rating: approve with a technician, accept, decline, start, hold, resume, complete, close / reopen (Edit), rate.</summary>
 public sealed class CaseWorkflowTests : CaseTestBase
 {
-    private static DateOnly Today(FixedTimeProvider clock) => DateOnly.FromDateTime(clock.Now.UtcDateTime);
-
-    // ----- Assign -----
+    // ----- Approve names the technician (meeting 07/11: no "Assigned" status) -----
 
     [Fact]
     [Trait(TestType.Key, TestType.Normal)]
-    public async Task Assign_ActiveTechnician_SetsTechnicianAndRecordsWhoAssigned()
+    public async Task Approve_WithATechnician_RecordsWhoGotItInTheApprovedRow()
     {
-        var id = await CaseAtAsync(CaseStatus.Approved);
+        var id = (await NewCaseAsync()).Id;
         As(Staff);
 
-        var result = await Sut.AssignAsync(id, new AssignCaseRequest(Technician.Id), default);
+        var result = await Sut.ApproveAsync(id, Approval(), default);
 
-        Assert.Equal(CaseStatus.Assigned, result.Status);
+        Assert.Equal(CaseStatus.Approved, result.Status);
         Assert.Equal(Technician.Id, result.Technician?.Id);
         var row = result.History[^1];
-        Assert.Equal(CaseStatus.Approved, row.From);
+        Assert.Equal(CaseStatus.Pending, row.From);
         Assert.Equal(Staff.Id, row.By.Id);
         Assert.Equal("Assigned to tech.", row.Reason);
     }
 
     [Fact]
     [Trait(TestType.Key, TestType.Abnormal)]
-    public async Task Assign_UserWhoIsNotATechnician_Throws()
+    public async Task Approve_UserWhoIsNotATechnician_Throws()
     {
-        var id = await CaseAtAsync(CaseStatus.Approved);
+        var id = (await NewCaseAsync()).Id;
         As(Staff);
 
         Assert.Equal("case.invalid_technician",
-            await ErrorCodeAsync(() => Sut.AssignAsync(id, new AssignCaseRequest(Customer.Id), default)));
+            await ErrorCodeAsync(() => Sut.ApproveAsync(id, Approval(technician: Customer), default)));
     }
 
     [Fact]
     [Trait(TestType.Key, TestType.Boundary)]
-    public async Task Assign_WhenAlreadyAssigned_Throws()
+    public async Task Edit_ApprovedCaseNotAcceptedYet_JustChangesTheTechnician()
     {
-        var id = await CaseAtAsync(CaseStatus.Assigned);
-        As(Staff);
+        var id = await CaseAtAsync(CaseStatus.Approved);
 
-        Assert.Equal("case.invalid_transition",
-            await ErrorCodeAsync(() => Sut.AssignAsync(id, new AssignCaseRequest(Technician2.Id), default)));
+        var result = await Sut.EditAsync(id, await EditOfAsync(id) with { TechnicianId = Technician2.Id }, default);
+
+        Assert.Equal(CaseStatus.Approved, result.Status);
+        Assert.Equal(Technician2.Id, result.Technician?.Id);
+        Assert.Null(result.NextCase); // no new case: nobody had taken the work yet
+        Assert.Contains(Db.Notifications, n => n.UserId == Technician2.Id && n.Details.Contains("assigned to you"));
     }
 
     // ----- Accept / Decline -----
 
     [Fact]
     [Trait(TestType.Key, TestType.Normal)]
-    public async Task Accept_AssignedTechnician_AcceptsTheAssignment()
+    public async Task Accept_NamedTechnician_AcceptsTheJob()
     {
-        var id = await CaseAtAsync(CaseStatus.Assigned);
+        var id = await CaseAtAsync(CaseStatus.Approved);
         As(Technician);
 
         var result = await Sut.AcceptAsync(id, default);
@@ -69,9 +70,9 @@ public sealed class CaseWorkflowTests : CaseTestBase
 
     [Fact]
     [Trait(TestType.Key, TestType.Abnormal)]
-    public async Task Accept_TechnicianWhoIsNotAssigned_IsNotFound()
+    public async Task Accept_TechnicianWhoIsNotNamed_IsNotFound()
     {
-        var id = await CaseAtAsync(CaseStatus.Assigned);
+        var id = await CaseAtAsync(CaseStatus.Approved);
         As(Technician2);
 
         Assert.Equal("case.not_found", await ErrorCodeAsync(() => Sut.AcceptAsync(id, default)));
@@ -79,9 +80,9 @@ public sealed class CaseWorkflowTests : CaseTestBase
 
     [Fact]
     [Trait(TestType.Key, TestType.Normal)]
-    public async Task Decline_AssignedTechnician_SendsCaseBackToApprovedAndKeepsTheDecline()
+    public async Task Decline_NamedTechnician_LeavesTheCaseApprovedWithNobodyAndKeepsTheDecline()
     {
-        var id = await CaseAtAsync(CaseStatus.Assigned);
+        var id = await CaseAtAsync(CaseStatus.Approved);
         As(Technician);
 
         var result = await Sut.DeclineAsync(id, new ReasonRequest("Not my specialty, please reassign"), default);
@@ -97,19 +98,17 @@ public sealed class CaseWorkflowTests : CaseTestBase
 
     [Fact]
     [Trait(TestType.Key, TestType.Boundary)]
-    public async Task Decline_ThenAssignToSomeoneElse_KeepsTheDeclineAndTheNewTechnician()
+    public async Task Decline_ThenEditToSomeoneElse_KeepsTheDeclineAndTheNewTechnician()
     {
-        var id = await CaseAtAsync(CaseStatus.Assigned);
+        var id = await CaseAtAsync(CaseStatus.Approved);
         As(Technician);
         await Sut.DeclineAsync(id, new ReasonRequest("Fully booked with another job"), default);
-        As(Staff);
 
-        var result = await Sut.AssignAsync(id, new AssignCaseRequest(Technician2.Id), default);
+        var result = await Sut.EditAsync(id, await EditOfAsync(id) with { TechnicianId = Technician2.Id }, default);
 
         Assert.Equal(Technician.Id, Assert.Single(result.Rejections).Technician.Id);
         Assert.Equal(Technician2.Id, result.Technician?.Id);
     }
-
     // ----- Start: the SLA clock -----
 
     [Fact]
@@ -131,7 +130,7 @@ public sealed class CaseWorkflowTests : CaseTestBase
     [Trait(TestType.Key, TestType.Abnormal)]
     public async Task Start_BeforeAccepting_Throws()
     {
-        var id = await CaseAtAsync(CaseStatus.Assigned);
+        var id = await CaseAtAsync(CaseStatus.Approved);
         As(Technician);
 
         Assert.Equal("case.invalid_transition", await ErrorCodeAsync(() => Sut.StartAsync(id, default)));
@@ -143,8 +142,7 @@ public sealed class CaseWorkflowTests : CaseTestBase
     {
         var id = (await NewCaseAsync()).Id;
         As(Staff);
-        await Sut.ApproveAsync(id, new ApproveCaseRequest(CasePriority.High, CostBearer.Building), default);
-        await Sut.AssignAsync(id, new AssignCaseRequest(Technician.Id), default);
+        await Sut.ApproveAsync(id, Approval(CasePriority.High), default);
         As(Technician);
         await Sut.AcceptAsync(id, default);
 
@@ -153,34 +151,39 @@ public sealed class CaseWorkflowTests : CaseTestBase
         Assert.Equal(Clock.Now.AddHours(8), result.DueAt);
     }
 
-    // ----- Hold / Resume -----
+    // ----- Hold / Resume: the status dropdown and the work clock (meeting 07/11) -----
 
     [Fact]
     [Trait(TestType.Key, TestType.Normal)]
-    public async Task Hold_WaitingParts_RecordsReasonAndExpectedDay()
+    public async Task Hold_InProgress_StopsTheClockWithoutAReason()
     {
         var id = await CaseAtAsync(CaseStatus.InProgress);
+        Clock.Now = Clock.Now.AddHours(2);
         As(Technician);
-        var expected = Today(Clock).AddDays(2);
 
-        var result = await Sut.HoldAsync(id, new HoldCaseRequest(HoldReason.WaitingParts, expected), default);
+        var result = await Sut.HoldAsync(id, default);
 
         Assert.Equal(CaseStatus.OnHold, result.Status);
-        Assert.Equal(new HoldResponse(HoldReason.WaitingParts, expected), result.Hold);
-        Assert.Contains("Waiting for parts", result.History.Last().Reason);
+        Assert.Null(result.Hold); // no reason, no expected day any more
+        Assert.Equal(2m, result.WorkedHours);
+        Assert.Null(result.ClockStartedAt);
     }
 
     [Fact]
     [Trait(TestType.Key, TestType.Boundary)]
-    public async Task Hold_WaitingThirdParty_FlagsTheCaseAsOutsourced()
+    public async Task Resume_AfterAHold_TheClockOnlyCountsTheWork()
     {
         var id = await CaseAtAsync(CaseStatus.InProgress);
         As(Technician);
+        Clock.Now = Clock.Now.AddHours(2);
+        await Sut.HoldAsync(id, default);
+        Clock.Now = Clock.Now.AddHours(5); // waiting: not counted
+        await Sut.ResumeAsync(id, default);
+        Clock.Now = Clock.Now.AddHours(1);
 
-        await Sut.HoldAsync(id, new HoldCaseRequest(HoldReason.WaitingThirdParty, Today(Clock)), default);
+        var result = await Sut.CompleteAsync(id, new CompleteWorkRequest(), default);
 
-        var stored = await Db.Cases.FindAsync(id);
-        Assert.Equal(Clock.Now, stored!.OutsourcedAt);
+        Assert.Equal(3m, result.WorkedHours);
     }
 
     [Fact]
@@ -190,13 +193,12 @@ public sealed class CaseWorkflowTests : CaseTestBase
         var id = await CaseAtAsync(CaseStatus.Accepted);
         As(Technician);
 
-        Assert.Equal("case.invalid_transition",
-            await ErrorCodeAsync(() => Sut.HoldAsync(id, new HoldCaseRequest(HoldReason.WaitingParts, Today(Clock)), default)));
+        Assert.Equal("case.invalid_transition", await ErrorCodeAsync(() => Sut.HoldAsync(id, default)));
     }
 
     [Fact]
     [Trait(TestType.Key, TestType.Normal)]
-    public async Task Resume_ByTechnician_ClearsTheHold()
+    public async Task Resume_ByTechnician_RunsTheClockAgain()
     {
         var id = await CaseAtAsync(CaseStatus.OnHold);
         As(Technician);
@@ -204,20 +206,20 @@ public sealed class CaseWorkflowTests : CaseTestBase
         var result = await Sut.ResumeAsync(id, default);
 
         Assert.Equal(CaseStatus.InProgress, result.Status);
-        Assert.Null(result.Hold);
+        Assert.Equal(Clock.Now, result.ClockStartedAt);
     }
 
     [Fact]
     [Trait(TestType.Key, TestType.Boundary)]
-    public async Task Resume_ByStaff_LetsTheTechnicianContinue()
+    public async Task EditContinue_ByStaff_LetsTheTechnicianContinue()
     {
         var id = await CaseAtAsync(CaseStatus.OnHold);
-        As(Staff);
 
-        var result = await Sut.ResumeAsync(id, default);
+        var result = await Sut.EditAsync(id, await EditOfAsync(id) with { StatusChange = EditStatusChange.Continue }, default);
 
         Assert.Equal(CaseStatus.InProgress, result.Status);
         Assert.Equal(Staff.Id, result.History.Last().By.Id);
+        Assert.NotNull(result.ClockStartedAt);
     }
 
     [Fact]
@@ -230,36 +232,65 @@ public sealed class CaseWorkflowTests : CaseTestBase
         Assert.Equal("case.invalid_transition", await ErrorCodeAsync(() => Sut.ResumeAsync(id, default)));
     }
 
-    // ----- Complete: the repair record -----
+    // ----- Complete: nothing to fill in (meeting 07/11) -----
 
     [Fact]
     [Trait(TestType.Key, TestType.Normal)]
-    public async Task Complete_WithoutTypedHours_MeasuresStartToFinish()
+    public async Task Complete_NothingToFill_StopsTheClockAndKeepsTheHours()
     {
         var id = await CaseAtAsync(CaseStatus.InProgress);
         Clock.Now = Clock.Now.AddHours(3);
         As(Technician);
 
-        var result = await Sut.CompleteAsync(
-            id, new CompleteWorkRequest("Blocked condensate pipe", "1x PVC elbow", null, Photo, Photo), default);
+        var result = await Sut.CompleteAsync(id, new CompleteWorkRequest(), default);
 
         Assert.Equal(CaseStatus.Completed, result.Status); // reported done is not closed (BR-13)
-        Assert.Equal(new RepairReportResponse("Blocked condensate pipe", "1x PVC elbow", 3.00m), result.RepairReport);
+        Assert.Equal(3m, result.WorkedHours);
+        Assert.Null(result.RepairReport); // no repair record any more
         Assert.Equal(Clock.Now, result.CompletedAt);
-        Assert.Equal(2, result.Photos.Count(p => p.Kind is CaseImageKind.Before or CaseImageKind.After));
     }
 
     [Fact]
     [Trait(TestType.Key, TestType.Boundary)]
-    public async Task Complete_WithTypedHours_TypedHoursWin()
+    public async Task LogHours_TypedTotal_ReplacesTheMeasuredTimeAndTheClockGoesOn()
     {
         var id = await CaseAtAsync(CaseStatus.InProgress);
         Clock.Now = Clock.Now.AddHours(3);
         As(Technician);
+        await Sut.LogHoursAsync(id, new LogHoursRequest(1.25m), default);
+        Clock.Now = Clock.Now.AddHours(1);
 
-        var result = await Sut.CompleteAsync(id, new CompleteWorkRequest("Worn part", null, 1.25m, null, Photo), default);
+        var result = await Sut.CompleteAsync(id, new CompleteWorkRequest(), default);
 
-        Assert.Equal(1.25m, result.RepairReport?.LaborHours);
+        Assert.Equal(2.25m, result.WorkedHours);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Abnormal)]
+    public async Task LogHours_AfterCompletion_Throws()
+    {
+        var id = await CaseAtAsync(CaseStatus.Completed);
+        As(Technician);
+
+        Assert.Equal("case.invalid_transition",
+            await ErrorCodeAsync(() => Sut.LogHoursAsync(id, new LogHoursRequest(2m), default)));
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Boundary)]
+    public async Task Complete_Again_AfterAReopen_ReplacesTheLabourLine()
+    {
+        Technician.HourlyRate = 100_000m;
+        var id = await CaseAtAsync(CaseStatus.Completed);
+        await Sut.EditAsync(id, await EditOfAsync(id) with { StatusChange = EditStatusChange.Reopen, Reason = "Still drips water onto the desk" }, default);
+        As(Technician);
+        await Sut.AcceptAsync(id, default);
+        await Sut.StartAsync(id, default);
+        await Sut.LogHoursAsync(id, new LogHoursRequest(2m), default);
+
+        var result = await Sut.CompleteAsync(id, new CompleteWorkRequest(), default);
+
+        Assert.Equal(200_000m, Assert.Single(result.Costs!, c => c.Name == "Labour").Amount);
     }
 
     [Fact]
@@ -270,19 +301,70 @@ public sealed class CaseWorkflowTests : CaseTestBase
         As(Technician);
 
         Assert.Equal("case.invalid_transition",
-            await ErrorCodeAsync(() => Sut.CompleteAsync(id, new CompleteWorkRequest("Worn part", null, null, null, Photo), default)));
+            await ErrorCodeAsync(() => Sut.CompleteAsync(id, new CompleteWorkRequest(), default)));
     }
 
-    // ----- Close -----
+    // ----- The technician's costs and task notes (meeting 07/11) -----
 
     [Fact]
     [Trait(TestType.Key, TestType.Normal)]
-    public async Task Close_CompletedCase_ByStaff_ClosesAndGivesTheCustomerARating()
+    public async Task AddCost_WithReceipt_IsKeptAndTellsTheStaff()
     {
-        var id = await CaseAtAsync(CaseStatus.Completed);
+        var id = await CaseAtAsync(CaseStatus.InProgress);
+        As(Technician);
+
+        var result = await Sut.AddCostAsync(id, new AddCostRequest("Capacitor 35uF", "Shop on Le Loi", 150_000m, "R-102", Photo[0]), default);
+
+        var cost = Assert.Single(result.Costs!);
+        Assert.Equal("R-102", cost.ReceiptCode);
+        Assert.NotNull(cost.ReceiptUrl);
+        Assert.Contains(Db.Notifications, n => n.UserId == Staff.Id && n.Details.Contains("added a cost"));
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Boundary)]
+    public async Task UpdateCosts_StaffKeepsALine_ItsReceiptStays()
+    {
+        var id = await CaseAtAsync(CaseStatus.InProgress);
+        As(Technician);
+        var added = await Sut.AddCostAsync(id, new AddCostRequest("Capacitor 35uF", null, 150_000m, "R-102", null), default);
         As(Staff);
 
-        var result = await Sut.CloseAsync(id, default);
+        var result = await Sut.UpdateCostsAsync(id, new UpdateCostsRequest(
+            [new CostLineRequest("Capacitor 35uF", "Checked", 140_000m, added.Costs![0].Id), new CostLineRequest("Taxi", null, 50_000m)]), default);
+
+        Assert.Equal(2, result.Costs!.Count);
+        Assert.Equal("R-102", result.Costs[0].ReceiptCode);
+        Assert.Equal(140_000m, result.Costs[0].Amount);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Normal)]
+    public async Task UpdateTask_NoteAndCaptionedPhotoWhileStillToDo_AreKept()
+    {
+        var id = await CaseAtAsync(CaseStatus.InProgress);
+        As(Technician);
+        var taskId = (await Sut.GetAsync(id, default)).Tasks.Single().Id;
+
+        var result = await Sut.UpdateTaskAsync(id, taskId, new UpdateTaskRequest(
+            SmartMaint.Api.Entities.Maintenance.CaseTaskStatus.Pending, "Drain pipe blocked, cleaning it",
+            [new TaskPhotoRequest(Photo[0], "Before cleaning")], null, false), default);
+
+        var task = Assert.Single(result.Tasks);
+        Assert.Null(task.DoneBy);
+        Assert.Equal("Before cleaning", Assert.Single(task.Photos).Caption);
+        Assert.Single(task.Notes);
+    }
+
+    // ----- Close and reopen: from the staff's Edit (meeting 07/11) -----
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Normal)]
+    public async Task EditClose_CompletedCase_ClosesAndGivesTheCustomerARating()
+    {
+        var id = await CaseAtAsync(CaseStatus.Completed);
+
+        var result = await Sut.EditAsync(id, await EditOfAsync(id) with { StatusChange = EditStatusChange.Close }, default);
 
         Assert.Equal(CaseStatus.Closed, result.Status);
         As(Customer);
@@ -290,37 +372,54 @@ public sealed class CaseWorkflowTests : CaseTestBase
     }
 
     [Fact]
-    [Trait(TestType.Key, TestType.Abnormal)]
-    public async Task Close_ByTechnician_Throws()
+    [Trait(TestType.Key, TestType.Normal)]
+    public async Task Get_CompletedCase_OffersCloseAndReopenInTheEditForm()
     {
         var id = await CaseAtAsync(CaseStatus.Completed);
-        As(Technician);
+        As(Staff);
 
-        Assert.Equal("case.invalid_transition", await ErrorCodeAsync(() => Sut.CloseAsync(id, default)));
+        var result = await Sut.GetAsync(id, default);
+
+        Assert.Equal([EditStatusChange.Close, EditStatusChange.Reopen], result.StatusChanges);
     }
 
     [Fact]
     [Trait(TestType.Key, TestType.Abnormal)]
-    public async Task Close_CaseStillInProgress_Throws()
+    public async Task EditClose_CaseStillInProgress_Throws()
     {
         var id = await CaseAtAsync(CaseStatus.InProgress);
-        As(Staff);
+        var edit = await EditOfAsync(id);
 
-        Assert.Equal("case.invalid_transition", await ErrorCodeAsync(() => Sut.CloseAsync(id, default)));
+        Assert.Equal("case.status_change_not_allowed",
+            await ErrorCodeAsync(() => Sut.EditAsync(id, edit with { StatusChange = EditStatusChange.Close }, default)));
     }
 
-    // ----- Reopen -----
+    [Fact]
+    [Trait(TestType.Key, TestType.Abnormal)]
+    public async Task Edit_ByTechnician_Throws()
+    {
+        var id = await CaseAtAsync(CaseStatus.Completed);
+        var edit = await EditOfAsync(id);
+        As(Technician);
+
+        Assert.Equal("case.invalid_transition",
+            await ErrorCodeAsync(() => Sut.EditAsync(id, edit with { StatusChange = EditStatusChange.Close }, default)));
+    }
 
     [Fact]
     [Trait(TestType.Key, TestType.Normal)]
-    public async Task Reopen_CompletedCase_GivesItBackToTheSameTechnicianAndResetsTheClock()
+    public async Task EditReopen_CompletedCase_GivesItBackToTheSameTechnicianAndResetsTheClock()
     {
         var id = await CaseAtAsync(CaseStatus.Completed);
-        As(Staff);
 
-        var result = await Sut.ReopenAsync(id, new ReasonRequest("Still dripping after the repair"), default);
+        var result = await Sut.EditAsync(id, await EditOfAsync(id) with
+        {
+            StatusChange = EditStatusChange.Reopen,
+            Reason = "Still dripping after the repair",
+        }, default);
 
         Assert.Equal(CaseStatus.Reopened, result.Status);
+        Assert.Equal("Still dripping after the repair", result.History[^1].Reason);
         Assert.Null(result.DueAt);
         Assert.Null(result.CompletedAt);
         Assert.Equal(Technician.Id, result.Technician?.Id);
@@ -330,27 +429,33 @@ public sealed class CaseWorkflowTests : CaseTestBase
 
     [Fact]
     [Trait(TestType.Key, TestType.Boundary)]
-    public async Task Reopen_ClosedExactlySevenDaysAgo_IsStillAllowed()
+    public async Task EditReopen_ClosedExactlySevenDaysAgo_IsStillAllowed()
     {
         var id = await CaseAtAsync(CaseStatus.Closed);
         Clock.Now = Clock.Now.AddDays(7);
-        As(Staff);
 
-        var result = await Sut.ReopenAsync(id, new ReasonRequest("The customer says it is not fixed"), default);
+        var result = await Sut.EditAsync(id, await EditOfAsync(id) with
+        {
+            StatusChange = EditStatusChange.Reopen,
+            Reason = "The customer says it is not fixed",
+        }, default);
 
         Assert.Equal(CaseStatus.Reopened, result.Status);
     }
 
     [Fact]
     [Trait(TestType.Key, TestType.Abnormal)]
-    public async Task Reopen_ClosedMoreThanSevenDaysAgo_Throws()
+    public async Task Edit_ClosedMoreThanSevenDaysAgo_Throws()
     {
         var id = await CaseAtAsync(CaseStatus.Closed);
+        var edit = await EditOfAsync(id);
         Clock.Now = Clock.Now.AddDays(7).AddSeconds(1);
-        As(Staff);
 
-        Assert.Equal("case.invalid_transition",
-            await ErrorCodeAsync(() => Sut.ReopenAsync(id, new ReasonRequest("The customer says it is not fixed"), default)));
+        Assert.Equal("case.invalid_transition", await ErrorCodeAsync(() => Sut.EditAsync(id, edit with
+        {
+            StatusChange = EditStatusChange.Reopen,
+            Reason = "The customer says it is not fixed",
+        }, default)));
     }
 
     // ----- Rate -----

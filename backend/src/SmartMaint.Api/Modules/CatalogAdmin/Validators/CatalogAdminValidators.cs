@@ -22,7 +22,6 @@ public sealed class CaseCategoryRequestValidator : AbstractValidator<CaseCategor
         RuleFor(x => x.Name).ValidName(100);
         RuleFor(x => x.Description).MaximumLength(300);
         RuleFor(x => x.DefaultPriority).IsInEnum();
-        RuleFor(x => x.DefaultCostBearer).IsInEnum();
     }
 }
 

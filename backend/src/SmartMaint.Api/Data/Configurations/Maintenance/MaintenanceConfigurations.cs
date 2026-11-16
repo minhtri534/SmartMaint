@@ -83,12 +83,13 @@ internal sealed class CaseTaskConfiguration : IEntityTypeConfiguration<CaseTask>
 {
     public void Configure(EntityTypeBuilder<CaseTask> builder)
     {
-        builder.ToTable("case_tasks");
+        builder.ToTable("case_tasks", t => t.HasEnumCheck<TaskDoneBy>("done_by"));
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).UseIdentityAlwaysColumn();
         builder.Property(x => x.Name).HasMaxLength(200);
         builder.Property(x => x.Description).HasMaxLength(500);
         builder.HasLookup(x => x.Status, "status_id");
+        builder.Property(x => x.DoneBy).HasEnumText();
         builder.HasOne(x => x.Case).WithMany(x => x.Tasks).HasForeignKey(x => x.CaseId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne(x => x.RepairCase).WithMany().HasForeignKey(x => x.RepairCaseId).OnDelete(DeleteBehavior.SetNull);
         builder.HasIndex(x => x.CaseId);

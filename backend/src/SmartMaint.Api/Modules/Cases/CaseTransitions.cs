@@ -3,135 +3,116 @@ using SmartMaint.Api.Entities.Cases;
 
 namespace SmartMaint.Api.Modules.Cases;
 
-/// <summary>Everything a user can do to a case in F3. Sent to the web as snake_case ("hold", "close"...).</summary>
+/// <summary>Everything a user can do to a case. Sent to the web as snake_case ("hold", "edit"...).</summary>
 public enum CaseAction
 {
     Cancel,
     Approve,
     Reject,
-    Assign,
     Accept,
     Decline,
     Start,
     Hold,
     Resume,
     Complete,
-    Close,
-    Reopen,
     Rate,
 
-    // Part 4 (02/11): staff steps in, the customer's "not fixed" report, cost lines
-    Reassign,
-    ChangeUrgency,
+    /// <summary>
+    /// Meeting 07/11: the staff's one "Edit" (the work order form). Replaces assign, reassign, change urgency,
+    /// "let technician continue", close and reopen.
+    /// </summary>
+    Edit,
+
+    // Part 4 (02/11): the deadline, the customer's "not fixed" report, cost lines
     ExtendDue,
     ReportNotFixed,
     AcceptNotFixed,
     DeclineNotFixed,
     UpdateCosts,
 
-    // Part 5 (F2): preventive work orders
-    UpdateTask,
-    CompleteChecklist,
+    // Meeting 07/11, the technician: work hours (clock or typed) and the costs they paid, with a receipt
+    LogHours,
+    AddCost,
 
-    // Part 6 (F4): emergency
+    // Tasks (F2 checklist items; meeting 07/11: every case has tasks)
+    UpdateTask,
+    SetTaskThirdParty,
+
+    // Part 6 (F4): emergency. Meeting 07/11: no merge (a repeat is rejected as a duplicate), no separate downgrade (Edit).
     Acknowledge,
-    Downgrade,
-    Merge,
     AddLog,
     MarkSafe,
     WriteIncidentReport,
 
-    // Part 7 (F5): repair or replace, outside party
+    // Part 7 (F5). Meeting 07/11: the staff only records the hand-over to an outside party (no quote, no refusal);
+    // the tasks the party did are marked on the task list.
     RequestDecision,
     Outsource,
-    RecordQuote,
-    DecideQuote,
-    OutsideDeclined,
-    CheckOutsideWork,
-    RedoOutsideWork,
 }
 
-/// <summary>One arrow of the F3 state machine (docs/flows/F3_Su_Co_Thong_Thuong/F3_Trang5.png): who, from where, to where.</summary>
+/// <summary>One arrow of the state machine: who, from where, to where.</summary>
 internal sealed record TransitionRule(CaseAction Action, UserRole Role, CaseStatus[] From, CaseStatus? To);
 
 /// <summary>
-/// The F3 state machine as a table, one row per arrow. CaseService is the only place that reads it.
-/// To = null: the status stays (the action still writes a history row when it has a reason).
-/// Not here: the F5 hand-over decision beyond the hold reason.
+/// The case state machine as a table, one row per arrow. CaseService is the only place that reads it.
+/// To = null: the status stays, or (Edit) the service decides it from the request.
 /// </summary>
 internal static class CaseTransitions
 {
-    /// <summary>The "approved, being handled" frame of page 5, where a staff member may still cancel.</summary>
-    private static readonly CaseStatus[] Handling =
+    /// <summary>Approved and being handled: a staff member may still cancel or edit.</summary>
+    internal static readonly CaseStatus[] Handling =
     [
-        CaseStatus.Approved, CaseStatus.Assigned, CaseStatus.Accepted,
-        CaseStatus.InProgress, CaseStatus.OnHold, CaseStatus.Reopened,
+        CaseStatus.Approved, CaseStatus.Accepted, CaseStatus.InProgress, CaseStatus.OnHold, CaseStatus.Reopened,
     ];
 
-    /// <summary>A technician holds the case (assigned, not finished yet).</summary>
-    private static readonly CaseStatus[] WithTechnician =
-    [
-        CaseStatus.Assigned, CaseStatus.Accepted, CaseStatus.InProgress, CaseStatus.OnHold, CaseStatus.Reopened,
-    ];
+    /// <summary>The technician already took the job: a new technician means a new case (meeting 07/11).</summary>
+    internal static readonly CaseStatus[] Taken = [CaseStatus.Accepted, CaseStatus.InProgress, CaseStatus.OnHold];
 
     public static readonly IReadOnlyList<TransitionRule> Rules =
     [
-        // Page 1: intake and review
+        // Intake and review. Approve sets the technician too (no "Assigned" status, meeting 07/11).
         new(CaseAction.Cancel, UserRole.Customer, [CaseStatus.Pending], CaseStatus.Cancelled),
         new(CaseAction.Cancel, UserRole.Staff, [CaseStatus.Pending, .. Handling], CaseStatus.Cancelled),
         new(CaseAction.Approve, UserRole.Staff, [CaseStatus.Pending], CaseStatus.Approved),
         new(CaseAction.Reject, UserRole.Staff, [CaseStatus.Pending], CaseStatus.Rejected),
 
-        // Page 2: assignment and repair
-        new(CaseAction.Assign, UserRole.Staff, [CaseStatus.Approved], CaseStatus.Assigned),
-        new(CaseAction.Accept, UserRole.Technician, [CaseStatus.Assigned, CaseStatus.Reopened], CaseStatus.Accepted),
-        new(CaseAction.Decline, UserRole.Technician, [CaseStatus.Assigned, CaseStatus.Reopened], CaseStatus.Approved),
+        // The technician named on an approved (or reopened) case accepts or declines it, then does the work.
+        new(CaseAction.Accept, UserRole.Technician, [CaseStatus.Approved, CaseStatus.Reopened], CaseStatus.Accepted),
+        new(CaseAction.Decline, UserRole.Technician, [CaseStatus.Approved, CaseStatus.Reopened], CaseStatus.Approved),
         new(CaseAction.Start, UserRole.Technician, [CaseStatus.Accepted], CaseStatus.InProgress),
         new(CaseAction.Hold, UserRole.Technician, [CaseStatus.InProgress], CaseStatus.OnHold),
         new(CaseAction.Resume, UserRole.Technician, [CaseStatus.OnHold], CaseStatus.InProgress),
-        // "Beyond the technician's ability" waits for the staff member, who may let the technician continue.
-        new(CaseAction.Resume, UserRole.Staff, [CaseStatus.OnHold], CaseStatus.InProgress),
         new(CaseAction.Complete, UserRole.Technician, [CaseStatus.InProgress], CaseStatus.Completed),
-
-        // Page 4: verification and after closing
-        new(CaseAction.Close, UserRole.Staff, [CaseStatus.Completed], CaseStatus.Closed),
-        new(CaseAction.Reopen, UserRole.Staff, [CaseStatus.Completed, CaseStatus.Closed], CaseStatus.Reopened),
         new(CaseAction.Rate, UserRole.Customer, [CaseStatus.Closed], null),
 
-        // Staff steps in while the work is under way (O08, O09)
-        new(CaseAction.Reassign, UserRole.Staff, WithTechnician, CaseStatus.Assigned),
-        new(CaseAction.ChangeUrgency, UserRole.Staff, Handling, null),
-        new(CaseAction.ExtendDue, UserRole.Staff, WithTechnician, null),
-        new(CaseAction.UpdateCosts, UserRole.Staff, [CaseStatus.Completed], null),
+        // The staff's one Edit: the status it moves to (continue / close / reopen) comes from the request.
+        new(CaseAction.Edit, UserRole.Staff, [.. Handling, CaseStatus.Completed, CaseStatus.Closed], null),
+        new(CaseAction.ExtendDue, UserRole.Staff, [.. Taken, CaseStatus.Reopened], null),
+        new(CaseAction.UpdateCosts, UserRole.Staff, [.. Handling, CaseStatus.Completed, CaseStatus.Closed], null),
 
         // Customer: "not fixed" within 7 days of closing; the staff member reopens or declines it
         new(CaseAction.ReportNotFixed, UserRole.Customer, [CaseStatus.Closed], null),
         new(CaseAction.AcceptNotFixed, UserRole.Staff, [CaseStatus.Closed], CaseStatus.Reopened),
         new(CaseAction.DeclineNotFixed, UserRole.Staff, [CaseStatus.Closed], null),
 
-        // F2: the technician marks checklist items, then reports the preventive work order done
-        new(CaseAction.UpdateTask, UserRole.Technician, [CaseStatus.InProgress], null),
-        new(CaseAction.CompleteChecklist, UserRole.Technician, [CaseStatus.InProgress], CaseStatus.Completed),
+        // Meeting 07/11: the technician keeps the work hours and records the costs they paid.
+        new(CaseAction.LogHours, UserRole.Technician, [CaseStatus.Accepted, CaseStatus.InProgress, CaseStatus.OnHold], null),
+        new(CaseAction.AddCost, UserRole.Technician, [CaseStatus.Accepted, CaseStatus.InProgress, CaseStatus.OnHold, CaseStatus.Completed], null),
 
-        // F4 (docs/flows/F4_Khan_Cap/F4_Trang5.png): an emergency starts at Approved (no Pending, no Rejected) and then
-        // uses the arrows above. These are the extra steps; CaseService.IsAllowed keeps them to emergency cases.
+        // Tasks: the technician marks them; the staff marks the ones an outside party did.
+        new(CaseAction.UpdateTask, UserRole.Technician, [CaseStatus.InProgress, CaseStatus.OnHold], null),
+        new(CaseAction.SetTaskThirdParty, UserRole.Staff, [.. Handling, CaseStatus.Completed], null),
+
+        // F4 (docs/flows/F4_Khan_Cap/F4_Trang5.png): an emergency starts at Approved and then uses the arrows above.
+        // CaseService.IsAllowed keeps these to emergency cases.
         new(CaseAction.Acknowledge, UserRole.Staff, Handling, null),
-        new(CaseAction.Downgrade, UserRole.Staff, [CaseStatus.Approved, CaseStatus.Assigned], null),
-        new(CaseAction.Merge, UserRole.Staff, [CaseStatus.Approved, CaseStatus.Assigned], CaseStatus.Cancelled),
         new(CaseAction.AddLog, UserRole.Staff, [.. Handling, CaseStatus.Completed], null),
         new(CaseAction.MarkSafe, UserRole.Technician, [CaseStatus.InProgress, CaseStatus.OnHold], null),
         new(CaseAction.WriteIncidentReport, UserRole.Staff, [CaseStatus.Closed], null),
 
-        // F5 (docs/flows/F5_Sua_Hay_Thay): the case waits On Hold for the staff's decision, then for the outside party;
-        // the technician checks the result (OK → In Progress, the To of that row is set by the service).
-        // CaseService.IsAllowed checks the outside party's own status for each step.
+        // F5: the technician asks the staff (assessment), the staff hands the job to an outside party.
         new(CaseAction.RequestDecision, UserRole.Technician, [CaseStatus.InProgress], CaseStatus.OnHold),
-        new(CaseAction.Outsource, UserRole.Staff, [CaseStatus.OnHold], null),
-        new(CaseAction.RecordQuote, UserRole.Staff, [CaseStatus.OnHold], null),
-        new(CaseAction.DecideQuote, UserRole.Staff, [CaseStatus.OnHold], null),
-        new(CaseAction.OutsideDeclined, UserRole.Staff, [CaseStatus.OnHold], null),
-        new(CaseAction.CheckOutsideWork, UserRole.Technician, [CaseStatus.OnHold], null),
-        new(CaseAction.RedoOutsideWork, UserRole.Staff, [CaseStatus.OnHold], null),
+        new(CaseAction.Outsource, UserRole.Staff, Taken, CaseStatus.OnHold),
     ];
 
     public static TransitionRule? Find(CaseAction action, UserRole role, CaseStatus status) =>

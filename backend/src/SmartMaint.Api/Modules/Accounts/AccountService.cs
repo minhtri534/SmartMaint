@@ -22,7 +22,7 @@ internal sealed class AccountService(
     /// <summary>Statuses where a technician is still holding the case.</summary>
     private static readonly CaseStatus[] OpenStatuses =
     [
-        CaseStatus.Assigned, CaseStatus.Accepted, CaseStatus.InProgress, CaseStatus.OnHold, CaseStatus.Reopened,
+        CaseStatus.Accepted, CaseStatus.InProgress, CaseStatus.OnHold, CaseStatus.Reopened,
     ];
 
     // ----- reads ------------------------------------------------------------------------------------------------

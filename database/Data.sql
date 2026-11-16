@@ -219,41 +219,42 @@ VALUES ('emergency', 'Emergency', 'Danger to people or the building; handled by 
        ('low',       'Low',       'Cosmetic or can wait',                            72)
 ON CONFLICT (code) DO NOTHING;
 
-INSERT INTO case_categories (group_name, name, description, is_emergency, default_priority_id, default_cost_bearer, photo_required)
-SELECT c.grp, c.name, NULL, c.is_emergency, p.id, c.bearer, c.photo
+INSERT INTO case_categories (group_name, name, description, is_emergency, default_priority_id, photo_required)
+SELECT c.grp, c.name, NULL, c.is_emergency, p.id, c.photo
 FROM (VALUES
-    ('Electrical',        'Power outage in one area',                    'high',      false, 'building', false),
-    ('Electrical',        'Power outage in the whole building',          'emergency', true,  'building', false),
-    ('Electrical',        'Socket or switch not working',                'normal',    false, 'building', false),
-    ('Electrical',        'Breaker keeps tripping',                      'normal',    false, 'building', false),
-    ('Electrical',        'Light not working',                           'low',       false, 'building', false),
-    ('Water',             'Leaking pipe or tap',                         'normal',    false, 'building', true),
-    ('Water',             'Burst pipe or flooding',                      'emergency', true,  'building', false),
-    ('Water',             'Clogged drain',                               'normal',    false, 'building', false),
-    ('Water',             'Toilet not flushing',                         'normal',    false, 'building', false),
-    ('Air conditioning',  'Not cooling',                                 'normal',    false, 'building', false),
-    ('Air conditioning',  'Water dripping from unit',                    'normal',    false, 'building', true),
-    ('Elevator',          'Person stuck in elevator',                    'emergency', true,  'building', false),
-    ('Elevator',          'Elevator out of service',                     'high',      false, 'building', false),
-    ('Doors and locks',   'Door or lock broken',                         'normal',    false, 'building', false),
-    ('Ceiling and walls', 'Water stain on ceiling',                      'low',       false, 'building', true),
-    ('Ceiling and walls', 'Tenant fit-out damage (partition, ceiling)',  'low',       false, 'customer', false),
-    ('Fire safety',       'False fire alarm',                            'high',      false, 'building', false)
-) AS c(grp, name, priority, is_emergency, bearer, photo)
+    ('Electrical',        'Power outage in one area',                    'high',      false, false),
+    ('Electrical',        'Power outage in the whole building',          'emergency', true,  false),
+    ('Electrical',        'Socket or switch not working',                'normal',    false, false),
+    ('Electrical',        'Breaker keeps tripping',                      'normal',    false, false),
+    ('Electrical',        'Light not working',                           'low',       false, false),
+    ('Water',             'Leaking pipe or tap',                         'normal',    false, true),
+    ('Water',             'Burst pipe or flooding',                      'emergency', true,  false),
+    ('Water',             'Clogged drain',                               'normal',    false, false),
+    ('Water',             'Toilet not flushing',                         'normal',    false, false),
+    ('Air conditioning',  'Not cooling',                                 'normal',    false, false),
+    ('Air conditioning',  'Water dripping from unit',                    'normal',    false, true),
+    ('Elevator',          'Person stuck in elevator',                    'emergency', true,  false),
+    ('Elevator',          'Elevator out of service',                     'high',      false, false),
+    ('Doors and locks',   'Door or lock broken',                         'normal',    false, false),
+    ('Ceiling and walls', 'Water stain on ceiling',                      'low',       false, true),
+    ('Ceiling and walls', 'Tenant fit-out damage (partition, ceiling)',  'low',       false, false),
+    ('Fire safety',       'False fire alarm',                            'high',      false, false)
+) AS c(grp, name, priority, is_emergency, photo)
 JOIN priority_levels p ON p.code = c.priority
 ON CONFLICT (group_name, name) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
--- cases, case_status_history  (owner: Trí — F3)
+-- cases, case_status_history, case_tasks  (owner: Trí — F3)
 -- Demo cases at different points of the road. Each case is built from the canonical F3 path up to its target status:
---   pending -> approved -> assigned -> accepted -> in_progress -> completed -> closed   ("rejected" branches off pending).
+--   pending -> approved -> accepted -> in_progress -> completed -> closed   ("rejected" branches off pending).
+-- Meeting 07/11: the technician is named on approval (no "assigned" status) and every approved case has a task.
 -- Each customer reports in their own room or a common area of their building (same rule as the API).
 -- A case is skipped when one with the same title already exists, so the file can run again.
 -- ---------------------------------------------------------------------------
 DO $$
 DECLARE
     r        record;
-    path     text[] := ARRAY['pending', 'approved', 'assigned', 'accepted', 'in_progress', 'completed', 'closed'];
+    path     text[] := ARRAY['pending', 'approved', 'accepted', 'in_progress', 'completed', 'closed'];
     n        int;
     i        int;
     cid      bigint;
@@ -280,9 +281,9 @@ BEGIN
             ('Room 301 has no power', 'All sockets and lights in room 301 are off since this morning.',
              'Electrical', 'Power outage in one area', 'Riverside Office B', '301', NULL::text, 'hoa', NULL::text, 'pending', 1, NULL::int),
             ('Water leaking under the washbasin', 'Water is dripping from the pipe under the second washbasin, the floor is wet.',
-             'Water', 'Leaking pipe or tap', 'SmartMaint Tower A', 'Restroom G', NULL::text, 'bao', NULL::text, 'approved', 7, NULL::int),
+             'Water', 'Leaking pipe or tap', 'SmartMaint Tower A', 'Restroom G', NULL::text, 'bao', 'long', 'approved', 7, NULL::int),
             ('Socket next to the printer is dead', 'The double socket on the left wall gives no power. Other sockets are fine.',
-             'Electrical', 'Socket or switch not working', 'SmartMaint Tower A', '1201', NULL::text, 'lan', 'technician', 'assigned', 9, NULL::int),
+             'Electrical', 'Socket or switch not working', 'SmartMaint Tower A', '1201', NULL::text, 'lan', 'technician', 'approved', 9, NULL::int),
             ('AC dripping water on the desk', 'Water drips from the indoor unit onto the desk below every few minutes.',
              'Air conditioning', 'Water dripping from unit', 'SmartMaint Tower A', '502', 'Split AC Panasonic 1.5HP (#AC-502)', 'bao', 'technician', 'in_progress', 22, 3),
             ('Toilet in restroom G keeps running', 'The toilet in the second stall does not stop filling after flushing.',
@@ -299,7 +300,7 @@ BEGIN
     LOOP
         CONTINUE WHEN EXISTS (SELECT 1 FROM cases WHERE title = r.title);
 
-        SELECT c.id, c.default_priority_id, c.default_cost_bearer, p.sla_hours INTO cat
+        SELECT c.id, c.default_priority_id, p.sla_hours INTO cat
         FROM case_categories c JOIN priority_levels p ON p.id = c.default_priority_id
         WHERE c.group_name = r.grp AND c.name = r.typ;
         SELECT rooms.id, fl.building_id INTO rm
@@ -312,37 +313,43 @@ BEGIN
 
         n := CASE WHEN r.target = 'rejected' THEN 1 ELSE array_position(path, r.target) END;
         t0 := now() - make_interval(hours => r.submitted_h);
-        t_start := CASE WHEN n >= 5 THEN now() - make_interval(hours => COALESCE(r.started_h, 3)) END;
-        t_done := CASE WHEN n >= 6 THEN now() - make_interval(hours => GREATEST(COALESCE(r.started_h, 3) - 4, 1)) END;
-        t_close := CASE WHEN n >= 7 THEN t_done + interval '2 hours' END;
+        t_start := CASE WHEN n >= 4 THEN now() - make_interval(hours => COALESCE(r.started_h, 3)) END;
+        t_done := CASE WHEN n >= 5 THEN now() - make_interval(hours => GREATEST(COALESCE(r.started_h, 3) - 4, 1)) END;
+        t_close := CASE WHEN n >= 6 THEN t_done + interval '2 hours' END;
 
-        INSERT INTO cases (requesting_customer_id, room_id, asset_id, category_id, title, description, status_id, priority_level_id, cost_bearer,
+        INSERT INTO cases (requesting_customer_id, room_id, asset_id, category_id, title, description, status_id, priority_level_id,
                            staff_id, assigned_technician_id, submitted_at, started_at, due_at, completed_at, closed_at,
                            actual_completion_hours, root_cause, parts_used)
         VALUES (cust_id, rm.id, ast_id, cat.id, r.title, r.descr,
                 (SELECT id FROM case_statuses WHERE name = r.target),
-                cat.default_priority_id, cat.default_cost_bearer,
+                cat.default_priority_id,
                 CASE WHEN n >= 2 OR r.target = 'rejected' THEN stf_id END,
-                CASE WHEN n >= 3 THEN tech_id END,
+                CASE WHEN n >= 2 THEN tech_id END,
                 t0, t_start, t_start + make_interval(hours => cat.sla_hours), t_done, t_close,
-                CASE WHEN n >= 6 THEN 2.50 END,
-                CASE WHEN n >= 6 THEN 'Overloaded circuit / worn part (demo data)' END,
-                CASE WHEN n >= 6 THEN '1x replacement part, bought outside the system (demo data)' END)
+                CASE WHEN n >= 5 THEN 2.50 END,
+                CASE WHEN n >= 5 THEN 'Overloaded circuit / worn part (demo data)' END,
+                CASE WHEN n >= 5 THEN '1x replacement part, bought outside the system (demo data)' END)
         RETURNING id INTO cid;
 
         -- status history: one row per step of the path (who: customer, staff or technician; when: spread between submit and now)
         FOR i IN 1..n LOOP
-            who := CASE WHEN i = 1 THEN cust_id WHEN i IN (2, 3, 6, 7) THEN stf_id ELSE tech_id END;
+            who := CASE WHEN i = 1 THEN cust_id WHEN i IN (2, 6) THEN stf_id ELSE tech_id END;
             step_at := CASE
                 WHEN i = 1 THEN t0
-                WHEN i = 5 THEN t_start
-                WHEN i = 6 THEN t_done
-                WHEN i = 7 THEN t_close
+                WHEN i = 4 THEN t_start
+                WHEN i = 5 THEN t_done
+                WHEN i = 6 THEN t_close
                 ELSE t0 + make_interval(hours => i - 1) END;
             INSERT INTO case_status_history (case_id, new_status_id, changed_by_id, reason, changed_at)
             VALUES (cid, (SELECT id FROM case_statuses WHERE name = path[i]), who,
-                    CASE WHEN i = 3 THEN 'Assigned to ' || tech_nm || '.' END, step_at);
+                    CASE WHEN i = 2 AND tech_nm IS NOT NULL THEN 'Assigned to ' || tech_nm || '.' END, step_at);
         END LOOP;
+
+        -- every approved case has a task (the case itself); done by the technician once the work is completed
+        IF n >= 2 THEN
+            INSERT INTO case_tasks (case_id, name, status_id, done_by, done_at)
+            VALUES (cid, r.title, CASE WHEN n >= 5 THEN 2 ELSE 1 END, CASE WHEN n >= 5 THEN 'technician' END, t_done);
+        END IF;
 
         IF r.target = 'rejected' THEN
             INSERT INTO case_status_history (case_id, new_status_id, changed_by_id, reason, changed_at)
@@ -439,10 +446,10 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM cases WHERE title = 'Water pouring from a burst pipe') THEN
         t0 := now() - interval '4 minutes';
         INSERT INTO cases (requesting_customer_id, room_id, category_id, title, description, status_id, priority_level_id,
-                           cost_bearer, submitted_at, emergency_at, due_at)
+                           submitted_at, emergency_at, due_at)
         SELECT bao, r.id, c.id, 'Water pouring from a burst pipe',
                'Water is pouring from the wall behind the washbasins and spreading into the corridor.',
-               (SELECT id FROM case_statuses WHERE name = 'approved'), emerg.id, 'building', t0, t0,
+               (SELECT id FROM case_statuses WHERE name = 'approved'), emerg.id, t0, t0,
                t0 + make_interval(hours => emerg.sla_hours)
         FROM rooms r JOIN floors f ON f.id = r.floor_id JOIN buildings b ON b.id = f.building_id,
              case_categories c
@@ -457,12 +464,12 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM cases WHERE title = 'Two people stuck in elevator 1') THEN
         t0 := now() - interval '30 hours';
         INSERT INTO cases (requesting_customer_id, room_id, asset_id, category_id, title, description, status_id,
-                           priority_level_id, cost_bearer, staff_id, assigned_technician_id, submitted_at, emergency_at,
+                           priority_level_id, staff_id, assigned_technician_id, submitted_at, emergency_at,
                            acknowledged_at, started_at, made_safe_at, due_at, completed_at, closed_at,
                            actual_completion_hours, root_cause, parts_used)
         SELECT cust, r.id, a.id, c.id, 'Two people stuck in elevator 1',
                'The elevator stopped between floor 3 and 4, two people inside, the alarm button works.',
-               (SELECT id FROM case_statuses WHERE name = 'closed'), emerg.id, 'building', stf, tech, t0, t0,
+               (SELECT id FROM case_statuses WHERE name = 'closed'), emerg.id, stf, tech, t0, t0,
                t0 + interval '3 minutes', t0 + interval '20 minutes', t0 + interval '35 minutes',
                t0 + make_interval(hours => emerg.sla_hours), t0 + interval '90 minutes', t0 + interval '150 minutes',
                1.25, 'Door lock sensor of floor 4 failed; the contractor replaced it (demo data)', NULL
@@ -479,7 +486,6 @@ BEGIN
             ('approved',    cust,  'Emergency service type: approved automatically, handled by F4.', interval '0 minutes'),
             ('approved',    stf,   'Emergency acknowledged after 3 min.',                             interval '3 minutes'),
             ('approved',    stf,   'Third party called: Elevator contractor, 0901 234 567, on site in 30 min.', interval '4 minutes'),
-            ('assigned',    stf,   'Assigned to Vo Thanh Long.',                                      interval '5 minutes'),
             ('accepted',    tech,  NULL,                                                              interval '8 minutes'),
             ('in_progress', tech,  NULL,                                                              interval '20 minutes'),
             ('in_progress', tech,  'Made safe 35 min after the report.',                              interval '35 minutes'),
@@ -517,17 +523,16 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM cases WHERE title = 'AC in 502 stopped cooling again') THEN
         t0 := now() - interval '70 days';
         INSERT INTO cases (requesting_customer_id, room_id, asset_id, category_id, title, description, status_id,
-                           priority_level_id, cost_bearer, staff_id, assigned_technician_id, submitted_at, started_at,
+                           priority_level_id, staff_id, assigned_technician_id, submitted_at, started_at,
                            due_at, completed_at, closed_at, actual_completion_hours, root_cause)
         VALUES (bao, ac.room_id, ac.id, cat.id, 'AC in 502 stopped cooling again', 'The AC blows air but it is not cold.',
-                (SELECT id FROM case_statuses WHERE name = 'closed'), cat.default_priority_id, 'building', stf, tech,
+                (SELECT id FROM case_statuses WHERE name = 'closed'), cat.default_priority_id, stf, tech,
                 t0, t0 + interval '3 hours', t0 + interval '3 hours' + make_interval(hours => cat.sla_hours),
                 t0 + interval '5 hours', t0 + interval '1 day', 2, 'Gas leak at the flare nut, refilled (demo data)')
         RETURNING id INTO cid;
         INSERT INTO case_status_history (case_id, new_status_id, changed_by_id, reason, changed_at)
         SELECT cid, (SELECT id FROM case_statuses WHERE name = s.status), s.who, s.reason, t0 + s.after
-        FROM (VALUES ('pending', bao, NULL, interval '0 hours'), ('approved', stf, NULL, interval '1 hour'),
-                     ('assigned', stf, 'Assigned to Demo Technician.', interval '1 hour'),
+        FROM (VALUES ('pending', bao, NULL, interval '0 hours'), ('approved', stf, 'Assigned to Demo Technician.', interval '1 hour'),
                      ('accepted', tech, NULL, interval '2 hours'), ('in_progress', tech, NULL, interval '3 hours'),
                      ('completed', tech, NULL, interval '5 hours'), ('closed', stf, NULL, interval '1 day')) AS s(status, who, reason, after);
     END IF;
@@ -535,11 +540,11 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM cases WHERE title = 'AC in 502 is loud and shuts down') THEN
         t0 := now() - interval '26 hours';
         INSERT INTO cases (requesting_customer_id, room_id, asset_id, category_id, title, description, status_id,
-                           priority_level_id, cost_bearer, staff_id, assigned_technician_id, submitted_at, started_at,
+                           priority_level_id, staff_id, assigned_technician_id, submitted_at, started_at,
                            due_at, hold_reason, assessment_condition, assessment_cause, assessment_recommendation, assessed_at)
         VALUES (bao, ac.room_id, ac.id, cat.id, 'AC in 502 is loud and shuts down',
                 'The outdoor unit makes a loud grinding noise and the AC switches itself off after ten minutes.',
-                (SELECT id FROM case_statuses WHERE name = 'on_hold'), cat.default_priority_id, 'building', stf, tech,
+                (SELECT id FROM case_statuses WHERE name = 'on_hold'), cat.default_priority_id, stf, tech,
                 t0, t0 + interval '2 hours', t0 + interval '2 hours' + make_interval(hours => cat.sla_hours),
                 'waiting_staff_decision',
                 'Compressor bearing is worn; the unit trips on overload after 10 minutes. Gas pressure is fine.',
@@ -547,11 +552,23 @@ BEGIN
         RETURNING id INTO cid;
         INSERT INTO case_status_history (case_id, new_status_id, changed_by_id, reason, changed_at)
         SELECT cid, (SELECT id FROM case_statuses WHERE name = s.status), s.who, s.reason, t0 + s.after
-        FROM (VALUES ('pending', bao, NULL, interval '0 hours'), ('approved', stf, NULL, interval '30 minutes'),
-                     ('assigned', stf, 'Assigned to Demo Technician.', interval '30 minutes'),
+        FROM (VALUES ('pending', bao, NULL, interval '0 hours'), ('approved', stf, 'Assigned to Demo Technician.', interval '30 minutes'),
                      ('accepted', tech, NULL, interval '1 hour'), ('in_progress', tech, NULL, interval '2 hours'),
                      ('on_hold', tech, 'Needs the staff''s decision (replace the asset): Compressor bearing is worn; the unit trips on overload after 10 minutes. Gas pressure is fine.', interval '3 hours')
         ) AS s(status, who, reason, after);
     END IF;
 END
 $$;
+
+-- ---------------------------------------------------------------------------
+-- case_tasks for the emergency and repair-or-replace demo cases above  (meeting 07/11: every approved case has tasks)
+-- One task named after the case; done by its technician when the case is completed or closed.
+-- ---------------------------------------------------------------------------
+INSERT INTO case_tasks (case_id, name, status_id, done_by, done_at)
+SELECT c.id, left(c.title, 200),
+       CASE WHEN s.name IN ('completed', 'closed') THEN 2 ELSE 1 END,
+       CASE WHEN s.name IN ('completed', 'closed') AND c.assigned_technician_id IS NOT NULL THEN 'technician' END,
+       CASE WHEN s.name IN ('completed', 'closed') THEN c.completed_at END
+FROM cases c JOIN case_statuses s ON s.id = c.status_id
+WHERE s.name NOT IN ('pending', 'rejected', 'cancelled')
+  AND NOT EXISTS (SELECT 1 FROM case_tasks t WHERE t.case_id = c.id);

@@ -17,4 +17,12 @@ public static class CaseHistoryTags
 
     public const string WaitingParts = "Waiting for parts";
     public const string WaitingCustomer = "Waiting for the customer";
+
+    /// <summary>
+    /// Meeting 07/11 keeps only status changes in the history; a row that keeps the status is still written when F6
+    /// counts it (deadline moved, not an emergency).
+    /// </summary>
+    public static bool IsCounted(string? reason) =>
+        reason is not null && (reason.StartsWith(DeadlineMoved, StringComparison.Ordinal)
+                               || reason.StartsWith(NotAnEmergency, StringComparison.Ordinal));
 }

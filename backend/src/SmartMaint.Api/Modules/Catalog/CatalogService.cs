@@ -10,17 +10,17 @@ namespace SmartMaint.Api.Modules.Catalog;
 
 internal sealed class CatalogService(AppDbContext db, ICurrentUser currentUser) : ICatalogService
 {
-    /// <summary>Statuses where a technician is still holding the case.</summary>
+    /// <summary>Statuses where a technician named on the case still has the job (Approved = not accepted yet).</summary>
     private static readonly CaseStatus[] OpenStatuses =
     [
-        CaseStatus.Assigned, CaseStatus.Accepted, CaseStatus.InProgress, CaseStatus.OnHold, CaseStatus.Reopened,
+        CaseStatus.Approved, CaseStatus.Accepted, CaseStatus.InProgress, CaseStatus.OnHold, CaseStatus.Reopened,
     ];
 
     public async Task<IReadOnlyList<ServiceTypeResponse>> GetServiceTypesAsync(CancellationToken cancellationToken) =>
         await db.CaseCategories.AsNoTracking()
             .OrderBy(c => c.GroupName).ThenBy(c => c.Name)
             .Select(c => new ServiceTypeResponse(
-                c.Id, c.GroupName, c.Name, c.DefaultPriority.Code, c.IsEmergency, c.DefaultCostBearer, c.PhotoRequired))
+                c.Id, c.GroupName, c.Name, c.DefaultPriority.Code, c.IsEmergency, c.PhotoRequired))
             .ToListAsync(cancellationToken);
 
     public async Task<IReadOnlyList<BuildingResponse>> GetBuildingsAsync(CancellationToken cancellationToken)
@@ -82,17 +82,44 @@ internal sealed class CatalogService(AppDbContext db, ICurrentUser currentUser) 
     {
         var technicians = await db.Technicians.AsNoTracking()
             .Where(t => t.Status == UserStatus.Active)
-            .Select(t => new { t.Id, t.FullName })
+            .Select(t => new
+            {
+                t.Id,
+                t.FullName,
+                Specialties = t.Specialties.Select(s => s.Specialty.Name).OrderBy(n => n).ToList(),
+            })
             .ToListAsync(cancellationToken);
 
-        var open = await db.Cases.AsNoTracking()
+        var myBuildings = await db.StaffBuildingAssignments
+            .Where(a => a.StaffId == currentUser.Id)
+            .Select(a => a.BuildingId)
+            .ToListAsync(cancellationToken);
+        var jobs = await db.Cases.AsNoTracking()
             .Where(c => c.AssignedTechnicianId != null && OpenStatuses.Contains(c.Status))
-            .GroupBy(c => c.AssignedTechnicianId!.Value)
-            .Select(g => new { TechnicianId = g.Key, Count = g.Count() })
+            .Select(c => new
+            {
+                TechnicianId = c.AssignedTechnicianId!.Value,
+                c.Id,
+                c.Title,
+                c.Status,
+                Urgency = c.Priority.Code,
+                c.PlannedStartAt,
+                c.PlannedEndAt,
+                c.DueAt,
+                Mine = myBuildings.Contains(c.Room.Floor.BuildingId),
+            })
             .ToListAsync(cancellationToken);
 
         return technicians
-            .Select(t => new TechnicianOptionResponse(t.Id, t.FullName, open.FirstOrDefault(o => o.TechnicianId == t.Id)?.Count ?? 0))
+            .Select(t =>
+            {
+                var held = jobs.Where(j => j.TechnicianId == t.Id)
+                    .OrderBy(j => j.PlannedStartAt ?? j.DueAt ?? DateTimeOffset.MaxValue)
+                    .Select(j => new TechnicianJobResponse(
+                        j.Id, Case.CodeOf(j.Id), j.Mine ? j.Title : null, j.Status, j.Urgency, j.PlannedStartAt, j.PlannedEndAt, j.DueAt))
+                    .ToList();
+                return new TechnicianOptionResponse(t.Id, t.FullName, held.Count, t.Specialties, held);
+            })
             .OrderBy(t => t.OpenCases).ThenBy(t => t.FullName)
             .ToList();
     }

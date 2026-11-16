@@ -719,6 +719,10 @@ namespace SmartMaint.Api.Data.Migrations
                         .HasColumnType("bigint")
                         .HasColumnName("category_id");
 
+                    b.Property<DateTimeOffset?>("ClockStartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("clock_started_at");
+
                     b.Property<DateTimeOffset?>("ClosedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("closed_at");
@@ -726,12 +730,6 @@ namespace SmartMaint.Api.Data.Migrations
                     b.Property<DateTimeOffset?>("CompletedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("completed_at");
-
-                    b.Property<string>("CostBearer")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
-                        .HasColumnName("cost_bearer");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .ValueGeneratedOnAdd()
@@ -819,6 +817,18 @@ namespace SmartMaint.Api.Data.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)")
                         .HasColumnName("parts_used");
+
+                    b.Property<DateTimeOffset?>("PlannedEndAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("planned_end_at");
+
+                    b.Property<DateTimeOffset?>("PlannedStartAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("planned_start_at");
+
+                    b.Property<long?>("PreviousCaseId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("previous_case_id");
 
                     b.Property<long>("PriorityLevelId")
                         .HasColumnType("bigint")
@@ -915,6 +925,9 @@ namespace SmartMaint.Api.Data.Migrations
                     b.HasIndex("MergedIntoCaseId")
                         .HasDatabaseName("ix_cases_merged_into_case_id");
 
+                    b.HasIndex("PreviousCaseId")
+                        .HasDatabaseName("ix_cases_previous_case_id");
+
                     b.HasIndex("PriorityLevelId")
                         .HasDatabaseName("ix_cases_priority_level_id");
 
@@ -942,13 +955,13 @@ namespace SmartMaint.Api.Data.Migrations
 
                             t.HasCheckConstraint("ck_cases_assessment_recommendation", "assessment_recommendation IN ('repairable', 'replace', 'specialist')");
 
-                            t.HasCheckConstraint("ck_cases_cost_bearer", "cost_bearer IN ('building', 'customer')");
-
                             t.HasCheckConstraint("ck_cases_estimated_completion_hours", "estimated_completion_hours IS NULL OR estimated_completion_hours > 0");
 
                             t.HasCheckConstraint("ck_cases_hold_reason", "hold_reason IN ('waiting_parts', 'waiting_customer', 'waiting_staff_decision', 'waiting_third_party')");
 
                             t.HasCheckConstraint("ck_cases_incident_follow_up", "incident_follow_up IN ('none', 'preventive_plan', 'replacement_review')");
+
+                            t.HasCheckConstraint("ck_cases_planned_window", "planned_start_at IS NULL OR planned_end_at IS NULL OR planned_end_at > planned_start_at");
 
                             t.HasCheckConstraint("ck_cases_rating_stars", "rating_stars IS NULL OR rating_stars BETWEEN 1 AND 5");
                         });
@@ -968,12 +981,6 @@ namespace SmartMaint.Api.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("now()");
-
-                    b.Property<string>("DefaultCostBearer")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
-                        .HasColumnName("default_cost_bearer");
 
                     b.Property<long>("DefaultPriorityId")
                         .HasColumnType("bigint")
@@ -1020,10 +1027,30 @@ namespace SmartMaint.Api.Data.Migrations
                         .IsUnique()
                         .HasDatabaseName("ix_case_categories_group_name_name");
 
-                    b.ToTable("case_categories", null, t =>
-                        {
-                            t.HasCheckConstraint("ck_case_categories_default_cost_bearer", "default_cost_bearer IN ('building', 'customer')");
-                        });
+                    b.ToTable("case_categories", (string)null);
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Cases.CaseFollower", b =>
+                {
+                    b.Property<long>("CaseId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("case_id");
+
+                    b.Property<long>("CustomerId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("customer_id");
+
+                    b.Property<DateTimeOffset>("AddedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("added_at");
+
+                    b.HasKey("CaseId", "CustomerId")
+                        .HasName("pk_case_followers");
+
+                    b.HasIndex("CustomerId")
+                        .HasDatabaseName("ix_case_followers_customer_id");
+
+                    b.ToTable("case_followers", (string)null);
                 });
 
             modelBuilder.Entity("SmartMaint.Api.Entities.Cases.CaseImage", b =>
@@ -1287,6 +1314,16 @@ namespace SmartMaint.Api.Data.Migrations
                         .HasMaxLength(150)
                         .HasColumnType("character varying(150)")
                         .HasColumnName("name");
+
+                    b.Property<string>("ReceiptCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("receipt_code");
+
+                    b.Property<string>("ReceiptImage")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("receipt_image");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .ValueGeneratedOnAdd()
@@ -1625,11 +1662,6 @@ namespace SmartMaint.Api.Data.Migrations
                         {
                             Id = 2L,
                             Name = "approved"
-                        },
-                        new
-                        {
-                            Id = 3L,
-                            Name = "assigned"
                         },
                         new
                         {
@@ -2041,6 +2073,15 @@ namespace SmartMaint.Api.Data.Migrations
                         .HasColumnType("character varying(500)")
                         .HasColumnName("description");
 
+                    b.Property<DateTimeOffset?>("DoneAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("done_at");
+
+                    b.Property<string>("DoneBy")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("done_by");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -2073,7 +2114,10 @@ namespace SmartMaint.Api.Data.Migrations
                     b.HasIndex("Status")
                         .HasDatabaseName("ix_case_tasks_status_id");
 
-                    b.ToTable("case_tasks", (string)null);
+                    b.ToTable("case_tasks", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_case_tasks_done_by", "done_by IN ('technician', 'third_party')");
+                        });
                 });
 
             modelBuilder.Entity("SmartMaint.Api.Entities.Maintenance.ChecklistTask", b =>
@@ -2666,6 +2710,12 @@ namespace SmartMaint.Api.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_cases_cases_merged_into_case_id");
 
+                    b.HasOne("SmartMaint.Api.Entities.Cases.Case", "PreviousCase")
+                        .WithMany()
+                        .HasForeignKey("PreviousCaseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_cases_cases_previous_case_id");
+
                     b.HasOne("SmartMaint.Api.Entities.Cases.PriorityLevel", "Priority")
                         .WithMany()
                         .HasForeignKey("PriorityLevelId")
@@ -2713,6 +2763,8 @@ namespace SmartMaint.Api.Data.Migrations
 
                     b.Navigation("MergedInto");
 
+                    b.Navigation("PreviousCase");
+
                     b.Navigation("Priority");
 
                     b.Navigation("Room");
@@ -2734,6 +2786,27 @@ namespace SmartMaint.Api.Data.Migrations
                         .HasConstraintName("fk_case_categories_priority_levels_default_priority_id");
 
                     b.Navigation("DefaultPriority");
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Cases.CaseFollower", b =>
+                {
+                    b.HasOne("SmartMaint.Api.Entities.Cases.Case", "Case")
+                        .WithMany("Followers")
+                        .HasForeignKey("CaseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_case_followers_cases_case_id");
+
+                    b.HasOne("SmartMaint.Api.Entities.Accounts.Customer", "Customer")
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_case_followers_customers_customer_id");
+
+                    b.Navigation("Case");
+
+                    b.Navigation("Customer");
                 });
 
             modelBuilder.Entity("SmartMaint.Api.Entities.Cases.CaseImage", b =>
@@ -3123,6 +3196,8 @@ namespace SmartMaint.Api.Data.Migrations
             modelBuilder.Entity("SmartMaint.Api.Entities.Cases.Case", b =>
                 {
                     b.Navigation("Costs");
+
+                    b.Navigation("Followers");
 
                     b.Navigation("History");
 

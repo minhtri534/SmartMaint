@@ -1,5 +1,6 @@
 using SmartMaint.Api.Entities.Accounts;
 using SmartMaint.Api.Entities.Cases;
+using SmartMaint.Api.Entities.Maintenance;
 using SmartMaint.Api.Modules.Assets;
 using SmartMaint.Api.Modules.Assets.Dtos;
 using SmartMaint.Api.Modules.Audit;
@@ -11,20 +12,17 @@ using SmartMaint.UnitTests.Common;
 
 namespace SmartMaint.UnitTests.Modules.Cases;
 
-/// <summary>F5: assessment, decision board, outside party (warranty, contract, quote), check / redo, replacement, survey.</summary>
+/// <summary>
+/// F5: assessment, decision board, the hand-over to an outside party and its tasks (meeting 07/11), replacement, survey.
+/// </summary>
 public sealed class OutsideWorkTests : CaseTestBase
 {
-    private static readonly DateTimeOffset Tomorrow = new(2026, 10, 29, 9, 0, 0, TimeSpan.FromHours(7));
-
     private ReplacementService Replacements => new(Db, Me, new BuildingScope(Db, Me), new AuditService(Db, Me, Clock), Notifications, Clock);
 
     private bool Told(Account user, string text) => Db.Notifications.Any(n => n.UserId == user.Id && n.Details.Contains(text));
 
-    private static RequestDecisionRequest Assessment(TechnicianRecommendation recommendation = TechnicianRecommendation.Replace) =>
-        new("Compressor bearing worn, trips after ten minutes", "Wear after years of use", recommendation, Photo);
-
-    private static OutsourceRequest Contractor(OutsideWorkKind kind = OutsideWorkKind.Contract, OutsideWorkJob job = OutsideWorkJob.Repair) =>
-        new(kind, job, "Cool Air Co.", "Mr Minh 0901 234 567", Tomorrow, null);
+    private static RequestDecisionRequest Assessment() =>
+        new("Compressor bearing worn, trips after ten minutes", "Needs a new compressor from the maker", Photo);
 
     /// <summary>A case on the AC of room 501, in progress, then waiting for the staff's decision.</summary>
     private async Task<long> WaitingDecisionAsync()
@@ -35,14 +33,6 @@ public sealed class OutsideWorkTests : CaseTestBase
         As(Technician);
         await Sut.RequestDecisionAsync(id, Assessment(), default);
         As(Staff);
-        return id;
-    }
-
-    /// <summary>The outside party is working on the case.</summary>
-    private async Task<long> WithOutsidePartyAsync(OutsideWorkJob job = OutsideWorkJob.Repair)
-    {
-        var id = await WaitingDecisionAsync();
-        await Sut.OutsourceAsync(id, Contractor(job: job), default);
         return id;
     }
 
@@ -58,10 +48,11 @@ public sealed class OutsideWorkTests : CaseTestBase
 
         Assert.Equal(CaseStatus.OnHold, result.Status);
         Assert.Equal(HoldReason.WaitingStaffDecision, result.HoldReason);
-        Assert.Equal(TechnicianRecommendation.Replace, result.Assessment!.Recommendation);
+        Assert.Equal("Needs a new compressor from the maker", result.Assessment!.Cause); // meeting 07/11: description + reason
+        Assert.Null(result.Assessment.Recommendation);
         Assert.Contains(result.Photos, p => p.Kind == CaseImageKind.Assessment);
         Assert.DoesNotContain(CaseAction.Resume, result.AllowedActions); // the staff decide, not the technician
-        Assert.True(Told(Staff, "needs your decision"));
+        Assert.True(Told(Staff, "asks to hand"));
     }
 
     [Fact]
@@ -74,13 +65,13 @@ public sealed class OutsideWorkTests : CaseTestBase
     }
 
     [Fact]
-    [Trait(TestType.Key, TestType.Abnormal)]
-    public void HoldValidator_WaitingForStaffDecision_IsNotAPlainHold()
+    [Trait(TestType.Key, TestType.Boundary)]
+    public void RequestDecisionValidator_DescriptionOfTenCharacters_IsTheMinimum()
     {
-        var result = new HoldCaseRequestValidator(Clock).Validate(
-            new HoldCaseRequest(HoldReason.WaitingStaffDecision, DateOnly.FromDateTime(Clock.Now.UtcDateTime)));
+        var validator = new RequestDecisionRequestValidator();
 
-        Assert.False(result.IsValid);
+        Assert.False(validator.Validate(Assessment() with { Description = new string('d', 9) }).IsValid);
+        Assert.True(validator.Validate(Assessment() with { Description = new string('d', 10) }).IsValid);
     }
 
     // ----- decision board -----
@@ -125,140 +116,151 @@ public sealed class OutsideWorkTests : CaseTestBase
         var id = await WaitingDecisionAsync();
         As(Customer);
 
-        Assert.Null((await Sut.GetAsync(id, default)).DecisionInfo);
+        var result = await Sut.GetAsync(id, default);
+
+        Assert.Null(result.DecisionInfo);
+        Assert.Null(result.Assessment); // meeting 07/11: how the work is done is not for the customer
     }
 
-    // ----- outside party -----
+    // ----- outside party (meeting 07/11: only the hand-over is recorded, the party's tasks are marked) -----
 
     [Fact]
     [Trait(TestType.Key, TestType.Normal)]
-    public async Task Outsource_Contract_WaitsForTheOutsidePartyAndTellsTheTechnician()
+    public async Task Outsource_AfterTheAssessment_WaitsForTheOutsidePartyAndTellsTheTechnician()
     {
         var id = await WaitingDecisionAsync();
 
-        var result = await Sut.OutsourceAsync(id, Contractor(), default);
+        var result = await Sut.OutsourceAsync(id, default);
 
+        Assert.Equal(CaseStatus.OnHold, result.Status);
         Assert.Equal(HoldReason.WaitingThirdParty, result.HoldReason);
-        Assert.Equal(OutsideWorkStatus.Working, Assert.Single(result.ThirdParties).Status);
-        Assert.True(Told(Technician, "You are the contact person"));
-        Assert.DoesNotContain(CaseAction.Outsource, result.AllowedActions); // one party at a time
-    }
-
-    [Fact]
-    [Trait(TestType.Key, TestType.Normal)]
-    public async Task Quote_CustomerPaysAndAccepts_PartyWorksAndTheCustomerPays()
-    {
-        var id = await WaitingDecisionAsync();
-        await Sut.OutsourceAsync(id, Contractor(OutsideWorkKind.Quote), default);
-        await Sut.RecordQuoteAsync(id, new RecordQuoteRequest(CostBearer.Customer, "Ms Lan, office manager", null), default);
-
-        var result = await Sut.DecideQuoteAsync(id, new QuoteDecisionRequest(true, "Ms Lan, office manager", "Email of 29/10", Photo[0]), default);
-
-        var party = Assert.Single(result.ThirdParties);
-        Assert.Equal(OutsideWorkStatus.Working, party.Status);
-        Assert.NotNull(party.EvidenceUrl);
-        Assert.Equal(CostBearer.Customer, result.CostBearer);
-    }
-
-    [Fact]
-    [Trait(TestType.Key, TestType.Abnormal)]
-    public async Task Quote_Declined_TheStaffChooseAgain()
-    {
-        var id = await WaitingDecisionAsync();
-        await Sut.OutsourceAsync(id, Contractor(OutsideWorkKind.Quote), default);
-        await Sut.RecordQuoteAsync(id, new RecordQuoteRequest(CostBearer.Building, null, null), default);
-
-        var result = await Sut.DecideQuoteAsync(id, new QuoteDecisionRequest(false, "Building director", "Too expensive", null), default);
-
-        Assert.Equal(OutsideWorkStatus.Declined, Assert.Single(result.ThirdParties).Status);
-        Assert.Equal(HoldReason.WaitingStaffDecision, result.HoldReason);
-        Assert.Contains(CaseAction.Outsource, result.AllowedActions);
-    }
-
-    [Fact]
-    [Trait(TestType.Key, TestType.Abnormal)]
-    public void RecordQuoteValidator_CustomerPaysWithoutRecipient_Fails()
-    {
-        Assert.False(new RecordQuoteRequestValidator().Validate(new RecordQuoteRequest(CostBearer.Customer, null, null)).IsValid);
-        Assert.True(new RecordQuoteRequestValidator().Validate(new RecordQuoteRequest(CostBearer.Building, null, null)).IsValid);
+        Assert.Empty(result.ThirdParties); // nothing about the party itself is recorded
+        Assert.True(Told(Technician, "handed to an outside party"));
+        Assert.DoesNotContain(CaseAction.Outsource, result.AllowedActions);
     }
 
     [Fact]
     [Trait(TestType.Key, TestType.Boundary)]
-    public async Task QuoteReminder_ThreeDaysWithoutAnswer_RemindsTheStaffOnce()
+    public async Task Outsource_WhileInProgress_PutsTheCaseOnHold()
     {
-        var id = await WaitingDecisionAsync();
-        await Sut.OutsourceAsync(id, Contractor(OutsideWorkKind.Quote), default);
-        await Sut.RecordQuoteAsync(id, new RecordQuoteRequest(CostBearer.Customer, "Ms Lan", null), default);
-        var reminder = new SlaReminder(Db, Notifications, Clock);
-        Me.IsAuthenticated = false;
+        var id = await CaseAtAsync(CaseStatus.InProgress);
+        As(Staff);
 
-        Clock.Now = Clock.Now.AddDays(3).AddMinutes(-1);
-        await reminder.RunOnceAsync(default);
-        Assert.False(Told(Staff, "has not answered the quote"));
+        var result = await Sut.OutsourceAsync(id, default);
 
-        Clock.Now = Clock.Now.AddMinutes(1);
-        await reminder.RunOnceAsync(default);
-        await reminder.RunOnceAsync(default);
-        Assert.Single(Db.Notifications, n => n.UserId == Staff.Id && n.Details.Contains("has not answered the quote"));
+        Assert.Equal(CaseStatus.OnHold, result.Status);
+        Assert.Equal(HoldReason.WaitingThirdParty, result.HoldReason);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Abnormal)]
+    public async Task Outsource_BeforeTheTechnicianAccepted_Throws()
+    {
+        var id = await CaseAtAsync(CaseStatus.Approved);
+        As(Staff);
+
+        Assert.Equal("case.invalid_transition", await ErrorCodeAsync(() => Sut.OutsourceAsync(id, default)));
     }
 
     [Fact]
     [Trait(TestType.Key, TestType.Normal)]
-    public async Task Check_FailedThenRedoneThenOk_BackToTheTechnician()
+    public async Task SetTaskThirdParty_Staff_MarksItDoneByTheOutsideParty()
     {
-        var id = await WithOutsidePartyAsync();
-        As(Technician);
-        await Sut.CheckOutsideWorkAsync(id, new CheckOutsideWorkRequest(false, "Still trips after ten minutes"), default);
+        var id = await WaitingDecisionAsync();
+        await Sut.OutsourceAsync(id, default);
+        var taskId = (await Sut.GetAsync(id, default)).Tasks.Single().Id;
+
+        var result = await Sut.SetTaskThirdPartyAsync(id, taskId, new SetTaskThirdPartyRequest(true), default);
+
+        var task = Assert.Single(result.Tasks);
+        Assert.Equal(TaskDoneBy.ThirdParty, task.DoneBy);
+        Assert.Equal(CaseTaskStatus.Pass, task.Status);
+        Assert.Equal(Clock.Now, task.DoneAt);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Abnormal)]
+    public async Task UpdateTask_DoneByTheOutsideParty_TheTechnicianCannotChangeIt()
+    {
+        var id = await CaseAtAsync(CaseStatus.InProgress);
         As(Staff);
-        var redo = await Sut.RedoOutsideWorkAsync(id, new RedoOutsideWorkRequest(null, "Check the capacitor too"), default);
-        Assert.Equal(1, Assert.Single(redo.ThirdParties).RedoCount);
+        var taskId = (await Sut.GetAsync(id, default)).Tasks.Single().Id;
+        await Sut.SetTaskThirdPartyAsync(id, taskId, new SetTaskThirdPartyRequest(true), default);
         As(Technician);
 
-        var result = await Sut.CheckOutsideWorkAsync(id, new CheckOutsideWorkRequest(true, null), default);
+        Assert.Equal("case.task_third_party", await ErrorCodeAsync(() => Sut.UpdateTaskAsync(id, taskId,
+            new UpdateTaskRequest(CaseTaskStatus.Pass, null, null, null, false), default)));
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Boundary)]
+    public async Task SetTaskThirdParty_Unmarked_GoesBackToTheTechnician()
+    {
+        var id = await CaseAtAsync(CaseStatus.InProgress);
+        As(Staff);
+        var taskId = (await Sut.GetAsync(id, default)).Tasks.Single().Id;
+        await Sut.SetTaskThirdPartyAsync(id, taskId, new SetTaskThirdPartyRequest(true), default);
+
+        var result = await Sut.SetTaskThirdPartyAsync(id, taskId, new SetTaskThirdPartyRequest(false), default);
+
+        var task = Assert.Single(result.Tasks);
+        Assert.Null(task.DoneBy);
+        Assert.Equal(CaseTaskStatus.Pending, task.Status);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Normal)]
+    public async Task EditContinue_AfterTheOutsideParty_TheTechnicianGoesOn()
+    {
+        var id = await WaitingDecisionAsync();
+        await Sut.OutsourceAsync(id, default);
+
+        var result = await Sut.EditAsync(id, await EditOfAsync(id) with { StatusChange = EditStatusChange.Continue }, default);
 
         Assert.Equal(CaseStatus.InProgress, result.Status);
         Assert.Null(result.HoldReason);
-        Assert.Equal(OutsideWorkStatus.Done, Assert.Single(result.ThirdParties).Status);
     }
 
-    [Fact]
-    [Trait(TestType.Key, TestType.Boundary)]
-    public async Task StaffResume_WhileAPartyWorks_StopsTheParty()
+    // ----- replacement (an outside party of the old flow replaced the asset) -----
+
+    /// <summary>The asset of an in-progress case was replaced by an outside party (a row of the old F5 flow).</summary>
+    private async Task<long> ReplacedByOutsidePartyAsync()
     {
-        var id = await WithOutsidePartyAsync();
-
-        var result = await Sut.ResumeAsync(id, default);
-
-        Assert.Equal(CaseStatus.InProgress, result.Status);
-        Assert.Equal(OutsideWorkStatus.Cancelled, Assert.Single(result.ThirdParties).Status);
+        var id = await WaitingDecisionAsync();
+        Db.CaseThirdParties.Add(new CaseThirdParty
+        {
+            CaseId = id,
+            Kind = OutsideWorkKind.Contract,
+            Job = OutsideWorkJob.Replace,
+            Status = OutsideWorkStatus.Done,
+            CompanyName = "Cool Air Co.",
+            Contact = "Mr Minh 0901 234 567",
+            FinishedAt = Clock.Now,
+        });
+        await Db.SaveChangesAsync();
+        await Sut.EditAsync(id, await EditOfAsync(id) with { StatusChange = EditStatusChange.Continue }, default);
+        As(Technician);
+        return id;
     }
-
-    // ----- replacement -----
 
     [Fact]
     [Trait(TestType.Key, TestType.Abnormal)]
     public async Task Complete_AfterAReplacementWithoutTheNewModel_Throws()
     {
-        var id = await WithOutsidePartyAsync(OutsideWorkJob.Replace);
-        As(Technician);
-        await Sut.CheckOutsideWorkAsync(id, new CheckOutsideWorkRequest(true, null), default);
+        var id = await ReplacedByOutsidePartyAsync();
 
         Assert.Equal("case.replacement_model_required", await ErrorCodeAsync(() =>
-            Sut.CompleteAsync(id, new CompleteWorkRequest("Compressor worn out", null, null, null, Photo), default)));
+            Sut.CompleteAsync(id, new CompleteWorkRequest(), default)));
     }
 
     [Fact]
     [Trait(TestType.Key, TestType.Normal)]
     public async Task Replacement_ClosedCase_AdminRegistersTheNewAssetAndRetiresTheOld()
     {
-        var id = await WithOutsidePartyAsync(OutsideWorkJob.Replace);
-        As(Technician);
-        await Sut.CheckOutsideWorkAsync(id, new CheckOutsideWorkRequest(true, null), default);
-        await Sut.CompleteAsync(id, new CompleteWorkRequest("Compressor worn out", null, null, null, Photo,
+        var id = await ReplacedByOutsidePartyAsync();
+        await Sut.CompleteAsync(id, new CompleteWorkRequest(
             ReplacementModel: "Daikin FTKF35", ReplacementSerial: "SN-123"), default);
-        As(Staff);
-        await Sut.CloseAsync(id, default);
+        await Sut.EditAsync(id, await EditOfAsync(id) with { StatusChange = EditStatusChange.Close }, default);
         As(Admin);
         var request = Assert.Single(await Replacements.ListAsync(default));
         Assert.Null(request.CaseId); // BR-11: no link into the case for the Administrator
@@ -277,12 +279,9 @@ public sealed class OutsideWorkTests : CaseTestBase
     [Trait(TestType.Key, TestType.Abnormal)]
     public async Task ReplacementComplete_NameAlreadyInTheRoom_Throws()
     {
-        var id = await WithOutsidePartyAsync(OutsideWorkJob.Replace);
-        As(Technician);
-        await Sut.CheckOutsideWorkAsync(id, new CheckOutsideWorkRequest(true, null), default);
-        await Sut.CompleteAsync(id, new CompleteWorkRequest("Compressor worn out", null, null, null, Photo, ReplacementModel: "Daikin"), default);
-        As(Staff);
-        await Sut.CloseAsync(id, default);
+        var id = await ReplacedByOutsidePartyAsync();
+        await Sut.CompleteAsync(id, new CompleteWorkRequest(ReplacementModel: "Daikin"), default);
+        await Sut.EditAsync(id, await EditOfAsync(id) with { StatusChange = EditStatusChange.Close }, default);
         As(Admin);
         var request = (await Replacements.ListAsync(default)).Single();
 
@@ -303,7 +302,8 @@ public sealed class OutsideWorkTests : CaseTestBase
         Assert.True(result.IsSurvey);
         Assert.Equal(CaseStatus.Approved, result.Status);
         Assert.Null(result.Requester);
-        Assert.Contains(CaseAction.Assign, result.AllowedActions);
+        Assert.Contains(CaseAction.Edit, result.AllowedActions); // the staff names the technician with Edit
+        Assert.Single(result.Tasks);
     }
 
     [Fact]

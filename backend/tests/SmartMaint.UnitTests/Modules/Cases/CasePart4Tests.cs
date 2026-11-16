@@ -6,93 +6,113 @@ using SmartMaint.UnitTests.Common;
 
 namespace SmartMaint.UnitTests.Modules.Cases;
 
-/// <summary>Part 4 of F3: reassign, change urgency, extend the deadline, "not fixed", costs, SLA reminders.</summary>
+/// <summary>The staff steps in: Edit (new technician, urgency, tasks), the deadline, "not fixed", costs, SLA reminders.</summary>
 public sealed class CasePart4Tests : CaseTestBase
 {
-    private const string Why = "The technician is needed elsewhere";
 
-    // ----- Reassign -----
+    // ----- A new technician on taken work = a new case (meeting 07/11, Leader 09/11: the old case closes) -----
 
     [Fact]
     [Trait(TestType.Key, TestType.Normal)]
-    public async Task Reassign_CaseInProgress_GoesBackToAssignedAndKeepsTheClock()
+    public async Task Edit_NewTechnicianWhileInProgress_ContinuesInANewCaseAndClosesTheOld()
     {
         var id = await CaseAtAsync(CaseStatus.InProgress);
-        var due = (await Sut.GetAsync(id, default)).DueAt;
-        As(Staff);
+        var before = await Sut.GetAsync(id, default);
+        var edit = await EditOfAsync(id);
 
-        var result = await Sut.ReassignAsync(id, new ReassignCaseRequest(Technician2.Id, Why), default);
-        As(Technician2);
-        await Sut.AcceptAsync(id, default);
-        var restarted = await Sut.StartAsync(id, default);
+        var old = await Sut.EditAsync(id, edit with { TechnicianId = Technician2.Id }, default);
 
-        Assert.Equal(CaseStatus.Assigned, result.Status);
-        Assert.StartsWith("Reassigned from tech to tech2", result.History[^1].Reason);
-        Assert.Equal(due, restarted.DueAt);
-        Assert.Contains(Db.Notifications, n => n.UserId == Technician.Id && n.Details.Contains("taken back"));
-    }
-
-    [Fact]
-    [Trait(TestType.Key, TestType.Abnormal)]
-    public async Task Reassign_ToTheSameTechnician_Throws()
-    {
-        var id = await CaseAtAsync(CaseStatus.InProgress);
-        As(Staff);
-
-        Assert.Equal("case.same_technician",
-            await ErrorCodeAsync(() => Sut.ReassignAsync(id, new ReassignCaseRequest(Technician.Id, Why), default)));
+        Assert.Equal(CaseStatus.Closed, old.Status);
+        Assert.StartsWith("Reassigned to tech2", old.History[^1].Reason);
+        Assert.NotNull(old.NextCase);
+        var next = await Sut.GetAsync(old.NextCase!.Id, default);
+        Assert.Equal(CaseStatus.Approved, next.Status);
+        Assert.Equal(Technician2.Id, next.Technician?.Id);
+        Assert.Equal(id, next.PreviousCase?.Id);
+        Assert.Equal(before.DueAt, next.DueAt); // the SLA clock keeps running
+        Assert.Equal(Customer.Id, next.Requester?.Id);
+        Assert.Contains(Db.Notifications, n => n.UserId == Technician.Id && n.Details.Contains("was given to tech2"));
+        Assert.Contains(Db.Notifications, n => n.UserId == Customer.Id && n.Details.Contains("continues as"));
     }
 
     [Fact]
     [Trait(TestType.Key, TestType.Boundary)]
-    public async Task Reassign_CaseNotAssignedYet_UsesAssignInstead()
+    public async Task Edit_NewTechnician_FinishedTasksStayAndOpenOnesMove()
     {
-        var id = await CaseAtAsync(CaseStatus.Approved);
-        As(Staff);
+        var id = await CaseAtAsync(CaseStatus.InProgress);
+        var edit = await EditOfAsync(id);
+        var withTwo = await Sut.EditAsync(id, edit with
+        {
+            Tasks = [.. edit.Tasks, new TaskLineRequest(null, "Check the drain pipe", null)],
+        }, default);
+        As(Technician);
+        await Sut.UpdateTaskAsync(id, withTwo.Tasks[0].Id,
+            new UpdateTaskRequest(SmartMaint.Api.Entities.Maintenance.CaseTaskStatus.Pass, "Capacitor replaced", null, null, false), default);
 
-        Assert.Equal("case.invalid_transition",
-            await ErrorCodeAsync(() => Sut.ReassignAsync(id, new ReassignCaseRequest(Technician2.Id, Why), default)));
+        var old = await Sut.EditAsync(id, await EditOfAsync(id) with { TechnicianId = Technician2.Id }, default);
+
+        var kept = Assert.Single(old.Tasks);
+        Assert.Equal(SmartMaint.Api.Entities.Maintenance.TaskDoneBy.Technician, kept.DoneBy);
+        var moved = Assert.Single((await Sut.GetAsync(old.NextCase!.Id, default)).Tasks);
+        Assert.Equal("Check the drain pipe", moved.Name);
     }
 
-    // ----- Change urgency -----
+    [Fact]
+    [Trait(TestType.Key, TestType.Abnormal)]
+    public async Task Edit_RemoveTheTechnicianOfTakenWork_Throws()
+    {
+        var id = await CaseAtAsync(CaseStatus.InProgress);
+        var edit = await EditOfAsync(id);
+
+        Assert.Equal("case.technician_required",
+            await ErrorCodeAsync(() => Sut.EditAsync(id, edit with { TechnicianId = null }, default)));
+    }
+
+    // ----- The urgency, from Edit -----
 
     [Fact]
     [Trait(TestType.Key, TestType.Normal)]
-    public async Task ChangeUrgency_StartedCase_MovesTheDeadlineToTheNewLevel()
+    public async Task Edit_UrgencyOfAStartedCase_MovesTheDeadlineToTheNewLevel()
     {
         var id = await CaseAtAsync(CaseStatus.InProgress);
-        As(Staff);
+        var historyBefore = (await Sut.GetAsync(id, default)).History.Count;
 
-        var result = await Sut.ChangeUrgencyAsync(id, new ChangeUrgencyRequest(CasePriority.High, "Water now reaches the server room"), default);
+        var result = await Sut.EditAsync(id, await EditOfAsync(id) with { Urgency = CasePriority.High }, default);
 
         Assert.Equal(CasePriority.High, result.Urgency);
         Assert.Equal(result.SlaStartedAt!.Value.AddHours(8), result.DueAt);
-        Assert.Equal(CaseStatus.InProgress, result.History[^1].To); // same status, history row with the reason
-    }
-
-    [Fact]
-    [Trait(TestType.Key, TestType.Abnormal)]
-    public async Task ChangeUrgency_ToTheSameLevel_Throws()
-    {
-        var id = await CaseAtAsync(CaseStatus.Approved);
-        As(Staff);
-
-        Assert.Equal("case.same_urgency", await ErrorCodeAsync(() =>
-            Sut.ChangeUrgencyAsync(id, new ChangeUrgencyRequest(CasePriority.Normal, "Nothing really changed"), default)));
+        Assert.Equal(historyBefore, result.History.Count); // meeting 07/11: only status changes are kept
+        Assert.Contains(Db.Notifications, n => n.UserId == Technician.Id && n.Details.Contains("Urgency Normal → High"));
     }
 
     [Fact]
     [Trait(TestType.Key, TestType.Boundary)]
-    public async Task ChangeUrgency_ToEmergency_HandsTheCaseToF4()
+    public async Task Edit_UrgencyEmergency_HandsTheCaseToF4AndBackAgain()
     {
-        var id = await CaseAtAsync(CaseStatus.Assigned);
-        As(Staff);
+        var id = await CaseAtAsync(CaseStatus.Approved);
 
-        var result = await Sut.ChangeUrgencyAsync(id, new ChangeUrgencyRequest(CasePriority.Emergency, "Sparks from the socket"), default);
+        var raised = await Sut.EditAsync(id, await EditOfAsync(id) with { Urgency = CasePriority.Emergency }, default);
+        Assert.True(raised.IsEmergencyFlow);
+        Assert.Equal(Clock.Now.AddHours(2), raised.DueAt); // 24/7 from now, not from the start of work
 
-        Assert.True(result.IsEmergencyFlow);
-        Assert.Equal(Clock.Now.AddHours(2), result.DueAt); // 24/7 from now, not from the start of work
-        Assert.Contains(CaseAction.Downgrade, result.AllowedActions);
+        var lowered = await Sut.EditAsync(id, EditOf(raised) with { Urgency = CasePriority.Normal }, default);
+        Assert.False(lowered.IsEmergencyFlow);
+        Assert.Null(lowered.DueAt); // F3 counts from the start of work again
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Abnormal)]
+    public async Task Edit_RemoveATaskThatHasAResult_Throws()
+    {
+        var id = await CaseAtAsync(CaseStatus.InProgress);
+        var taskId = (await Sut.GetAsync(id, default)).Tasks.Single().Id;
+        As(Technician);
+        await Sut.UpdateTaskAsync(id, taskId,
+            new UpdateTaskRequest(SmartMaint.Api.Entities.Maintenance.CaseTaskStatus.Pass, null, null, null, false), default);
+        var edit = await EditOfAsync(id);
+
+        Assert.Equal("case.task_done", await ErrorCodeAsync(() =>
+            Sut.EditAsync(id, edit with { Tasks = [new TaskLineRequest(null, "Something else", null)] }, default)));
     }
 
     // ----- Extend the deadline -----
@@ -108,7 +128,7 @@ public sealed class CasePart4Tests : CaseTestBase
         var result = await Sut.ExtendDueAsync(id, new ExtendDueRequest(newDue, ExtendDueReason.WaitingParts, null), default);
 
         Assert.Equal(newDue, result.DueAt);
-        Assert.Contains("waiting for parts", result.History[^1].Reason);
+        Assert.Contains(Db.Notifications, n => n.UserId == Technician.Id && n.Details.Contains("waiting for parts"));
     }
 
     [Fact]
@@ -187,13 +207,14 @@ public sealed class CasePart4Tests : CaseTestBase
 
     [Fact]
     [Trait(TestType.Key, TestType.Normal)]
-    public async Task Complete_WithPartsAndAnHourlyRate_AddsThePartsAndALabourLine()
+    public async Task Complete_WithLoggedHoursAndAnHourlyRate_AddsALabourLine()
     {
         Technician.HourlyRate = 100_000m;
         var id = await CaseAtAsync(CaseStatus.InProgress);
+        await Sut.AddCostAsync(id, new AddCostRequest("Capacitor 35uF", null, 150_000m, "R-102", null), default);
+        await Sut.LogHoursAsync(id, new LogHoursRequest(1.5m), default);
 
-        var result = await Sut.CompleteAsync(id, new CompleteWorkRequest("Worn capacitor", null, 1.5m, null, Photo,
-            [new CostLineRequest("Capacitor 35uF", null, 150_000m)]), default);
+        var result = await Sut.CompleteAsync(id, new CompleteWorkRequest(), default);
 
         Assert.Equal(2, result.Costs!.Count);
         Assert.Equal(150_000m, result.Costs.Single(c => c.Name == "Labour").Amount);
@@ -202,7 +223,7 @@ public sealed class CasePart4Tests : CaseTestBase
 
     [Fact]
     [Trait(TestType.Key, TestType.Abnormal)]
-    public async Task Costs_CustomerWhenTheBuildingPays_SeesNoCosts()
+    public async Task Costs_Customer_SeesNoCosts()
     {
         Technician.HourlyRate = 100_000m;
         var id = await CaseAtAsync(CaseStatus.Completed);
@@ -213,7 +234,7 @@ public sealed class CasePart4Tests : CaseTestBase
 
     [Fact]
     [Trait(TestType.Key, TestType.Boundary)]
-    public async Task UpdateCosts_StaffBeforeClosing_ReplacesAllLines()
+    public async Task UpdateCosts_StaffAfterCompletion_ReplacesAllLines()
     {
         Technician.HourlyRate = 100_000m;
         var id = await CaseAtAsync(CaseStatus.Completed);
@@ -223,6 +244,31 @@ public sealed class CasePart4Tests : CaseTestBase
 
         Assert.Equal(0m, Assert.Single(result.Costs!).Amount);
         Assert.Equal(0m, result.TotalCost);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Normal)]
+    public async Task UpdateCosts_StaffWhileInProgress_RecordsTitleDescriptionAndAmount()
+    {
+        var id = await CaseAtAsync(CaseStatus.InProgress);
+        As(Staff);
+
+        var result = await Sut.UpdateCostsAsync(id, new UpdateCostsRequest(
+            [new CostLineRequest("Capacitor 35uF", "Receipt R-102", 150_000m), new CostLineRequest("Taxi", null, 50_000m)]), default);
+
+        Assert.Equal(2, result.Costs!.Count);
+        Assert.Equal(200_000m, result.TotalCost);
+        Assert.Equal("Receipt R-102", result.Costs[0].Description);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Abnormal)]
+    public async Task UpdateCosts_ByTechnician_Throws()
+    {
+        var id = await CaseAtAsync(CaseStatus.InProgress);
+
+        Assert.Equal("case.invalid_transition", await ErrorCodeAsync(() =>
+            Sut.UpdateCostsAsync(id, new UpdateCostsRequest([new CostLineRequest("Capacitor", null, 1m)]), default)));
     }
 
     // ----- SLA reminders -----

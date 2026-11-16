@@ -27,7 +27,7 @@ internal sealed class EmergencyWatch(AppDbContext db, INotificationService notif
 
     private static readonly CaseStatus[] Open =
     [
-        CaseStatus.Approved, CaseStatus.Assigned, CaseStatus.Accepted, CaseStatus.InProgress, CaseStatus.OnHold,
+        CaseStatus.Approved, CaseStatus.Accepted, CaseStatus.InProgress, CaseStatus.OnHold,
         CaseStatus.Reopened,
     ];
 
@@ -39,7 +39,7 @@ internal sealed class EmergencyWatch(AppDbContext db, INotificationService notif
             .Include(c => c.Technician)
             .Where(c => c.EmergencyAt != null && c.Priority.Code == CasePriority.Emergency && Open.Contains(c.Status)
                         && ((c.AcknowledgedAt == null && (c.BackupAlertedAt == null || c.ManagerAlertedAt == null))
-                            || ((c.Status == CaseStatus.Assigned || c.Status == CaseStatus.Reopened) && c.AcceptRemindedAt == null)))
+                            || (((c.Status == CaseStatus.Approved && c.AssignedTechnicianId != null) || c.Status == CaseStatus.Reopened) && c.AcceptRemindedAt == null)))
             .ToListAsync(cancellationToken);
 
         var sent = 0;
@@ -72,7 +72,7 @@ internal sealed class EmergencyWatch(AppDbContext db, INotificationService notif
                 sent++;
             }
 
-            if (c.Status is CaseStatus.Assigned or CaseStatus.Reopened && c.AcceptRemindedAt is null && c.AssignedTechnicianId is { } technicianId)
+            if (c.Status is CaseStatus.Approved or CaseStatus.Reopened && c.AcceptRemindedAt is null && c.AssignedTechnicianId is { } technicianId)
             {
                 var assignedAt = await db.CaseStatusHistory
                     .Where(h => h.CaseId == c.Id && h.NewStatus == c.Status)

@@ -20,13 +20,6 @@ internal sealed partial class CaseService
         [EmergencyLogKind.Other] = "Note",
     };
 
-    /// <summary>Statuses a merge target may have: open and not finished yet.</summary>
-    private static readonly CaseStatus[] OpenForMerge =
-    [
-        CaseStatus.Approved, CaseStatus.Assigned, CaseStatus.Accepted, CaseStatus.InProgress, CaseStatus.OnHold,
-        CaseStatus.Reopened,
-    ];
-
     /// <summary>
     /// The case is an emergency from <paramref name="now"/>: 24/7 deadline = now + the emergency SLA hours (Admin setting).
     /// <paramref name="acknowledged"/>: a staff member made it an emergency themselves, so nobody needs to be chased.
@@ -55,63 +48,6 @@ internal sealed partial class CaseService
             c.Staff = await db.Staff.SingleAsync(s => s.Id == currentUser.Id, cancellationToken);
             var minutes = (int)Math.Round((now - (c.EmergencyAt ?? c.SubmittedAt)).TotalMinutes);
             return $"Emergency acknowledged after {minutes} min.";
-        }, cancellationToken);
-
-    /// <summary>F4 step ④ "not an emergency" (K04): back to F3 with a normal urgency and who pays, before a technician accepts.</summary>
-    public Task<CaseDetailResponse> DowngradeAsync(long id, DowngradeRequest request, CancellationToken cancellationToken) =>
-        ActAsync(id, CaseAction.Downgrade, async (c, now) =>
-        {
-            var priority = await db.PriorityLevels.SingleAsync(p => p.Code == request.Urgency, cancellationToken);
-            c.PriorityLevelId = priority.Id;
-            c.Priority = priority;
-            c.CostBearer = request.CostBearer;
-            c.StaffId ??= currentUser.Id;
-            c.AcknowledgedAt ??= now;
-            // F3 counts from the start of work: no deadline until the technician starts.
-            c.EmergencyAt = null;
-            c.DueAt = c.StartedAt?.AddHours(priority.SlaHours);
-            c.SlaWarnedAt = null;
-            c.SlaOverdueNotifiedAt = null;
-            return $"{CaseHistoryTags.NotAnEmergency}, moved to F3 ({priority.Name}): {request.Reason.Trim()}";
-        }, cancellationToken);
-
-    /// <summary>
-    /// N5: the same incident is already handled as <see cref="MergeCaseRequest.TargetCaseId"/>. This report closes
-    /// (Cancelled, merged: no KPI); its customer hears when the main case is fixed. A main case below Emergency is raised.
-    /// </summary>
-    public Task<CaseDetailResponse> MergeAsync(long id, MergeCaseRequest request, CancellationToken cancellationToken) =>
-        ActAsync(id, CaseAction.Merge, async (c, now) =>
-        {
-            var target = await WithRefs().SingleOrDefaultAsync(x => x.Id == request.TargetCaseId, cancellationToken);
-            // An incident goes into another incident, never into a preventive work order (F2).
-            if (target is null || target.Id == c.Id || target.MergedIntoCaseId is not null || target.IsPreventive
-                || target.Room.Floor.BuildingId != c.Room.Floor.BuildingId || !OpenForMerge.Contains(target.Status))
-            {
-                throw CaseErrors.InvalidMergeTarget();
-            }
-
-            c.MergedIntoCaseId = target.Id;
-            c.StaffId ??= currentUser.Id;
-            c.AcknowledgedAt ??= now;
-            c.AssignedTechnicianId = null;
-            c.Technician = null;
-
-            var raised = string.Empty;
-            if (!CaseMapper.IsEmergencyFlow(target))
-            {
-                EnterEmergency(target, c.Priority, now, acknowledged: true);
-                raised = " Raised to Emergency.";
-            }
-
-            target.History.Add(new CaseStatusHistory
-            {
-                NewStatus = target.Status,
-                ChangedById = currentUser.Id,
-                ChangedAt = now,
-                Reason = $"{Case.CodeOf(c.Id)} \"{c.Title}\" merged into this case (same incident).{raised}",
-            });
-            var note = string.IsNullOrWhiteSpace(request.Note) ? string.Empty : $" {request.Note.Trim()}";
-            return $"Merged into {Case.CodeOf(target.Id)}: same incident.{note}";
         }, cancellationToken);
 
     /// <summary>N3 / N2: a line of the emergency log (third party called, temporary measure, news for the customer).</summary>
@@ -178,23 +114,14 @@ internal sealed partial class CaseService
         PrimaryStaffAsync(db, buildingId, primary: true, cancellationToken);
 
     /// <summary>Who hears about the F4 steps (called from NotifyAsync for the actions it does not list; AddLog notifies itself).</summary>
-    private void NotifyEmergency(Case c, CaseAction action, string? reason, long? technicianBefore, List<long> staffOfBuilding)
+    private void NotifyEmergency(Case c, CaseAction action, List<long> staffOfBuilding)
     {
         var code = Case.CodeOf(c.Id);
-        long[] customer = c.RequestingCustomerId is { } customerId ? [customerId] : [];
-        long[] technician = c.AssignedTechnicianId is { } technicianId ? [technicianId] : [];
+        var customer = CustomersOf(c);
         switch (action)
         {
             case CaseAction.Acknowledge:
                 notifications.Send(customer, $"{code}: {c.Staff?.FullName ?? "The building staff"} is handling your emergency.");
-                break;
-            case CaseAction.Downgrade:
-                notifications.Send([.. customer, .. technician], $"{code} \"{c.Title}\": {reason}");
-                break;
-            case CaseAction.Merge:
-                notifications.Send(customer,
-                    $"{code}: the same problem is already being handled as {Case.CodeOf(c.MergedIntoCaseId!.Value)}. We will tell you when it is fixed.");
-                notifications.Send(technicianBefore is { } t ? [t] : [], $"{code} was merged into {Case.CodeOf(c.MergedIntoCaseId!.Value)}: no need to go.");
                 break;
             case CaseAction.MarkSafe:
                 notifications.Send([.. staffOfBuilding, .. customer], $"{code} \"{c.Title}\": the danger is under control, the repair goes on.");

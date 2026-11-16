@@ -23,7 +23,8 @@ public sealed class AnalyticsTests : CaseTestBase
         var id = await CaseAtAsync(CaseStatus.InProgress);
         Clock.Now = Clock.Now.AddHours(hoursAfterStart);
         As(Technician);
-        await Sut.CompleteAsync(id, new CompleteWorkRequest("Worn part", null, 1, null, Photo), default);
+        await Sut.LogHoursAsync(id, new LogHoursRequest(1), default);
+        await Sut.CompleteAsync(id, new CompleteWorkRequest(), default);
         return id;
     }
 
@@ -53,7 +54,8 @@ public sealed class AnalyticsTests : CaseTestBase
         await Sut.ExtendDueAsync(id, new ExtendDueRequest(Clock.Now.AddHours(48), ExtendDueReason.WaitingParts, null), default);
         Clock.Now = Clock.Now.AddHours(30);
         As(Technician);
-        await Sut.CompleteAsync(id, new CompleteWorkRequest("Worn part", null, 1, null, Photo), default);
+        await Sut.LogHoursAsync(id, new LogHoursRequest(1), default);
+        await Sut.CompleteAsync(id, new CompleteWorkRequest(), default);
         As(Manager);
 
         var kpis = (await Analytics.OverviewAsync(All, default)).Current;
@@ -87,7 +89,7 @@ public sealed class AnalyticsTests : CaseTestBase
     {
         var id = await CompletedAsync(2);
         As(Staff);
-        await Sut.CloseAsync(id, default);
+        await Sut.EditAsync(id, await EditOfAsync(id) with { StatusChange = EditStatusChange.Close }, default);
         As(Customer);
         await Sut.RateAsync(id, new RateCaseRequest(4, ""), default);
 
@@ -139,7 +141,7 @@ public sealed class AnalyticsTests : CaseTestBase
         var id = (await NewCaseAsync()).Id;
         Clock.Now = Clock.Now.AddMinutes(30);
         As(Staff);
-        await Sut.ApproveAsync(id, new ApproveCaseRequest(CasePriority.Normal, CostBearer.Building), default);
+        await Sut.ApproveAsync(id, Approval(), default);
 
         Assert.Equal(30, (await Analytics.OverviewAsync(All, default)).Current.AvgFirstResponseMinutes);
     }

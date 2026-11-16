@@ -22,7 +22,7 @@ internal sealed class CatalogAdminService(AppDbContext db, IAuditService audit) 
         await db.CaseCategories.AsNoTracking()
             .OrderBy(c => c.GroupName).ThenBy(c => c.Name)
             .Select(c => new CaseCategoryAdminResponse(
-                c.Id, c.GroupName, c.Name, c.Description, c.IsEmergency, c.DefaultPriority.Code, c.DefaultCostBearer,
+                c.Id, c.GroupName, c.Name, c.Description, c.IsEmergency, c.DefaultPriority.Code,
                 c.PhotoRequired, db.Cases.Count(x => x.CategoryId == c.Id)))
             .ToListAsync(cancellationToken);
 
@@ -43,10 +43,9 @@ internal sealed class CatalogAdminService(AppDbContext db, IAuditService audit) 
                 // An emergency type always opens an emergency case (N26).
                 c.IsEmergency = request.IsEmergency;
                 c.DefaultPriorityId = priority.Id;
-                c.DefaultCostBearer = request.DefaultCostBearer;
                 c.PhotoRequired = request.PhotoRequired;
             },
-            c => new { c.Id, c.GroupName, c.Name, c.IsEmergency, c.DefaultPriorityId, c.DefaultCostBearer, c.PhotoRequired },
+            c => new { c.Id, c.GroupName, c.Name, c.IsEmergency, c.DefaultPriorityId, c.PhotoRequired },
             cancellationToken);
         return (await ListCaseCategoriesAsync(cancellationToken)).Single(c => c.Id == category.Id);
     }

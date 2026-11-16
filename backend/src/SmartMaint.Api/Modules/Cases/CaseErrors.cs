@@ -32,12 +32,6 @@ internal static class CaseErrors
     public static AppException TaskNotFound() =>
         new(ErrorKind.NotFound, "case.task_not_found", "This checklist item does not belong to the case.");
 
-    public static AppException SameTechnician() =>
-        new(ErrorKind.BadRequest, "case.same_technician", "This technician already holds the case. Choose another one.");
-
-    public static AppException SameUrgency() =>
-        new(ErrorKind.BadRequest, "case.same_urgency", "The case already has this urgency.");
-
     public static AppException DueNotLater() =>
         new(ErrorKind.BadRequest, "case.due_not_later", "The new deadline must be later than the current one.");
 
@@ -52,7 +46,28 @@ internal static class CaseErrors
         new(ErrorKind.BadRequest, "case.survey_not_allowed",
             "Open a survey for an asset in use in one of your buildings that has no open survey yet.");
 
-    public static AppException InvalidMergeTarget() =>
-        new(ErrorKind.BadRequest, "case.invalid_merge_target",
-            "Merge into another open incident of the same building that is not merged itself.");
+    public static AppException InvalidDuplicateTarget() =>
+        new(ErrorKind.BadRequest, "case.invalid_duplicate_target",
+            "Choose another open case of the same building as the one this request repeats.");
+
+    public static AppException TechnicianRequired() =>
+        new(ErrorKind.BadRequest, "case.technician_required",
+            "The technician already took this job: choose who continues it instead of leaving it empty.");
+
+    public static AppException TaskAlreadyDone(string task) =>
+        new(ErrorKind.BadRequest, "case.task_done", $"\"{task}\" already has a result and cannot be removed.");
+
+    public static AppException TaskByThirdParty(string task) =>
+        new(ErrorKind.Conflict, "case.task_third_party",
+            $"\"{task}\" was done by an outside party; only the staff can change it.");
+
+    public static AppException CostNotFound() =>
+        new(ErrorKind.NotFound, "case.cost_not_found", "This cost line does not belong to the case. Reload the page.");
+
+    public static AppException InvalidFollower() =>
+        new(ErrorKind.BadRequest, "case.invalid_follower", "Followers must be active customers of the case's building.");
+
+    public static AppException StatusChangeNotAllowed() =>
+        new(ErrorKind.Conflict, "case.status_change_not_allowed",
+            "This status change is not possible for the case now. Reload the page.");
 }

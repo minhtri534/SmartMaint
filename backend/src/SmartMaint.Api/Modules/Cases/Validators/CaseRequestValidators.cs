@@ -38,15 +38,66 @@ public sealed class CreateCaseRequestValidator : AbstractValidator<CreateCaseReq
         RuleFor(x => x.ServiceTypeId).GreaterThan(0).WithMessage("Choose what is wrong.");
         RuleFor(x => x.RoomId).GreaterThan(0).WithMessage("Choose a room or area.");
         RuleFor(x => x.Photos).ValidPhotos();
+        RuleFor(x => x.Urgency).IsInEnum().When(x => x.Urgency is not null).WithMessage("Choose how urgent it is.");
     }
 }
 
+internal static class WorkOrderRules
+{
+    public const int MaxTasks = 30;
+
+    public static IRuleBuilderOptions<T, IReadOnlyList<TaskLineRequest>?> ValidTasks<T>(
+        this IRuleBuilder<T, IReadOnlyList<TaskLineRequest>?> rule) =>
+        rule
+            .Must(l => l is null || l.Count <= MaxTasks).WithMessage($"At most {MaxTasks} tasks.")
+            .Must(l => l is null || l.All(x => x.Name is not null && x.Name.Trim().Length is >= 2 and <= 200))
+            .WithMessage("Each task needs a name of 2 to 200 characters.")
+            .Must(l => l is null || l.All(x => (x.Description?.Length ?? 0) <= 500))
+            .WithMessage("A task description has at most 500 characters.");
+
+    /// <summary>The planned end comes after the planned start.</summary>
+    public static bool ValidWindow(DateTimeOffset? start, DateTimeOffset? end) => start is null || end is null || end > start;
+}
+
+/// <summary>DLG-01: the work order form of an approval.</summary>
 public sealed class ApproveCaseRequestValidator : AbstractValidator<ApproveCaseRequest>
 {
     public ApproveCaseRequestValidator()
     {
         RuleFor(x => x.Urgency).IsInEnum();
-        RuleFor(x => x.CostBearer).IsInEnum();
+        RuleFor(x => x.TechnicianId).GreaterThan(0).WithMessage("Choose a technician.");
+        RuleFor(x => x.ServiceTypeId).GreaterThan(0).When(x => x.ServiceTypeId is not null).WithMessage("Choose a category.");
+        RuleFor(x => x.Title).MaximumLength(CreateCaseRequestValidator.TitleMaxLength);
+        RuleFor(x => x.Description).MaximumLength(CreateCaseRequestValidator.DescriptionMaxLength);
+        RuleFor(x => x.PlannedEndAt).Must((x, end) => WorkOrderRules.ValidWindow(x.PlannedStartAt, end))
+            .WithMessage("The planned end must be after the planned start.");
+        RuleFor(x => x.Tasks).ValidTasks();
+    }
+}
+
+/// <summary>The staff's Edit (meeting 07/11).</summary>
+public sealed class EditCaseRequestValidator : AbstractValidator<EditCaseRequest>
+{
+    public EditCaseRequestValidator()
+    {
+        RuleFor(x => x.Urgency).IsInEnum();
+        RuleFor(x => x.TechnicianId).GreaterThan(0).When(x => x.TechnicianId is not null).WithMessage("Choose a technician.");
+        RuleFor(x => x.ServiceTypeId).GreaterThan(0).WithMessage("Choose a category.");
+        RuleFor(x => x.Title).NotEmpty().Must(t => t.Trim().Length >= CreateCaseRequestValidator.TitleMinLength)
+            .WithMessage($"At least {CreateCaseRequestValidator.TitleMinLength} characters.")
+            .MaximumLength(CreateCaseRequestValidator.TitleMaxLength);
+        RuleFor(x => x.Description).NotEmpty().Must(t => t.Trim().Length >= CreateCaseRequestValidator.DescriptionMinLength)
+            .WithMessage($"At least {CreateCaseRequestValidator.DescriptionMinLength} characters.")
+            .MaximumLength(CreateCaseRequestValidator.DescriptionMaxLength);
+        RuleFor(x => x.PlannedEndAt).Must((x, end) => WorkOrderRules.ValidWindow(x.PlannedStartAt, end))
+            .WithMessage("The planned end must be after the planned start.");
+        RuleFor(x => (IReadOnlyList<TaskLineRequest>?)x.Tasks).NotNull().ValidTasks();
+        RuleFor(x => x.FollowerIds).Must(f => f is null || f.Count <= 20).WithMessage("At most 20 followers.");
+        RuleFor(x => x.StatusChange).IsInEnum().When(x => x.StatusChange is not null);
+        RuleFor(x => x.Reason!).NotEmpty().Must(r => r is not null && r.Trim().Length >= ReasonRequestValidator.MinLength)
+            .WithMessage($"Say what is not OK (at least {ReasonRequestValidator.MinLength} characters).")
+            .MaximumLength(ReasonRequestValidator.MaxLength)
+            .When(x => x.StatusChange == EditStatusChange.Reopen);
     }
 }
 
@@ -60,12 +111,9 @@ public sealed class RejectCaseRequestValidator : AbstractValidator<RejectCaseReq
         RuleFor(x => x.Note).NotEmpty().Must(n => n.Trim().Length >= NoteMinLength)
             .WithMessage($"Tell the customer why (at least {NoteMinLength} characters).")
             .MaximumLength(500);
+        RuleFor(x => x.Duplicate!.CaseId).GreaterThan(0).WithMessage("Choose the case this request repeats.")
+            .When(x => x.Reason == RejectReason.Duplicate && x.Duplicate is not null);
     }
-}
-
-public sealed class AssignCaseRequestValidator : AbstractValidator<AssignCaseRequest>
-{
-    public AssignCaseRequestValidator() => RuleFor(x => x.TechnicianId).GreaterThan(0).WithMessage("Choose a technician.");
 }
 
 public sealed class ReasonRequestValidator : AbstractValidator<ReasonRequest>
@@ -79,36 +127,10 @@ public sealed class ReasonRequestValidator : AbstractValidator<ReasonRequest>
             .MaximumLength(MaxLength).WithMessage($"At most {MaxLength} characters.");
 }
 
-public sealed class HoldCaseRequestValidator : AbstractValidator<HoldCaseRequest>
-{
-    public HoldCaseRequestValidator(TimeProvider clock)
-    {
-        RuleFor(x => x.Reason).IsInEnum()
-            // F5: these come from "Needs the staff's decision" and the staff's hand-over, not from a plain hold.
-            .Must(r => r is not (Entities.Cases.HoldReason.WaitingStaffDecision or Entities.Cases.HoldReason.WaitingThirdParty))
-            .WithMessage("Use \"Needs the staff's decision\" for this.");
-        // The day it should continue is required (N13); today is fine, the past is not.
-        RuleFor(x => x.ExpectedResumeOn)
-            .Must(d => d >= DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime))
-            .WithMessage("Choose today or a later day.");
-    }
-}
-
 public sealed class CompleteWorkRequestValidator : AbstractValidator<CompleteWorkRequest>
 {
-    public const decimal MinHours = 0.25m;
-    public const decimal MaxHours = 24m;
-
     public CompleteWorkRequestValidator()
     {
-        RuleFor(x => x.RootCause).NotEmpty().Must(r => r.Trim().Length >= 3).WithMessage("Enter the cause.").MaximumLength(1000);
-        RuleFor(x => x.PartsUsed).MaximumLength(500);
-        RuleFor(x => x.LaborHours)
-            .InclusiveBetween(MinHours, MaxHours).When(x => x.LaborHours is not null)
-            .WithMessage($"Between {MinHours} and {MaxHours} hours.");
-        RuleFor(x => (IReadOnlyList<string>?)x.BeforePhotos).ValidPhotos();
-        RuleFor(x => (IReadOnlyList<string>?)x.AfterPhotos).NotEmpty().WithMessage("Add at least one photo after the repair.").ValidPhotos();
-        RuleFor(x => x.Parts).ValidCostLines();
         RuleFor(x => x.ReplacementModel).MaximumLength(150);
         RuleFor(x => x.ReplacementSerial).MaximumLength(100);
     }
@@ -140,26 +162,6 @@ internal static class CostRules
             .WithMessage("An amount is between 0 and 1,000,000,000 VND.");
 }
 
-public sealed class ReassignCaseRequestValidator : AbstractValidator<ReassignCaseRequest>
-{
-    public ReassignCaseRequestValidator()
-    {
-        RuleFor(x => x.TechnicianId).GreaterThan(0).WithMessage("Choose a technician.");
-        RuleFor(x => x.Reason).NotEmpty().Must(r => r.Trim().Length >= ReasonRequestValidator.MinLength)
-            .WithMessage($"At least {ReasonRequestValidator.MinLength} characters.").MaximumLength(ReasonRequestValidator.MaxLength);
-    }
-}
-
-public sealed class ChangeUrgencyRequestValidator : AbstractValidator<ChangeUrgencyRequest>
-{
-    public ChangeUrgencyRequestValidator()
-    {
-        RuleFor(x => x.Urgency).IsInEnum();
-        RuleFor(x => x.Reason).NotEmpty().Must(r => r.Trim().Length >= ReasonRequestValidator.MinLength)
-            .WithMessage($"At least {ReasonRequestValidator.MinLength} characters.").MaximumLength(ReasonRequestValidator.MaxLength);
-    }
-}
-
 public sealed class ExtendDueRequestValidator : AbstractValidator<ExtendDueRequest>
 {
     /// <summary>A deadline is moved by days, not months.</summary>
@@ -183,53 +185,51 @@ public sealed class UpdateCostsRequestValidator : AbstractValidator<UpdateCostsR
 
 public sealed class UpdateTaskRequestValidator : AbstractValidator<UpdateTaskRequest>
 {
+    public const int MaxCaption = 200;
+
     public UpdateTaskRequestValidator()
     {
-        RuleFor(x => x.Status).IsInEnum()
-            .NotEqual(Entities.Maintenance.CaseTaskStatus.Pending).WithMessage("Choose Pass, Fail or N/A.");
+        // Meeting 07/11: "still to do" is allowed too, to add a note or a photo along the way.
+        RuleFor(x => x.Status).IsInEnum();
         RuleFor(x => x.Note).MaximumLength(1000);
-        RuleFor(x => x.Note).NotEmpty().Must(n => n!.Trim().Length >= 5)
+        RuleFor(x => x.Note).NotEmpty().Must(n => n is not null && n.Trim().Length >= 5)
             .When(x => x.Status == Entities.Maintenance.CaseTaskStatus.Fail)
             .WithMessage("Say what is wrong (at least 5 characters).");
-        RuleFor(x => x.FailAction).NotNull().IsInEnum()
-            .When(x => x.Status == Entities.Maintenance.CaseTaskStatus.Fail)
-            .WithMessage("Choose: fixed on the spot, or make a repair case.");
-        RuleFor(x => x.Photos).ValidPhotos();
+        RuleFor(x => x.FailAction).IsInEnum().When(x => x.FailAction is not null);
+        RuleFor(x => x.Photos)
+            .Must(p => p is null || p.Count <= PhotoRules.MaxPhotos).WithMessage($"At most {PhotoRules.MaxPhotos} photos.")
+            .Must(p => p is null || p.All(x => x.Image.Length <= PhotoRules.MaxLength && DataUrl.IsImage(x.Image)))
+            .WithMessage("Photos must be JPEG, PNG or WebP images of reasonable size.")
+            .Must(p => p is null || p.All(x => (x.Caption?.Length ?? 0) <= MaxCaption))
+            .WithMessage($"A caption has at most {MaxCaption} characters.");
     }
 }
 
-public sealed class CompleteChecklistRequestValidator : AbstractValidator<CompleteChecklistRequest>
+/// <summary>Meeting 07/11: the technician types the total work hours.</summary>
+public sealed class LogHoursRequestValidator : AbstractValidator<LogHoursRequest>
 {
-    public CompleteChecklistRequestValidator()
-    {
-        RuleFor(x => x.Note).MaximumLength(1000);
-        RuleFor(x => x.LaborHours)
-            .InclusiveBetween(CompleteWorkRequestValidator.MinHours, CompleteWorkRequestValidator.MaxHours)
-            .When(x => x.LaborHours is not null);
-        RuleFor(x => x.Parts).ValidCostLines();
-    }
+    public const decimal MaxHours = 200m;
+
+    public LogHoursRequestValidator() =>
+        RuleFor(x => x.Hours).GreaterThan(0).LessThanOrEqualTo(MaxHours)
+            .WithMessage($"More than 0 and at most {MaxHours} hours.");
 }
 
-// ----- F4 emergency -------------------------------------------------------------------------------------------------
-
-public sealed class DowngradeRequestValidator : AbstractValidator<DowngradeRequest>
+/// <summary>Meeting 07/11: a cost the technician paid needs its receipt (number or photo).</summary>
+public sealed class AddCostRequestValidator : AbstractValidator<AddCostRequest>
 {
-    public DowngradeRequestValidator()
+    public AddCostRequestValidator()
     {
-        RuleFor(x => x.Urgency).IsInEnum()
-            .NotEqual(Entities.Cases.CasePriority.Emergency).WithMessage("Choose High, Normal or Low.");
-        RuleFor(x => x.CostBearer).IsInEnum();
-        RuleFor(x => x.Reason).NotEmpty().Must(r => r.Trim().Length >= ReasonRequestValidator.MinLength)
-            .WithMessage($"At least {ReasonRequestValidator.MinLength} characters.").MaximumLength(ReasonRequestValidator.MaxLength);
-    }
-}
-
-public sealed class MergeCaseRequestValidator : AbstractValidator<MergeCaseRequest>
-{
-    public MergeCaseRequestValidator()
-    {
-        RuleFor(x => x.TargetCaseId).GreaterThan(0).WithMessage("Choose the case to merge into.");
-        RuleFor(x => x.Note).MaximumLength(ReasonRequestValidator.MaxLength);
+        RuleFor(x => x.Name).Text(2, 150);
+        RuleFor(x => x.Description).MaximumLength(300);
+        RuleFor(x => x.Amount).InclusiveBetween(0, CostRules.MaxAmount).WithMessage("An amount is between 0 and 1,000,000,000 VND.");
+        RuleFor(x => x.ReceiptCode).MaximumLength(100);
+        RuleFor(x => x.ReceiptPhoto)
+            .Must(p => p is null || (p.Length <= PhotoRules.MaxLength && DataUrl.IsImage(p)))
+            .WithMessage("The receipt photo must be a JPEG, PNG or WebP image of reasonable size.");
+        RuleFor(x => x)
+            .Must(x => !string.IsNullOrWhiteSpace(x.ReceiptCode) || !string.IsNullOrWhiteSpace(x.ReceiptPhoto))
+            .WithName("ReceiptCode").WithMessage("Add the receipt number or a photo of the receipt.");
     }
 }
 
@@ -272,62 +272,13 @@ public sealed class RequestDecisionRequestValidator : AbstractValidator<RequestD
 {
     public RequestDecisionRequestValidator()
     {
-        RuleFor(x => x.Condition).Text(10, 1000);
-        RuleFor(x => x.Cause).Text(5, 1000);
-        RuleFor(x => x.Recommendation).IsInEnum();
+        RuleFor(x => x.Description).Text(10, 1000);
+        RuleFor(x => x.Reason).Text(5, 1000);
         RuleFor(x => x.Photos).NotEmpty().WithMessage("Add at least one photo.");
         RuleFor(x => x.Photos).ValidPhotos();
     }
 }
 
-public sealed class OutsourceRequestValidator : AbstractValidator<OutsourceRequest>
-{
-    public OutsourceRequestValidator()
-    {
-        RuleFor(x => x.Kind).IsInEnum();
-        RuleFor(x => x.Job).IsInEnum();
-        RuleFor(x => x.CompanyName).Text(2, 150);
-        RuleFor(x => x.Contact).Text(5, 150);
-        RuleFor(x => x.Note).MaximumLength(500);
-    }
-}
-
-public sealed class RecordQuoteRequestValidator : AbstractValidator<RecordQuoteRequest>
-{
-    public RecordQuoteRequestValidator()
-    {
-        RuleFor(x => x.Bearer).IsInEnum();
-        RuleFor(x => x.SentTo!).Text(3, 150).When(x => x.Bearer == Entities.Cases.CostBearer.Customer)
-            .WithName("Sent to");
-        RuleFor(x => x.Note).MaximumLength(500);
-    }
-}
-
-public sealed class QuoteDecisionRequestValidator : AbstractValidator<QuoteDecisionRequest>
-{
-    public QuoteDecisionRequestValidator()
-    {
-        RuleFor(x => x.DecidedBy).Text(3, 150);
-        RuleFor(x => x.Note).MaximumLength(500);
-        RuleFor(x => x.Evidence)
-            .Must(e => e is null || (e.Length <= PhotoRules.MaxLength && DataUrl.IsImage(e)))
-            .WithMessage("The evidence must be a JPEG, PNG or WebP image of reasonable size.");
-    }
-}
-
-public sealed class CheckOutsideWorkRequestValidator : AbstractValidator<CheckOutsideWorkRequest>
-{
-    public CheckOutsideWorkRequestValidator()
-    {
-        RuleFor(x => x.Note).MaximumLength(500);
-        RuleFor(x => x.Note!).Text(5, 500).When(x => !x.Passed).WithMessage("Say what is not OK (at least 5 characters).");
-    }
-}
-
-public sealed class RedoOutsideWorkRequestValidator : AbstractValidator<RedoOutsideWorkRequest>
-{
-    public RedoOutsideWorkRequestValidator() => RuleFor(x => x.Reason).Text(5, 500);
-}
 
 public sealed class OpenSurveyRequestValidator : AbstractValidator<OpenSurveyRequest>
 {

@@ -33,9 +33,11 @@
 | Rooms → `rooms` | `is_common_area` | Phân biệt phòng thuê với sảnh / hành lang / WC — dùng cho luật trên |
 | Floors → `floors` | (đổi kiểu) `floor_number` là **chuỗi** | Tầng "G", "B1", "12A" |
 | PriorityLevels → `priority_levels` | `code` (emergency / high / normal / low), `sla_hours` | Code cần khóa cố định để xử lý; hạn SLA = bắt đầu + `sla_hours` |
-| CaseCategories → `case_categories` | `group_name`, `is_emergency`, `default_priority_id`, `default_cost_bearer`, `photo_required` | Danh mục 2 cấp, cờ khẩn cấp → F4, bắt buộc ảnh (N24, N26, O05) |
+| CaseCategories → `case_categories` | `group_name`, `is_emergency`, `default_priority_id`, `photo_required` | Danh mục 2 cấp (họp 07/11: web gọi là **Category** + **Problem**), cờ khẩn cấp → F4, bắt buộc ảnh (N24, N26, O05). `default_cost_bearer` **đã bỏ** (họp 07/11) |
 | Cases → `cases` | `room_id` (bắt buộc) | Khách thường không biết tên thiết bị; ERD chỉ nối Asset. `asset_id` để tùy chọn |
-| | `cost_bearer` | Staff chốt bên chịu chi phí khi duyệt (N23). **Hỏi lại:** còn cần không nếu E5 (khách làm hư xử lý ngoài hệ thống)? |
+| | ~~`cost_bearer`~~ **đã bỏ** (họp 07/11) | Không ghi nhận ai chịu chi phí (out-of-scope #5, #6) |
+| | `planned_start_at`, `planned_end_at` (họp 07/11) | Staff hẹn giờ bắt đầu / kết thúc trong form Approve / Edit; hiện ở lịch của KTV khi chọn người. **Không phải** hạn SLA (`due_at` vẫn tính từ lúc bắt đầu làm) |
+| | `previous_case_id` (FK cases, họp 07/11) | Đổi KTV khi KTV cũ đã nhận việc = **tạo case mới** nối về case cũ; case cũ **Closed** (Leader 09/11) giữ task đã xong, task chưa xong chuyển sang case mới |
 | | `closed_at` | Cửa sổ 7 ngày mở lại |
 | | `root_cause`, `parts_used` | Biên bản sửa chữa (linh kiện ghi tay, không có kho) |
 | | `hold_reason`, `hold_until` | On Hold phải có lý do + ngày dự kiến tiếp tục (N13) |
@@ -43,7 +45,14 @@
 | | `not_fixed_reason`, `not_fixed_at` (Phần 4) | Khách báo "chưa sửa xong" trong 7 ngày sau đóng; chờ Staff mở lại hoặc từ chối |
 | | `sla_warned_at`, `sla_overdue_notified_at` (Phần 4) | Job nền nhắc SLA chỉ báo 1 lần "còn 20% thời gian" và 1 lần "quá hạn"; xóa khi đổi hạn |
 | Costs → `costs` (Phần 4) | theo ERD (Name, Description, Amount, Case) + `created_at` / `updated_at` | KTV ghi vật tư khi báo xong; hệ thống thêm dòng "Labour" = giờ × HourlyRate (E9, tính lúc ghi nên tăng lương không đổi chi phí cũ). Staff sửa được khi case đang Completed. Khách chỉ thấy chi phí khi khách là bên trả |
-| CaseStatusHistory (Phần 4) | Thao tác **không đổi trạng thái** (đổi ưu tiên, dời hạn, "chưa sửa xong", sửa chi phí) vẫn ghi 1 dòng với `new_status` = trạng thái hiện tại + lý do | ERD không có bảng dời hạn / đổi ưu tiên riêng |
+| | `receipt_code`, `receipt_image` (họp 07/11, phần Technician) | KTV tự ghi chi phí đã trả (tiêu đề, mô tả, số tiền) kèm **biên lai**: số biên lai và / hoặc ảnh (đường dẫn trong Storage), phải có ít nhất 1. Staff vẫn sửa được toàn bộ danh sách; dòng giữ lại thì giữ biên lai. Dòng "Labour" do hệ thống tính lại mỗi lần báo xong |
+| Cases → `cases` (họp 07/11, phần Technician) | `clock_started_at` | Đồng hồ giờ làm: chạy khi trạng thái **In progress**, dừng khi On hold / Completed / chuyển bên thứ 3 / hủy; cộng dồn vào `actual_completion_hours` (ERD). KTV gõ tay tổng giờ được (quên bấm) |
+| | `assessment_*` (dùng lại) | Bỏ "phiếu đánh giá" của KTV: nút "cần bên thứ 3" lưu **mô tả** → `assessment_condition`, **lý do** → `assessment_cause`, ảnh → `case_images.kind = assessment`; `assessment_recommendation` để trống |
+| | `root_cause`, `parts_used`, `hold_reason`, `hold_until` | **Không còn ghi** (họp 07/11: báo xong không phải điền gì; On hold không lý do / ngày). Giữ cột để đọc dữ liệu cũ |
+| CaseStatusHistory (Phần 4, sửa họp 07/11) | **Chỉ ghi khi đổi trạng thái** (họp 07/11 "bỏ lưu lịch sử custom"). Ngoại lệ giữ dòng cùng trạng thái: nhật ký khẩn cấp F4, "Deadline moved", "Not an emergency" (F6 đếm từ đây) | ERD không có bảng dời hạn / hạ mức riêng |
+| CaseStatuses → `case_statuses` (họp 07/11) | **Bỏ dòng 3 `assigned`** (còn 10 trạng thái). Staff chọn KTV ngay khi Approve; case có KTV chưa nhận việc = *Approved* | Migration đổi dữ liệu cũ 3 → 2 (cả `case_status_history`) |
+| Bảng mới `case_followers` (case_id, customer_id, added_at) (họp 07/11, "phải sửa lại ERD") | Nhiều khách theo dõi 1 case (vd. request trùng bị reject → khách đó theo dõi case cũ). Khách theo dõi chỉ xem + nhận thông báo, không thao tác | Thay cho gộp case (merge) |
+| CaseTasks → `case_tasks` (họp 07/11) | **Mọi case đều có task** (không chỉ F2): Staff nhập khi Approve / Edit, bỏ trống thì 1 task = tiêu đề case. Thêm `done_by` (technician / third_party) + `done_at` | Staff đánh dấu task do bên thứ 3 làm; KTV không sửa được task đó. Migration tạo 1 task cho case đã duyệt chưa có task |
 | | `requesting_customer_id` **cho phép trống** | Case sinh từ bảo trì định kỳ (F2) không có khách |
 | | `emergency_at` (Phần 6, F4) | Lúc case thành khẩn cấp (tạo với loại dịch vụ khẩn cấp, hoặc Staff nâng mức). Đồng hồ **24/7** tính từ đây: `due_at` = `emergency_at` + giờ SLA khẩn cấp. Xóa khi hạ mức về F3 |
 | | `acknowledged_at`, `made_safe_at` (Phần 6) | 2 mốc của K06: Staff bấm "Đã nhận" (phản hồi đầu), KTV bấm "Đã an toàn" (khống chế xong). Mốc thứ 3 "khắc phục xong" = `completed_at` có sẵn. Chỉ mốc khắc phục có hạn |
@@ -123,3 +132,5 @@ Tài khoản demo đăng nhập bằng **username** (`admin`, `staff`, `technici
 - 02/11 — Phần 6 (F4): 11 cột khẩn cấp trên `cases` (mốc, gộp, nhắc, báo cáo sau sự cố) (migration `AddEmergencyFlow`; điền `emergency_at` cho case khẩn cấp cũ).
 - 02/11 — Phần 7 (F5): bảng `case_third_parties`, `asset_replacement_requests`; cột đánh giá / khảo sát / thiết bị thay trên `cases`, `asset_types.expected_life_years`, `assets.replaces_asset_id`, ảnh `assessment` (migration `AddRepairOrReplace`).
 - 03/11 — Phần 8 (F6): không đổi DB; thống kê đọc từ bảng có sẵn (ghi chú ở mục 3).
+- 09/11 — Họp 07/11 phần Staff (migration `StaffWorkOrderMeeting0711`): bỏ trạng thái `assigned`; bỏ `cases.cost_bearer`, `case_categories.default_cost_bearer`; thêm `cases.planned_start_at / planned_end_at / previous_case_id`, `case_tasks.done_by / done_at`, bảng `case_followers`; lịch sử chỉ ghi khi đổi trạng thái (mục 2). Gộp case (`merged_into_case_id`) và quy trình bên thứ 3 nhiều bước (`case_third_parties`) **không còn dùng**, giữ cột / bảng để đọc dữ liệu cũ — họp quyết có xóa hẳn không.
+- 09/11 — Họp 07/11 phần Technician (migration `TechnicianWorkClockAndReceipts`): `cases.clock_started_at`, `costs.receipt_code / receipt_image`; ảnh task có chú thích (`task_images.notes` của ERD); bỏ biên bản sửa chữa và lý do On hold khi KTV báo; "hoàn thành checklist" gộp vào "Completed".

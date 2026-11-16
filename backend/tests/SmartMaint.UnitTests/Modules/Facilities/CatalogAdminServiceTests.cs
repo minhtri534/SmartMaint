@@ -23,10 +23,10 @@ public sealed class CatalogAdminServiceTests : F1TestBase
     public async Task SaveCaseCategory_NewThenRename_KeepsOneRowWithTheNewName()
     {
         var created = await Sut.SaveCaseCategoryAsync(null,
-            new CaseCategoryRequest("Water", "Leak", null, false, CasePriority.Normal, CostBearer.Building, true), default);
+            new CaseCategoryRequest("Water", "Leak", null, false, CasePriority.Normal, true), default);
 
         var renamed = await Sut.SaveCaseCategoryAsync(created.Id,
-            new CaseCategoryRequest("Water", "Leaking pipe", "Any leak", false, CasePriority.Normal, CostBearer.Building, true), default);
+            new CaseCategoryRequest("Water", "Leaking pipe", "Any leak", false, CasePriority.Normal, true), default);
 
         Assert.Equal("Leaking pipe", renamed.Name);
         Assert.Single(Db.CaseCategories);

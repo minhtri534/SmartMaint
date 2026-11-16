@@ -172,7 +172,8 @@ public sealed class MaintenanceTests : CaseTestBase
         Assert.Equal(0, await Generator.RunOnceAsync(default));
 
         var workOrder = Db.Cases.Single(c => c.TriggerWorkOrderId != null);
-        Assert.Equal(CaseStatus.Assigned, workOrder.Status);
+        Assert.Equal(CaseStatus.Approved, workOrder.Status); // with the plan's technician (no "Assigned" status)
+        Assert.Equal(Technician.Id, workOrder.AssignedTechnicianId);
         Assert.Null(workOrder.RequestingCustomerId);
         Assert.Equal(2, Db.CaseTasks.Count(t => t.CaseId == workOrder.Id && t.Status == CaseTaskStatus.Pending));
         Assert.Contains(Db.Notifications, n => n.UserId == Technician.Id && n.Details.Contains("preventive maintenance"));
@@ -228,15 +229,14 @@ public sealed class MaintenanceTests : CaseTestBase
     {
         var id = await WorkOrderInProgressAsync();
         var detail = await Sut.GetAsync(id, default);
-        Assert.DoesNotContain(CaseAction.CompleteChecklist, detail.AllowedActions);
-        Assert.DoesNotContain(CaseAction.Complete, detail.AllowedActions); // the F3 repair record is not for F2
+        Assert.DoesNotContain(CaseAction.Complete, detail.AllowedActions); // not before every item has a result
 
         foreach (var task in detail.Tasks)
         {
             await Sut.UpdateTaskAsync(id, task.Id, new UpdateTaskRequest(CaseTaskStatus.Pass, null, null, null, false), default);
         }
 
-        var done = await Sut.CompleteChecklistAsync(id, new CompleteChecklistRequest(null, 1m, null), default);
+        var done = await Sut.CompleteAsync(id, new CompleteWorkRequest(), default); // meeting 07/11: the same "Completed"
         Assert.Equal(CaseStatus.Completed, done.Status);
         Assert.True(done.IsPreventive);
     }
@@ -262,14 +262,14 @@ public sealed class MaintenanceTests : CaseTestBase
         var task = (await Sut.GetAsync(id, default)).Tasks[1];
 
         var result = await Sut.UpdateTaskAsync(id, task.Id,
-            new UpdateTaskRequest(CaseTaskStatus.Fail, "Water leaks onto the socket", Photo, FailAction.CreateCase, true), default);
+            new UpdateTaskRequest(CaseTaskStatus.Fail, "Water leaks onto the socket", [new TaskPhotoRequest(Photo[0], "Socket under the unit")], FailAction.CreateCase, true), default);
 
         var item = result.Tasks.Single(t => t.Id == task.Id);
         Assert.NotNull(item.RepairCaseId);
         var repair = Db.Cases.Single(c => c.Id == item.RepairCaseId);
         Assert.Equal(CaseStatus.Approved, repair.Status);
         Assert.Equal(CasePriority.Emergency, Db.PriorityLevels.Single(p => p.Id == repair.PriorityLevelId).Code);
-        Assert.Single(item.PhotoUrls);
+        Assert.Equal("Socket under the unit", Assert.Single(item.Photos).Caption); // meeting 07/11: photos with captions
     }
 
     // ----- checklist templates -----

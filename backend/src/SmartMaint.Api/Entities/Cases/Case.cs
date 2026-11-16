@@ -40,19 +40,30 @@ public class Case : AuditableEntity
     public long PriorityLevelId { get; set; }
     public PriorityLevel Priority { get; set; } = null!;
 
-    /// <summary>NOT IN ERD v5: who pays for the repair, set by the staff member on approval (N23).</summary>
-    public CostBearer CostBearer { get; set; }
-
     /// <summary>The staff member who approved it (ERD: Staff). Any staff of the building may act; the first to approve is kept.</summary>
     public long? StaffId { get; set; }
     public Staff? Staff { get; set; }
 
     /// <summary>
-    /// The technician holding it now (ERD: AssignedTechnician). Only the last one is kept; declines are in
-    /// TechnicianRejections and who assigned whom is in the status history (Assigned rows).
+    /// The technician holding it now (ERD: AssignedTechnician), chosen by the staff on approval (meeting 07/11: there is no
+    /// separate "Assigned" step). Declines are in TechnicianRejections.
     /// </summary>
     public long? AssignedTechnicianId { get; set; }
     public Technician? Technician { get; set; }
+
+    /// <summary>
+    /// NOT IN ERD v5 (meeting 07/11): when the staff plans the work to start and to be finished. Shown in the technicians'
+    /// schedule when choosing who gets a case. Not the SLA deadline (DueAt), which still counts from the start of work.
+    /// </summary>
+    public DateTimeOffset? PlannedStartAt { get; set; }
+    public DateTimeOffset? PlannedEndAt { get; set; }
+
+    /// <summary>
+    /// NOT IN ERD v5 (meeting 07/11): this case continues that one after a change of technician. The old case is closed
+    /// with the tasks its technician finished; the unfinished tasks moved here.
+    /// </summary>
+    public long? PreviousCaseId { get; set; }
+    public Case? PreviousCase { get; set; }
 
     /// <summary>ERD: TimeSubmitted.</summary>
     public DateTimeOffset SubmittedAt { get; set; }
@@ -73,8 +84,14 @@ public class Case : AuditableEntity
     /// <summary>ERD: EstimatedCompletionHours.</summary>
     public decimal? EstimatedCompletionHours { get; set; }
 
-    /// <summary>ERD: ActualCompletionHours. Typed by the technician, or measured from StartedAt to CompletedAt.</summary>
+    /// <summary>
+    /// ERD: ActualCompletionHours = the technician's work hours (meeting 07/11). The clock adds up every stretch In
+    /// progress (start / resume → hold / complete); the technician may type the total instead (forgot the clock).
+    /// </summary>
     public decimal? ActualCompletionHours { get; set; }
+
+    /// <summary>NOT IN ERD v5 (meeting 07/11): when the running work clock started; empty while it is stopped.</summary>
+    public DateTimeOffset? ClockStartedAt { get; set; }
 
     /// <summary>ERD: TimeOutsourced. This case has an outside party (F5); the moment of the hand-over.</summary>
     public DateTimeOffset? OutsourcedAt { get; set; }
@@ -157,6 +174,9 @@ public class Case : AuditableEntity
     public List<TechnicianRejection> Rejections { get; set; } = [];
     public List<Cost> Costs { get; set; } = [];
 
+    /// <summary>Other customers who follow this case (meeting 07/11, e.g. after their duplicate report was rejected).</summary>
+    public List<CaseFollower> Followers { get; set; } = [];
+
     /// <summary>F2 checklist items (ERD: CaseTasks). Empty for an incident.</summary>
     public List<Maintenance.CaseTask> Tasks { get; set; } = [];
 
@@ -209,6 +229,13 @@ public class Cost : AuditableEntity
     public string Name { get; set; } = string.Empty;
     public string? Description { get; set; }
     public decimal Amount { get; set; }
+
+    /// <summary>
+    /// NOT IN ERD v5 (meeting 07/11): the receipt of a cost the technician paid — its number and / or a photo (path in
+    /// storage). At least one of them for a technician's line.
+    /// </summary>
+    public string? ReceiptCode { get; set; }
+    public string? ReceiptImage { get; set; }
 }
 
 /// <summary>
@@ -226,4 +253,17 @@ public class TechnicianRejection
     public DateTimeOffset RejectedAt { get; set; }
 
     public string Reason { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// NOT IN ERD v5 (meeting 07/11, "phải sửa lại ERD"): a customer who follows a case they did not report. They see it in
+/// "My requests" and hear about it, but cannot act on it. Key (CaseId, CustomerId).
+/// </summary>
+public class CaseFollower
+{
+    public long CaseId { get; set; }
+    public Case Case { get; set; } = null!;
+    public long CustomerId { get; set; }
+    public Customer Customer { get; set; } = null!;
+    public DateTimeOffset AddedAt { get; set; }
 }
