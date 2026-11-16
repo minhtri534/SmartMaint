@@ -12,6 +12,7 @@ import {
   PageHeader,
   controlClass,
   FilterSelect,
+  Segmented,
   Tabs,
 } from '@/shared/ui'
 import { formatDate } from '@/shared/utils/format'
@@ -109,17 +110,19 @@ export function AnalyticsPage() {
         actions={
           <>
             <div className="flex flex-wrap items-center gap-2 print:hidden">
-              <FilterSelect
+              {/* a pill segmented control: five short choices read better side by side than in a menu */}
+              <Segmented
                 label="Period"
                 value={period}
-                onChange={(e) => choosePeriod(e.target.value)}
-              >
-                <option value="">Last 30 days</option>
-                <option value="7d">Last 7 days</option>
-                <option value="90d">Last 90 days</option>
-                <option value="month">This month</option>
-                <option value="custom">Custom</option>
-              </FilterSelect>
+                onChange={choosePeriod}
+                options={[
+                  { value: '7d', label: '7 days' },
+                  { value: '', label: '30 days' },
+                  { value: '90d', label: '90 days' },
+                  { value: 'month', label: 'This month' },
+                  { value: 'custom', label: 'Custom' },
+                ]}
+              />
               {period === 'custom' && (
                 <>
                   <input

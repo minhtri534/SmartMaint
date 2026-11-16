@@ -78,7 +78,11 @@ export function BuildingFloors({ cases }: { cases: CaseSummary[] }) {
       <ol className="flex flex-col gap-2">
         {[...building.floors].reverse().map((floor) => (
           <li key={floor.id} className="flex items-start gap-3">
-            <span className="text-muted w-14 flex-none pt-2 text-right text-xs tabular-nums">
+            <span className="text-muted w-16 flex-none pt-2 text-right text-xs whitespace-nowrap tabular-nums">
+              {/* level marker of a building section drawing */}
+              <span aria-hidden="true" className="text-accent">
+                ▽{' '}
+              </span>
               {floor.floorNumber === 'G' ? 'Ground' : `Floor ${floor.floorNumber}`}
             </span>
             <div className="border-slab flex min-w-0 flex-1 flex-wrap gap-1.5 border-l-2 pl-3">

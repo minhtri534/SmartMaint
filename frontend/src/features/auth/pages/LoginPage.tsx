@@ -39,9 +39,11 @@ export function LoginPage() {
 
   return (
     // AuthLayout already puts the page on the white sheet, so no card here.
-    <div className="w-full max-w-[360px]">
-      <h1 className="text-title font-semibold tracking-[-0.01em]">Sign in</h1>
-      <p className="text-muted mt-1 text-sm">Use the account your Administrator gave you.</p>
+    <div className="w-full">
+      <h1 className="text-[28px] leading-tight font-bold tracking-[-0.025em]">Sign in</h1>
+      <p className="text-muted mt-2 text-sm">
+        Use the account your building's Administrator gave you.
+      </p>
 
       <form onSubmit={onSubmit} noValidate className="mt-6 flex flex-col gap-4">
         {signOutReason === 'session_expired' && !login.error && (
@@ -64,10 +66,14 @@ export function LoginPage() {
           error={errors.password?.message}
           {...register('password')}
         />
-        <Button type="submit" variant="primary" loading={login.isPending} className="mt-2 h-[38px]">
+        <Button type="submit" variant="primary" loading={login.isPending} className="mt-2 h-10">
           Sign in
         </Button>
       </form>
+      {/* No self-service reset (accounts are made by the Administrator, AUTH-04 changes it after a reset). */}
+      <p className="text-muted mt-6 text-xs">
+        Forgot your password? Ask your Administrator to reset it.
+      </p>
     </div>
   )
 }

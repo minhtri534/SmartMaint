@@ -43,7 +43,7 @@ export function ChangePasswordPage() {
     Object.keys(changePassword.error.fieldErrors).length === 0
 
   return (
-    <div className="w-full max-w-[360px]">
+    <div className="w-full">
       <h1 className="text-title font-semibold tracking-[-0.01em]">
         {forced ? 'Set your own password' : 'Change password'}
       </h1>

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { caseKeys, casesApi } from './api'
 import { suggestServiceType } from './suggest'
-import type { ServiceType } from './types'
+import type { ServiceType, ServiceTypeSuggestion } from './types'
 
 /** `refetchInterval` (ms): pages that watch live work (the emergency board) poll. */
 export function useCases(refetchInterval?: number) {
@@ -68,15 +68,34 @@ export function useCaseMutation<TVariables, TResult>(
   })
 }
 
-/** Ask for a service type from the description; nothing is saved (suggestion only). */
+/**
+ * Ask the AI for a service type from the description (suggestion only, the customer decides).
+ * When the AI is off or fails, the keyword rules answer instead, so the button always gives something (F3 section 4:
+ * "if AI fails the screen still works").
+ */
 export function useServiceTypeSuggestion() {
   return useMutation({
-    mutationFn: ({
+    mutationFn: async ({
       description,
       serviceTypes,
     }: {
       description: string
       serviceTypes: ServiceType[]
-    }) => Promise.resolve(suggestServiceType(description, serviceTypes)),
+    }): Promise<ServiceTypeSuggestion> => {
+      try {
+        const ai = await casesApi.requestSuggestion(description)
+        if (ai.available) {
+          return {
+            serviceTypeId: ai.serviceTypeId,
+            urgency: ai.urgency,
+            tips: ai.tips,
+            source: 'ai',
+          }
+        }
+      } catch {
+        // Too short a description (400), network trouble: fall through to the rules.
+      }
+      return suggestServiceType(description, serviceTypes)
+    },
   })
 }

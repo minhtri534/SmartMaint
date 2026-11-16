@@ -1,10 +1,11 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from '@/app/App'
-// Self-hosted fonts (no request to Google at runtime): IBM Plex Sans for everything, Plex Mono for codes only.
-import '@fontsource/ibm-plex-sans/400.css'
-import '@fontsource/ibm-plex-sans/500.css'
-import '@fontsource/ibm-plex-sans/600.css'
+// Self-hosted fonts (no request to Google at runtime): Be Vietnam Pro for everything (full Vietnamese), Plex Mono for codes only.
+import '@fontsource/be-vietnam-pro/400.css'
+import '@fontsource/be-vietnam-pro/500.css'
+import '@fontsource/be-vietnam-pro/600.css'
+import '@fontsource/be-vietnam-pro/700.css'
 import '@fontsource/ibm-plex-mono/400.css'
 import '@/index.css'
 

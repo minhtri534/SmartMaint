@@ -1,68 +1,65 @@
 @import 'tailwindcss';
 
 /*
- * Design tokens — style "framed-sheet" dealt by the taste skill (.claude/skills/design-taste-frontend,
- * sheet seed 1994434881, 28/10/2026). Use the token classes (bg-surface, text-muted, border-border,
- * bg-primary...) — never raw hex in components.
- *
- * The move: one tinted frame (the sidebar) around a white sheet with a 1px edge, 16px corners, no shadow.
- * Colour budget under 3%: the teal accent goes on data (SLA tracks, the selected filter) and focus only;
- * the one primary button per screen is near-black. Status uses pale pill pairs.
- * Our face: the frame is tinted steel blue-grey (glass-and-steel office towers) instead of the sheet's #f9fbfc.
+ * Design tokens. Style "framed-sheet" (taste skill, 28/10) re-skinned 16/11 as direction A, "drawing sheet":
+ * the frame is blueprint paper with a faint 24px grid, the page a white sheet; ink is navy, blueprint blue
+ * marks data, the selected item and counts that need action; safety orange marks late work and errors only.
+ * The one primary button per screen stays near-black (navy). Use the token classes, never raw hex.
  */
 @theme {
-  --font-sans: 'IBM Plex Sans', system-ui, 'Segoe UI', sans-serif;
+  --font-sans: 'Be Vietnam Pro', system-ui, 'Segoe UI', sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
 
-  /* type scale: 12 / 14 / 16 / 22 / 28 */
-  --text-title: 22px;
-  --text-title--line-height: 28px;
+  /* type scale: 12 / 14 / 16 / 26 / 26 */
+  --text-title: 26px;
+  --text-title--line-height: 32px;
   --text-section: 16px;
   --text-section--line-height: 24px;
-  --text-kpi: 28px;
+  --text-kpi: 26px;
   --text-kpi--line-height: 32px;
 
-  /* grounds and lines */
-  --color-frame: #eef2f5;
-  --color-surface: #ffffff;
-  --color-raised: #f4f6f8;
-  --color-active: #ebedee;
-  --color-nav-active: #dce2e7;
-  --color-border: #e8eaec;
-  --color-rule: #f0f1f2;
-  --color-control: #cdced1;
-  --color-slab: #d3dbe1; /* the floors of the sign-in tower: one step darker than the frame */
+  /* grounds and lines: blueprint paper, a white sheet */
+  --color-frame: #e9eef4;
+  --color-surface: #fbfcfe;
+  --color-raised: #f0f4f9;
+  --color-active: #e6ecf3;
+  --color-nav-active: #d5e2f5; /* one step stronger than accent-soft so the pill reads on the paper */
+  --color-border: #d9e1ec;
+  --color-rule: #e8edf4;
+  --color-control: #c3cfde;
+  --color-slab: #c9d5e5; /* floor lines of the building drawings */
 
-  /* text in three tiers, all 4.5:1 or more on white and on the frame */
-  --color-ink: #131416;
-  --color-muted: #5d5f60;
-  --color-faint: #6b6b6b;
+  /* navy ink in three tiers, all 4.5:1 or more on the sheet and the frame */
+  --color-ink: #0f1b2d;
+  --color-muted: #55627a;
+  --color-faint: #5f6b80;
 
-  /* one accent (data, focus, the selected filter) and a near-black primary */
-  --color-accent: #1b6c80;
-  --color-accent-soft: #e7f1f3;
-  --color-primary: #1d1f20;
-  --color-primary-hover: #34373a;
+  /* blueprint blue: data, focus, the selected item, counts that need action */
+  --color-accent: #1f5fae;
+  --color-accent-soft: #e2ebf7;
+  --color-accent-ink: #143f77;
+  --color-primary: #0f1b2d;
+  --color-primary-hover: #24324a;
 
-  /* status: text colours and pale pill pairs */
+  /* status: safety orange for late work and errors; pale pill pairs */
   --color-positive: #1e7b4f;
-  --color-negative: #c4242a;
-  --color-warning: #92400e;
-  --color-pill-positive-bg: #dcfae5;
-  --color-pill-positive-ink: #04250e;
-  --color-pill-negative-bg: #ffedea;
-  --color-pill-negative-ink: #831c1e;
-  --color-pill-warning-bg: #fffbeb;
-  --color-pill-warning-ink: #92400e;
-  --color-pill-neutral-bg: #ebedee;
-  --color-pill-neutral-ink: #353736;
-  --color-pill-accent-bg: #e1eef1;
-  --color-pill-accent-ink: #134d5c;
-  --color-notice-border: #fde68a;
+  --color-negative: #c2410c;
+  --color-warning: #8a5a00;
+  --color-pill-positive-bg: #dcf5e5;
+  --color-pill-positive-ink: #0b3a1f;
+  --color-pill-negative-bg: #fdece2;
+  --color-pill-negative-ink: #8a2c07;
+  --color-pill-warning-bg: #fbf3d9;
+  --color-pill-warning-ink: #6b4500;
+  --color-pill-neutral-bg: #e9eef4;
+  --color-pill-neutral-ink: #39465a;
+  --color-pill-accent-bg: #e2ebf7;
+  --color-pill-accent-ink: #143f77;
+  --color-notice-border: #f2d98a;
 
-  /* radius is tight (8 / 6) except the sheet (16) */
-  --radius-card: 8px;
-  --radius-control: 6px;
+  /* radius: softer since 16/11 (12 cards / 8 controls / 16 the sheet) */
+  --radius-card: 12px;
+  --radius-control: 8px;
   --radius-sheet: 16px;
 
   /*
@@ -84,6 +81,12 @@
 
   body {
     @apply bg-frame text-ink font-sans text-sm antialiased;
+    /* direction A: the frame is drawing paper. The grid stays under 8% so it reads as paper, not as lines;
+       the sheet (white) covers it wherever the work is. */
+    /* a 24px tile drawn as an SVG line pair (blueprint blue at 7%), not a gradient */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath d='M24 .5H.5V24' fill='none' stroke='%231f5fae' stroke-opacity='.07'/%3E%3C/svg%3E");
+    background-size: 24px 24px;
+    background-attachment: fixed;
   }
 
   :focus-visible {
@@ -122,6 +125,18 @@
   from {
     opacity: 0;
     transform: scale(0.96);
+  }
+}
+
+/* Assistant "is writing": three dots fade in turn (opacity only). */
+@keyframes typing-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+  }
+  40% {
+    opacity: 1;
   }
 }
 

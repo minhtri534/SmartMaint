@@ -32,6 +32,9 @@ const PATHS = {
   calendar: 'M5 5h14a1 1 0 0 1 1 1v14H4V6a1 1 0 0 1 1-1z M4 10h16 M8 3v4 M16 3v4',
   checklist: 'M10 6h10 M10 12h10 M10 18h10 M4 6l1.5 1.5L8 5 M4 12l1.5 1.5L8 11 M4 18l1.5 1.5L8 17',
   qr: 'M4 4h6v6H4z M14 4h6v6h-6z M4 14h6v6H4z M14 14h2v2h-2z M18 18h2v2h-2z M14 18h2 M18 14h2',
+  chat: 'M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-7l-4.5 3.5V17H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z M8 9h8 M8 12.5h5',
+  send: 'M12 19V5 M6 11l6-6 6 6',
+  compose: 'M12 20h8 M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z',
 } as const
 
 export type IconName = keyof typeof PATHS

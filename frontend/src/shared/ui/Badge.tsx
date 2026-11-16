@@ -18,7 +18,9 @@ export function Badge({ tone = 'neutral', children }: { tone?: BadgeTone; childr
     <span
       className={cn(
         // colours cross-fade when a case changes status in place
-        'inline-flex h-[22px] flex-none items-center rounded-full px-2 text-xs font-medium whitespace-nowrap transition-colors duration-200',
+        'inline-flex h-[22px] flex-none items-center gap-1.5 rounded-full pr-2.5 pl-2 text-xs font-medium whitespace-nowrap transition-colors duration-200',
+        // a status dot in the pill's own ink, so the state reads before the word (16/11)
+        'before:size-1.5 before:flex-none before:rounded-full before:bg-current before:opacity-80',
         TONES[tone],
       )}
     >

@@ -2,16 +2,18 @@ import { motion } from 'motion/react'
 import { useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router'
 import { navItemsFor } from '@/app/navigation'
+import { AssistantLauncher } from '@/features/assistant'
 import { useAuth } from '@/features/auth'
 import { ROLE_LABELS, ROLE_WORKSPACES } from '@/shared/types/role'
 import { Icon, ProductMark } from '@/shared/ui'
 import { cn } from '@/shared/utils/cn'
 import { pageFade } from '@/shared/utils/motion'
+import { TopBarActions } from './TopBar'
 
 /**
  * Signed-in shell (style "framed-sheet"): the sidebar sits on the tinted frame, the page on a white sheet
- * inset 8px from the window's top, right and bottom with a 1px edge and 16px corners — no shadow, no rule
- * between frame and sidebar. No top bar on desktop: there is no search or switcher to put in it yet.
+ * inset 8px from the window's right and bottom with a 1px edge and 16px corners — no rule between frame and
+ * sidebar. Since 16/11 a 48px top bar on the frame carries the bell (what is new) and the account menu.
  * Phone and tablet (< 1024px): the frame goes, a 48px bar with the menu button appears, the sidebar opens as a full sheet.
  */
 export function AppLayout() {
@@ -34,6 +36,9 @@ export function AppLayout() {
           <Icon name="menu" className="size-5" />
         </button>
         <ProductName />
+        <div className="ml-auto">
+          <TopBarActions />
+        </div>
       </header>
 
       <aside
@@ -70,8 +75,8 @@ export function AppLayout() {
                 return cn(
                   'ease-snap flex h-8 items-center gap-2.5 rounded-lg px-2 text-sm transition-[color,background-color,transform] duration-150 active:scale-[0.98]',
                   isActive
-                    ? 'bg-nav-active text-ink'
-                    : 'text-muted hover:bg-nav-active/60 hover:text-ink',
+                    ? 'bg-nav-active text-accent-ink font-medium'
+                    : 'text-muted hover:bg-active hover:text-ink',
                 )
               }}
             >
@@ -81,7 +86,8 @@ export function AppLayout() {
           ))}
         </nav>
 
-        <div className="mt-auto flex items-center gap-2.5 px-2 pt-4">
+        {/* the account row stays in the phone menu; on desktop the top bar holds it */}
+        <div className="mt-auto flex items-center gap-2.5 px-2 pt-4 lg:hidden">
           <span className="bg-pill-accent-bg text-pill-accent-ink grid size-7 flex-none place-items-center rounded-full text-xs font-semibold">
             {initials(user.fullName)}
           </span>
@@ -101,8 +107,17 @@ export function AppLayout() {
         </div>
       </aside>
 
-      <main className="min-w-0 lg:py-2 lg:pr-2">
-        <div className="bg-surface lg:border-border lg:rounded-sheet min-h-[calc(100vh-48px)] px-4 py-5 sm:px-6 lg:min-h-[calc(100vh-16px)] lg:border lg:p-6">
+      <main className="min-w-0 lg:pr-2 lg:pb-2">
+        <div className="hidden h-12 items-center justify-end lg:flex print:hidden">
+          <TopBarActions />
+        </div>
+        {/* Bottom padding: the assistant's launcher floats over the bottom-right corner (not for Admin, who has none). */}
+        <div
+          className={cn(
+            'bg-surface lg:border-border lg:rounded-sheet min-h-[calc(100vh-48px)] px-4 py-5 sm:px-6 lg:min-h-[calc(100vh-56px)] lg:border lg:p-6',
+            user.role !== 'admin' && 'pb-24 lg:pb-24',
+          )}
+        >
           {/* A new screen fades in over 150ms (opacity only, nothing travels) instead of flashing. */}
           <motion.div
             key={pathname}
@@ -114,6 +129,7 @@ export function AppLayout() {
           </motion.div>
         </div>
       </main>
+      <AssistantLauncher />
     </div>
   )
 }

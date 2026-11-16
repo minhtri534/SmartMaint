@@ -8,11 +8,18 @@ interface CardProps extends HTMLAttributes<HTMLDivElement> {
   padding?: keyof typeof PADDING
 }
 
-/** Panel inside the sheet: white, 1px border, 8px corners, no shadow. */
+/**
+ * Panel inside the sheet: white, 1px border, 12px corners and a very soft lift (16/11: a hairline shadow under
+ * a lighter edge reads as depth without the "floating card" look).
+ */
 export function Card({ padding = 'default', className, ...rest }: CardProps) {
   return (
     <div
-      className={cn('bg-surface border-border rounded-card border', PADDING[padding], className)}
+      className={cn(
+        'bg-surface border-border rounded-card border shadow-[0_1px_2px_rgb(15_27_45/0.04),0_6px_20px_-12px_rgb(15_27_45/0.12)]',
+        PADDING[padding],
+        className,
+      )}
       {...rest}
     />
   )

@@ -212,6 +212,7 @@ export function TechnicianHome() {
               {
                 label: 'New jobs',
                 value: newJobs.length,
+                tone: newJobs.length > 0 ? 'action' : undefined,
                 to: paths.workOrders,
                 hint: 'accept or decline',
               },
@@ -298,9 +299,24 @@ export function StaffHome() {
         <StatStrip
           className="md:grid-cols-3 xl:grid-cols-6"
           items={[
-            { label: 'To review', value: review.length, to: paths.cases },
-            { label: 'To assign', value: assign.length, to: paths.cases },
-            { label: 'To verify', value: verify.length, to: paths.cases },
+            {
+              label: 'To review',
+              value: review.length,
+              to: paths.cases,
+              tone: review.length > 0 ? 'action' : undefined,
+            },
+            {
+              label: 'To assign',
+              value: assign.length,
+              to: paths.cases,
+              tone: assign.length > 0 ? 'action' : undefined,
+            },
+            {
+              label: 'To verify',
+              value: verify.length,
+              to: paths.cases,
+              tone: verify.length > 0 ? 'action' : undefined,
+            },
             {
               label: 'Emergencies',
               value: emergencies.length,

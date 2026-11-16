@@ -1,8 +1,8 @@
 import type { ServiceType, ServiceTypeSuggestion } from './types'
 
 /*
- * TODO(ai): stand-in for the AI suggestion (F3 section 4, point 1). The AI gateway (Replicate, async) is not built yet,
- * so this matches keywords. The real one will ask the API and only ever suggest: the customer decides.
+ * Fallback for the AI suggestion (F3 section 4, point 1): used when the API says the AI is not available (no Replicate
+ * token, timeout, error), so the button still helps. It matches keywords; the customer decides either way.
  * Rules are checked in order (specific first). Each points at a service type by "Group · Name".
  */
 const RULES: [RegExp, string][] = [
@@ -47,5 +47,5 @@ export function suggestServiceType(
       'Say exactly where it is (which desk, unit or stall) so the technician finds it fast.',
     )
   }
-  return { serviceTypeId: match?.id ?? null, tips }
+  return { serviceTypeId: match?.id ?? null, urgency: null, tips, source: 'rules' }
 }

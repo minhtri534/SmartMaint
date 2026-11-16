@@ -1,41 +1,36 @@
 import { Outlet } from 'react-router'
 import { ProductMark } from '@/shared/ui'
-import { TowerSection } from './TowerSection'
 
-/**
- * AUTH-* pages, built like the signed-in shell (framed-sheet): the product on the tinted frame at the left,
- * the form on the white sheet at the right. The frame carries the tower section (the logo grown into a
- * building). Below 1024px the tower goes: a brand row on the frame, then the sheet.
+/*
+ * AUTH-* pages (sign in, change password), layout chosen by Leader 16/11: the photograph covers the screen under
+ * a navy veil, the form sits on a white card in the middle. Works the same on a phone (the card takes the width).
+ *
+ * Photo: "Free Saigon River image" (Ho Chi Minh City by the river at dusk), CC0 via rawpixel,
+ * https://www.rawpixel.com/image/5911021 — public domain, no credit required. It shows the city, not a client's
+ * building. Only 1024px wide, so the veil and a slight scale keep its softness from reading as a flaw.
  */
 export function AuthLayout() {
   return (
-    <div className="min-h-full lg:grid lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
-      <section className="flex flex-col px-4 pt-4 pb-3 lg:px-10 lg:py-10">
-        <div className="flex items-center gap-2.5">
+    <div className="relative grid min-h-full place-items-center overflow-hidden bg-[#0f1b2d] px-4 py-10">
+      <img
+        src="/images/signin-saigon.webp"
+        alt=""
+        aria-hidden="true"
+        className="absolute inset-0 size-full scale-[1.03] object-cover blur-[1px]"
+      />
+      <div aria-hidden="true" className="absolute inset-0 bg-[rgb(10_18_32/0.42)]" />
+
+      <main className="bg-surface relative w-full max-w-[420px] rounded-[14px] p-7 shadow-[0_24px_64px_-16px_rgb(0_0_0/0.45)] sm:p-8">
+        <div className="mb-6 flex items-center gap-2.5">
           <ProductMark className="size-6" />
-          <span className="text-lg font-semibold tracking-[-0.02em]">SmartMaint</span>
+          <span className="text-lg font-bold tracking-[-0.02em]">SmartMaint</span>
         </div>
-
-        <div className="hidden flex-1 items-center justify-center py-8 lg:flex">
-          <TowerSection className="h-auto max-h-[56vh] w-full max-w-[420px]" />
-        </div>
-
-        <div className="hidden lg:block">
-          <p className="text-section font-semibold tracking-[-0.01em]">
-            Building maintenance for rented office towers
-          </p>
-          <p className="text-muted mt-1 max-w-[46ch] text-sm">
-            Tenant requests, work orders and preventive plans, floor by floor, for the building
-            management office and its technicians.
-          </p>
-        </div>
-      </section>
-
-      <main className="min-w-0 lg:py-2 lg:pr-2">
-        <div className="bg-surface lg:border-border lg:rounded-sheet flex min-h-[calc(100vh-56px)] items-start justify-center px-4 pt-10 pb-8 sm:items-center sm:pt-8 lg:min-h-[calc(100vh-16px)] lg:border">
-          <Outlet />
-        </div>
+        <Outlet />
       </main>
+
+      <p className="absolute bottom-5 left-6 text-xs text-white/80">
+        Building maintenance for rented office towers
+      </p>
     </div>
   )
 }

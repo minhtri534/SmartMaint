@@ -9,8 +9,11 @@ export interface StatItem {
   hint?: string
   /** The list behind the number. */
   to?: string
-  /** 'alert': the number is something late or unacknowledged and is above zero — the one red mark. */
-  tone?: 'alert'
+  /**
+   * 'alert': something late or unacknowledged, above zero — the one orange mark.
+   * 'action': work waiting for this person, above zero — blueprint blue (direction A, 16/11).
+   */
+  tone?: 'alert' | 'action'
   /** Change against the previous period, in words; `good` colours it (null = grey). */
   change?: { text: string; good: boolean | null } | null
 }
@@ -24,7 +27,7 @@ export function StatStrip({ items, className }: { items: StatItem[]; className?:
   return (
     <div
       className={cn(
-        'border-border bg-border rounded-card grid gap-px overflow-hidden border',
+        'border-border bg-border rounded-card grid gap-px overflow-hidden border shadow-[0_1px_2px_rgb(15_27_45/0.04),0_6px_20px_-12px_rgb(15_27_45/0.12)]',
         'grid-cols-2',
         className,
       )}
@@ -35,8 +38,10 @@ export function StatStrip({ items, className }: { items: StatItem[]; className?:
             <div className="text-muted truncate text-[13px]">{item.label}</div>
             <div
               className={cn(
-                'text-section mt-1 font-semibold tabular-nums',
+                // large and light: the figure is the point, not its weight (16/11, after Leader's reference)
+                'mt-1.5 text-[34px] leading-10 font-normal tracking-[-0.035em] tabular-nums',
                 item.tone === 'alert' && 'text-negative',
+                item.tone === 'action' && 'text-accent',
               )}
             >
               {item.value}
@@ -58,7 +63,7 @@ export function StatStrip({ items, className }: { items: StatItem[]; className?:
             {item.hint && <div className="text-muted mt-0.5 truncate text-xs">{item.hint}</div>}
           </>
         )
-        const cell = 'bg-surface block min-w-0 px-4 py-3 max-md:last:odd:col-span-2'
+        const cell = 'bg-surface block min-w-0 px-5 py-4 max-md:last:odd:col-span-2'
         return item.to ? (
           <Link
             key={item.label}

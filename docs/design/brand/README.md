@@ -1,4 +1,4 @@
-# Logo SmartMaint — "Tầng lệch" (chốt 16/11/2026)
+# Logo SmartMaint — "Tầng lệch" (chốt 16/11/2026, màu theo hướng A "Bản vẽ")
 
 Mặt cắt tòa nhà 4 sàn (sàn mái lùi vào). Sàn đang bảo trì trượt ra 1/3 chiều dài, tô màu accent. Chỉ một mảnh có màu, còn lại màu chữ.
 
@@ -15,12 +15,12 @@ Mặt cắt tòa nhà 4 sàn (sàn mái lùi vào). Sàn đang bảo trì trư�
 
 | Vai trò | Nền sáng | Nền tối |
 |---|---|---|
-| Sàn (mực) | `#131416` | `#eef1f3` / trắng |
-| Sàn đang bảo trì (accent) | `#1b6c80` | `#6cc0d4` |
+| Sàn (mực) | `#0f1b2d` | `#e6ecf4` / trắng |
+| Sàn đang bảo trì (accent) | `#1f5fae` | `#8db4ea` |
 
 ## Chữ đi kèm
 
-"SmartMaint" viết IBM Plex Sans 600, letter-spacing −0.02em, đặt bên phải mark, cách 10px khi mark cao 20px.
+"SmartMaint" viết Be Vietnam Pro 700, letter-spacing −0.02em, đặt bên phải mark, cách 10px khi mark cao 20px.
 
 ## Không được
 

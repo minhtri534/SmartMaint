@@ -18,7 +18,7 @@
 | QR (nhãn thiết bị F1) | qrcode 1.5.4 (Leader đồng ý 02/11) | như trên |
 | Chuyển động | motion 14.9.0 (Leader đồng ý 16/11) — token ở `index.css` (`ease-snap`…) và `shared/utils/motion.ts` | như trên |
 | CSS | Tailwind CSS 4 | như trên |
-| Font | IBM Plex Sans + Plex Mono (`@fontsource/*` 5.3, OFL) — tự host | như trên |
+| Font | Be Vietnam Pro (từ 16/11, đủ dấu tiếng Việt) + IBM Plex Mono cho mã (`@fontsource/*` 5.3, OFL) — tự host | như trên |
 
 Thư viện backend: FluentValidation (validate DTO), EFCore.NamingConventions (snake_case tự động), JwtBearer, Swashbuckle SwaggerUI (chỉ phần giao diện; tài liệu OpenAPI do `Microsoft.AspNetCore.OpenApi` sinh). **Không** dùng MediatR, AutoMapper, FluentAssertions (đã chuyển sang thu phí).
 Thêm package mới (backend hay web) → hỏi Trí trước, thêm version vào `Directory.Packages.props` / `package.json` trong cùng PR.
@@ -195,20 +195,20 @@ Khi bảng / API chưa có (ERD chưa đóng băng), làm như `features/cases` 
 - `api.ts` gọi `mock.*`, comment ghi sẵn endpoint thật. Khi API xong: thay thân hàm bằng `apiClient...`, xóa `mock.ts` + banner — **pages và hooks không đổi** (đúng như đã xảy ra với cases).
 - **Server quyết nút nào hiện:** API trả `allowedActions` cho người gọi (máy trạng thái + role + phạm vi dữ liệu); web chỉ vẽ nút theo danh sách đó, không tự lặp lại luật (W4).
 
-### 5.4 Giao diện — theo skill `design-taste-frontend` (chốt 28/10)
+### 5.4 Giao diện — theo skill `design-taste-frontend` (chốt 28/10, đổi màu theo hướng A "Bản vẽ" 16/11)
 
 Skill nằm ở `.claude/skills/design-taste-frontend/` (MIT, bản chép từ Leonxlnx/taste-skill, xem `VENDORED.txt`). Màn hình của mình là **app screen**, nên luật nằm ở `references/app-screens.md` của skill. Style đã rút: **framed-sheet** (seed 1994434881). Token nằm hết trong `index.css`.
 
 | # | Quy tắc giao diện |
 |---|---|
-| U1 | Khung: sidebar 228px nằm trên **nền khung xám xanh thép** (`bg-frame`); trang nằm trên **tờ trắng** viền 1px, bo 16px, **không đổ bóng**. Dưới 1024px sidebar gập thành menu. |
-| U2 | **Mỗi màn hình chỉ 1 nút chính** (`variant="primary"`, gần đen). Còn lại `secondary` (viền), `ghost` (chữ), `danger` (viền đỏ, cho hủy / xóa). |
-| U3 | **Màu nhấn teal chỉ dùng cho dữ liệu** (thanh SLA, bộ lọc đang chọn) và focus. Không tô màu sidebar, tab, nút. Đỏ chỉ cho cái đang quá hạn / lỗi — tối đa 1 dấu đỏ mỗi đối tượng. |
-| U4 | Trạng thái = **pill nền nhạt chữ đậm cùng màu** (`Badge`), 1 pill mỗi dòng. Mức khẩn cấp chỉ in khi trên mức Normal, dạng chữ. |
-| U5 | Tiêu đề trang là **danh từ** 22px ("Cases", "My requests"), không "Welcome". Dòng phụ là **phát hiện từ dữ liệu** ("2 new requests to review, 1 past the deadline"), không phải hướng dẫn dùng màn hình. |
+| U1 | Khung: sidebar 228px nằm trên **nền khung là giấy bản vẽ** (`bg-frame` + lưới 24px mờ dưới 8%); thanh trên 48px trên nền khung chỉ có chuông thông báo và menu tài khoản; trang nằm trên **tờ trắng** viền 1px, bo 16px. Thẻ bên trong bo 12px, viền nhạt + bóng rất nhẹ (16/11). Dưới 1024px sidebar gập thành menu. |
+| U2 | **Mỗi màn hình chỉ 1 nút chính** (`variant="primary"`, navy gần đen). Còn lại `secondary` (viền), `ghost` (chữ), `danger` (viền cam, cho hủy / xóa). |
+| U3 | **Xanh blueprint** (`accent`) cho dữ liệu (thanh SLA, bộ lọc đang chọn), focus, **mục đang chọn ở sidebar** và **số việc đang chờ mình** (To review / To assign / New jobs > 0). Không tô tab, nút. **Cam an toàn** chỉ cho cái đang quá hạn / lỗi — tối đa 1 dấu cam mỗi đối tượng. |
+| U4 | Trạng thái = **pill nền nhạt chữ đậm cùng màu, có chấm tròn ở đầu** (`Badge`), 1 pill mỗi dòng. Mức khẩn cấp chỉ in khi trên mức Normal, dạng chữ. Ít lựa chọn (≤ 5) dùng `Segmented` (viên thuốc trượt), nhiều hơn dùng `FilterSelect`. |
+| U5 | Tiêu đề trang là **danh từ** 26px ("Cases", "My requests"), không "Welcome". Dòng phụ là **phát hiện từ dữ liệu** ("2 new requests to review, 1 past the deadline"), không phải hướng dẫn dùng màn hình. |
 | U6 | Bảng: tiêu đề cột 12px xám, viết thường; không sọc ngựa vằn; số căn phải `tabular-nums`; dòng 2 xám 13px. Thiếu giá trị = dấu `—` xám. Dưới 768px bảng thành danh sách 2 dòng, không bỏ trường nào. |
-| U7 | Không gradient, không glow / kính mờ, không icon trong ô màu, không emoji (kể cả ★ ✓ — dùng SVG). Icon viền 16px một bộ (`Icon`). |
-| U8 | Font: IBM Plex Sans (gói `@fontsource`, không gọi Google). IBM Plex Mono **chỉ** cho mã (CS-000123). |
+| U7 | Không gradient (trừ lớp tối dưới chữ trên ảnh), không glow / kính mờ, không icon trong ô màu, không emoji (kể cả ★ ✓ — dùng SVG). Họa tiết duy nhất: lưới bản vẽ trên nền khung, ký hiệu cao độ ▽ ở tầng. Ảnh chỉ dùng ảnh CC0 / public domain (không phải ghi nguồn trên giao diện), ghi nguồn trong comment code. Icon viền 16px một bộ (`Icon`). |
+| U8 | Font: Be Vietnam Pro (gói `@fontsource`, không gọi Google). IBM Plex Mono **chỉ** cho mã (CS-000123). |
 | U9 | Mỗi khối có đủ trạng thái: đang tải (thanh xám đúng kích thước, không shimmer), lỗi (1 câu + nút Retry trong khối), rỗng (khung nét đứt + 1 câu). |
 
 **Logo** (chốt 16/11): mark "Tầng lệch" — `ProductMark` trong `shared/ui/Icon.tsx`, favicon `frontend/public/favicon.svg`; file gốc, icon app cho Flutter và luật dùng ở `docs/design/brand/README.md`.
@@ -254,5 +254,5 @@ Khi hai bên khác nhau: màn hình app **không có hiệu ứng xuất hiện*
 - Audit log mọi lần đăng nhập của mọi role (BR-16) — ERD hiện chỉ cho ghi hành động của Admin (xem `ERD_v5_Thay_Doi_Khi_Code.md`).
 - Quên / đặt lại mật khẩu qua email (AUTH-02/03), kết thúc các phiên khác khi đổi mật khẩu — cần module Email + cột phiên.
 - Overlay AUTH-05 (cảnh báo trước 5 phút, quay lại đúng trang) — hiện chỉ đưa về Login kèm thông báo.
-- AI gateway (Replicate), job nền, email. (Đã có 02/11: lưu file `Common/Storage`, thông báo trong app, audit log.)
+- Email. (Đã có 02/11: lưu file `Common/Storage`, thông báo trong app, audit log, job nền. 16/11: AI gateway `Common/Ai` — Replicate, model `meta/meta-llama-3-70b-instruct` (gpt-5-nano lỗi 500 trên tài khoản, đổi lại bằng `Replicate__Model`), token `Replicate__ApiToken`; endpoint `POST /api/ai/request-suggestion` (Customer) và chatbot `GET/POST /api/ai/chat` (Leader 16/11: mọi role trừ Admin, góc phải dưới mọi trang, web `features/assistant`). Phạm vi role giữ bằng code: dữ liệu đưa cho model lấy từ `ICaseService.ListAsync / GetAsync` (cùng truy vấn đã lọc theo role như màn hình); prompt chỉ thêm luật. Trang muốn gợi ý riêng trong chat thì gọi `useAssistantAction`. Còn: màn hình Admin xem metadata câu hỏi AI.)
 - Mobile Flutter (Tùng) — thư mục `mobile/` chưa dựng.

@@ -16,6 +16,7 @@ import {
 } from '@/shared/ui'
 import { applyFieldErrors } from '@/shared/utils/apply-field-errors'
 import { formatAssetCode, parseAssetCode } from '@/shared/utils/asset-code'
+import { useAssistantAction, type AssistantCard } from '@/features/assistant'
 import { casesApi } from '../api'
 import { AssetSearch } from '../components/AssetSearch'
 import { PhotoPicker } from '../components/PhotoPicker'
@@ -152,6 +153,56 @@ export function NewRequestPage() {
   })
   const assets = useAssets(roomId ? Number(roomId) : null)
 
+  // Leader 16/11: the AI suggestion lives in the assistant chat. While this page is open the chat offers
+  // "Suggest a category from my description"; its card fills the form only when the customer presses "Use this".
+  const types = serviceTypes.data
+  useAssistantAction(
+    'Suggest a category from my description',
+    types
+      ? async (): Promise<AssistantCard> => {
+          const description = getValues('description').trim()
+          if (!description) {
+            return {
+              title: 'Describe the problem first',
+              detail: 'Write what is wrong in the Description box, then ask again.',
+              tips: [],
+            }
+          }
+          const result = await suggestion.mutateAsync({ description, serviceTypes: types })
+          const type = types.find((t) => t.id === result.serviceTypeId)
+          const note =
+            result.source === 'rules'
+              ? 'The AI is offline, so this was matched by keywords.'
+              : 'Suggestion only: you decide, the staff confirm the urgency.'
+          if (!type) {
+            return {
+              title: 'No matching problem',
+              detail: 'Please choose the category yourself.',
+              tips: result.tips,
+              note,
+            }
+          }
+          // The AI may judge this description more or less urgent than the type's default; an emergency type stays one.
+          const urgency = type.isEmergency ? 'emergency' : (result.urgency ?? urgencyOf(type))
+          return {
+            title: `${type.groupName} · ${type.name}`,
+            detail: `Urgency: ${URGENCY_LABELS[urgency]}`,
+            tips: result.tips,
+            note,
+            action: {
+              label: 'Use this',
+              doneLabel: 'Filled in the form',
+              run: () => {
+                setValue('serviceGroup', type.groupName)
+                setValue('serviceTypeId', String(type.id), { shouldValidate: true })
+                setValue('urgency', urgency, { shouldValidate: true })
+              },
+            },
+          }
+        }
+      : null,
+  )
+
   if (serviceTypes.isPending || buildings.isPending) return null
   if (serviceTypes.error || buildings.error) {
     return <Alert>{(serviceTypes.error ?? buildings.error)?.message}</Alert>
@@ -161,17 +212,9 @@ export function NewRequestPage() {
   const service = serviceTypes.data.find((s) => String(s.id) === serviceTypeId)
   const building = buildings.data.find((b) => String(b.id) === buildingId)
   const floor = building?.floors.find((f) => String(f.id) === floorId)
-  const suggested = serviceTypes.data.find((s) => s.id === suggestion.data?.serviceTypeId)
 
   const chooseType = (s: ServiceType | undefined) => {
     if (s) setValue('urgency', urgencyOf(s), { shouldValidate: !!errors.urgency })
-  }
-
-  const applySuggestion = () => {
-    if (!suggested) return
-    setValue('serviceGroup', suggested.groupName)
-    setValue('serviceTypeId', String(suggested.id), { shouldValidate: true })
-    chooseType(suggested)
   }
 
   // Asset code: the place comes with the asset, so the customer does not look for the room.
@@ -466,57 +509,6 @@ export function NewRequestPage() {
         </Card>
 
         <div className="flex flex-col gap-6">
-          <Card>
-            <CardHeader title="Suggested problem" aside="AI, suggestion only" />
-            <p className="text-muted text-sm">
-              Reads your description and proposes a category and problem. You decide; nothing is
-              sent.
-            </p>
-            <Button
-              className="mt-3"
-              loading={suggestion.isPending}
-              onClick={() =>
-                suggestion.mutate({
-                  description: getValues('description'),
-                  serviceTypes: serviceTypes.data,
-                })
-              }
-            >
-              Suggest from description
-            </Button>
-            {suggestion.data && (
-              <div className="border-rule mt-4 flex flex-col gap-2 border-t pt-4 text-sm">
-                {suggested ? (
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span>
-                      <span className="font-medium">
-                        {suggested.groupName} · {suggested.name}
-                      </span>
-                      <span className="text-muted"> · {URGENCY_LABELS[urgencyOf(suggested)]}</span>
-                    </span>
-                    {String(suggested.id) !== serviceTypeId ? (
-                      <Button variant="ghost" className="-mr-3" onClick={applySuggestion}>
-                        Use this
-                      </Button>
-                    ) : (
-                      <span className="text-positive text-xs">Selected</span>
-                    )}
-                  </div>
-                ) : (
-                  <span className="text-muted">No match. Please choose the category yourself.</span>
-                )}
-                {suggestion.data.tips.map((tip) => (
-                  <p key={tip} className="text-muted">
-                    {tip}
-                  </p>
-                ))}
-              </div>
-            )}
-            {suggestion.error && (
-              <p className="text-muted mt-3 text-sm">The assistant is not available right now.</p>
-            )}
-          </Card>
-
           <Card>
             <CardHeader title="What happens next" />
             <ol className="flex flex-col">

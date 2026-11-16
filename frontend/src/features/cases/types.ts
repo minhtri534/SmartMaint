@@ -728,6 +728,18 @@ export interface TechnicianOption extends PersonRef {
 /** AI suggestion while the customer writes the request (F3 section 4). The customer decides. */
 export interface ServiceTypeSuggestion {
   serviceTypeId: number | null
+  /** The AI's urgency for this description; null = use the service type's default. */
+  urgency: Urgency | null
   /** Hints to avoid a "Missing information" rejection (O05). */
+  tips: string[]
+  /** "ai" = Replicate answered; "rules" = the AI is off or failed, so the web matched keywords itself. */
+  source: 'ai' | 'rules'
+}
+
+/** POST /api/ai/request-suggestion. available = false: no AI right now (no token, timeout, error). */
+export interface RequestSuggestionResponse {
+  available: boolean
+  serviceTypeId: number | null
+  urgency: Urgency | null
   tips: string[]
 }

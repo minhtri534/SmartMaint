@@ -20,6 +20,7 @@ import type {
   ReasonRequest,
   RejectCaseRequest,
   RequestDecisionRequest,
+  RequestSuggestionResponse,
   ServiceType,
   TechnicianOption,
   UpdateCostsRequest,
@@ -56,6 +57,11 @@ export const casesApi = {
   get: (id: number) => apiClient.get<CaseDetail>(`/cases/${id}`).then((r) => r.data),
   /** EMP-02 */
   create: (body: CreateCaseRequest) => post<CaseDetail>('/cases', body),
+  /** EMP-02 helper (AiController): the AI's suggestion for the description; never changes data. */
+  requestSuggestion: (description: string) =>
+    apiClient
+      .post<RequestSuggestionResponse>('/ai/request-suggestion', { description })
+      .then((r) => r.data),
 
   // Status changes: one endpoint per arrow of the state machine. Each returns the updated case.
   /** DLG-12 */

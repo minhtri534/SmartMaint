@@ -1,6 +1,8 @@
+import { useEffect } from 'react'
 import { EmptyBlock, ErrorBlock, LoadingBlock, PageHeader } from '@/shared/ui'
 import { formatDateTime, formatRelative } from '@/shared/utils/format'
 import { useNotifications } from '../hooks'
+import { markNotificationsSeen } from '../seen'
 
 const DAY = 24 * 60 * 60 * 1000
 
@@ -14,6 +16,11 @@ export function NotificationsPage() {
   // "Now" = when the list was fetched, so the count is stable between renders.
   const fetchedAt = notifications.dataUpdatedAt
   const today = items.filter((n) => fetchedAt - new Date(n.sentAt).getTime() < DAY).length
+  // Opening the list clears the bell's count (per browser: the ERD has no read flag).
+  const latest = items[0]?.sentAt
+  useEffect(() => {
+    if (latest) markNotificationsSeen(latest)
+  }, [latest])
 
   return (
     <div className="flex max-w-[760px] flex-col gap-5">

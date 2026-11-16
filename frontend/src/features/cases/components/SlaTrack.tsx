@@ -87,7 +87,14 @@ export function SlaPanel({ c }: { c: CaseDetail }) {
         title="Deadline"
         aside={sla.window ? `${formatDuration(sla.window)} window` : undefined}
       />
-      <div className={cn('text-kpi tabular-nums', head.tone, 'font-normal')}>{head.text}</div>
+      <div
+        className={cn(
+          'text-[34px] leading-10 font-normal tracking-[-0.03em] tabular-nums',
+          head.tone,
+        )}
+      >
+        {head.text}
+      </div>
       {!pastDeadline && <Track sla={sla} className="mt-3 h-1.5" />}
       <dl className="mt-4 flex flex-col gap-2 text-sm">
         {c.slaStartedAt && <Row label="Clock started" value={formatDateTime(c.slaStartedAt)} />}

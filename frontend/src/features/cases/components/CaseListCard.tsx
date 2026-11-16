@@ -168,7 +168,7 @@ export function CaseListCard({
                 aria-selected={selected}
                 onClick={() => select(t.value)}
                 className={cn(
-                  'rounded-card bg-surface relative isolate min-w-0 border px-3 py-2.5 text-left',
+                  'rounded-card bg-surface relative isolate min-w-0 border px-4 py-3 text-left',
                   'ease-snap transition-[border-color,transform] duration-150 active:scale-[0.98]',
                   selected ? 'border-transparent' : 'border-border hover:border-control',
                 )}
@@ -183,7 +183,9 @@ export function CaseListCard({
                 )}
                 <div className="text-muted truncate text-[13px] leading-5">{t.label}</div>
                 <div className="flex items-baseline gap-2">
-                  <span className="text-section font-semibold tabular-nums">{inTab.length}</span>
+                  <span className="text-[28px] leading-8 font-normal tracking-[-0.03em] tabular-nums">
+                    {inTab.length}
+                  </span>
                   {overdue > 0 && (
                     <span className="text-negative truncate text-xs tabular-nums">
                       {overdue} overdue

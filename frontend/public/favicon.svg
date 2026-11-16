@@ -1,9 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
   <!-- SmartMaint mark drawn on a 16-pixel grid so every edge lands on a whole pixel. Master: docs/design/brand/smartmaint-mark.svg -->
   <style>
-    .ink { fill: #131416 }
-    .acc { fill: #1b6c80 }
-    @media (prefers-color-scheme: dark) { .ink { fill: #eef1f3 } .acc { fill: #6cc0d4 } }
+    .ink { fill: #0f1b2d }
+    .acc { fill: #1f5fae }
+    @media (prefers-color-scheme: dark) { .ink { fill: #e6ecf4 } .acc { fill: #8db4ea } }
   </style>
   <rect class="ink" x="2" y="1" width="5" height="2" rx="0.6"/>
   <rect class="ink" x="2" y="5" width="9" height="2" rx="0.6"/>

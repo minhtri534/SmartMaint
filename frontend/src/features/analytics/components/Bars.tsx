@@ -22,11 +22,12 @@ export function BarList({
 }) {
   const max = Math.max(1, ...rows.map((r) => r.value))
   return (
-    <ul className="flex flex-col gap-2.5">
+    // hover a row: the others step back so the one being read stands out (16/11)
+    <ul className="group/list flex flex-col gap-2.5">
       {rows.map((r) => (
         <li
           key={r.key}
-          className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 text-sm"
+          className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 text-sm transition-opacity duration-150 group-hover/list:opacity-45 hover:opacity-100!"
         >
           <span className="min-w-0 truncate">{r.label}</span>
           <span className="text-right tabular-nums">
@@ -66,19 +67,33 @@ export function WeekBars({
   return (
     <figure className="flex min-w-0 flex-col gap-2">
       <figcaption className="text-muted text-[13px]">{title}</figcaption>
-      <div className="border-rule flex h-28 items-end gap-1.5 border-b">
+      {/* Hover or focus a week: the other bars step back, a guide line marks the week and a small tip
+          names it (16/11). Every week is focusable, so the same reading works from the keyboard. */}
+      <div className="group/plot border-rule flex h-28 items-end gap-1.5 border-b">
         {weeks.map((w) => (
           <div
             key={w.weekStart}
-            className="group flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1"
-            title={`Week of ${formatDate(w.weekStart)}: ${w.value}`}
+            tabIndex={0}
+            aria-label={`Week of ${formatDate(w.weekStart)}: ${w.value} ${title.toLowerCase()}`}
+            className="group/bar relative flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1 outline-none"
           >
+            <span
+              aria-hidden="true"
+              className="border-accent/40 pointer-events-none absolute inset-y-0 left-1/2 border-l border-dashed opacity-0 transition-opacity duration-150 group-hover/bar:opacity-100 group-focus-visible/bar:opacity-100"
+            />
+            <span
+              role="tooltip"
+              className="bg-ink pointer-events-none absolute -top-1 left-1/2 z-10 -translate-x-1/2 -translate-y-[90%] rounded-md px-2 py-1 text-[11px] whitespace-nowrap text-white opacity-0 transition-[opacity,transform] duration-150 group-hover/bar:-translate-y-full group-hover/bar:opacity-100 group-focus-visible/bar:-translate-y-full group-focus-visible/bar:opacity-100"
+            >
+              <span className="text-white/70">Week of {formatDate(w.weekStart)}</span>
+              <b className="ml-1.5 font-semibold tabular-nums">{w.value}</b>
+            </span>
             <span className="text-muted text-[11px] tabular-nums">
               {dense && w.value === 0 ? '' : w.value}
             </span>
             {/* height eases to the new value when the filters change (12 small bars: cheap) */}
             <div
-              className="bg-accent ease-snap w-full max-w-8 rounded-t-[4px] transition-[height,opacity] duration-500 group-hover:opacity-80"
+              className="bg-accent ease-snap w-full max-w-8 rounded-t-[4px] transition-[height,opacity] duration-500 group-hover/bar:opacity-100! group-hover/plot:opacity-35 group-focus-visible/bar:opacity-100!"
               style={{ height: `${(w.value / max) * 80}%`, minHeight: w.value > 0 ? 2 : 0 }}
             />
           </div>

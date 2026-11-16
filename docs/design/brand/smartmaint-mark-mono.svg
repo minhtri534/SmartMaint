@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
   <title>SmartMaint</title>
   <!-- One-colour mark (print, stamp, single-colour use). The offset alone marks the floor under service. -->
-  <g fill="#131416">
+  <g fill="#0f1b2d">
     <rect x="4" y="1.5" width="11" height="5" rx="1.5"/>
     <rect x="4" y="9.5" width="18" height="5" rx="1.5"/>
     <rect x="10" y="17.5" width="18" height="5" rx="1.5"/>
