@@ -1456,7 +1456,6 @@ namespace SmartMaint.Api.Data.Migrations
                         .HasName("pk_ai_conversations");
 
                     b.HasIndex("UserId")
-                        .IsUnique()
                         .HasDatabaseName("ix_ai_conversations_user_id");
 
                     b.ToTable("ai_conversations", (string)null);
@@ -1477,8 +1476,8 @@ namespace SmartMaint.Api.Data.Migrations
 
                     b.Property<string>("Message")
                         .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
                         .HasColumnName("message");
 
                     b.Property<string>("Reply")
@@ -1493,7 +1492,6 @@ namespace SmartMaint.Api.Data.Migrations
                         .HasName("pk_ai_messages");
 
                     b.HasIndex("ConversationId")
-                        .IsUnique()
                         .HasDatabaseName("ix_ai_messages_conversation_id");
 
                     b.ToTable("ai_messages", (string)null);
@@ -2897,8 +2895,8 @@ namespace SmartMaint.Api.Data.Migrations
             modelBuilder.Entity("SmartMaint.Api.Entities.Core.AiConversation", b =>
                 {
                     b.HasOne("SmartMaint.Api.Entities.Accounts.Account", "User")
-                        .WithOne()
-                        .HasForeignKey("SmartMaint.Api.Entities.Core.AiConversation", "UserId")
+                        .WithMany()
+                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_ai_conversations_accounts_user_id");
@@ -2909,8 +2907,8 @@ namespace SmartMaint.Api.Data.Migrations
             modelBuilder.Entity("SmartMaint.Api.Entities.Core.AiMessage", b =>
                 {
                     b.HasOne("SmartMaint.Api.Entities.Core.AiConversation", "Conversation")
-                        .WithOne("Message")
-                        .HasForeignKey("SmartMaint.Api.Entities.Core.AiMessage", "ConversationId")
+                        .WithMany("Messages")
+                        .HasForeignKey("ConversationId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_ai_messages_ai_conversations_conversation_id");
@@ -3212,7 +3210,7 @@ namespace SmartMaint.Api.Data.Migrations
 
             modelBuilder.Entity("SmartMaint.Api.Entities.Core.AiConversation", b =>
                 {
-                    b.Navigation("Message");
+                    b.Navigation("Messages");
                 });
 
             modelBuilder.Entity("SmartMaint.Api.Entities.Maintenance.CaseChecklist", b =>

@@ -2,14 +2,15 @@ using SmartMaint.Api.Entities.Accounts;
 
 namespace SmartMaint.Api.Entities.Core;
 
-// AI assistant tables. Created now (Leader 02/11) but not used yet: the AI feature comes later, for Technician and
-// Customer only. Cardinalities are 1-1 exactly as drawn in the ERD (one conversation per account, one message per
-// conversation); ERD review #5 asks for 1-M, to fix at the ERD meeting before the feature is built.
+// AI assistant tables (AI for Customer + Technician only, suggestions only). Every question asked to the AI is kept
+// here (BR-16): who asked, about what, the question and the answer. The ERD draws both links as 1-1; since 16/11 they
+// are 1-M as ERD review #5 asked (one account asks many times, a conversation may hold several messages).
+// Logged in docs/database/ERD_v5_Thay_Doi_Khi_Code.md.
 
 /// <summary>ERD: AIConversation(ID, ContextType, ContextID, UserID).</summary>
 public class AiConversation : Entity
 {
-    /// <summary>What the conversation is about, e.g. "case".</summary>
+    /// <summary>What the conversation is about: "case_request" (a customer writing a request), later "case".</summary>
     public string ContextType { get; set; } = string.Empty;
 
     public long? ContextId { get; set; }
@@ -17,7 +18,7 @@ public class AiConversation : Entity
     public long UserId { get; set; }
     public Account User { get; set; } = null!;
 
-    public AiMessage? Message { get; set; }
+    public List<AiMessage> Messages { get; } = [];
 }
 
 /// <summary>ERD: AIMessage(ID, ConversationID, Message, Reply, TimeSent).</summary>
@@ -27,6 +28,8 @@ public class AiMessage : Entity
     public AiConversation Conversation { get; set; } = null!;
 
     public string Message { get; set; } = string.Empty;
+
+    /// <summary>The model's raw answer; empty when the AI failed or timed out.</summary>
     public string? Reply { get; set; }
 
     /// <summary>ERD: TimeSent.</summary>

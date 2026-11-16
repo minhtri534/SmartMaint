@@ -43,8 +43,8 @@ internal sealed class AiConversationConfiguration : IEntityTypeConfiguration<AiC
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).UseIdentityAlwaysColumn();
         builder.Property(x => x.ContextType).HasMaxLength(30);
-        // ERD draws Account - AIConversation as 1-1.
-        builder.HasOne(x => x.User).WithOne().HasForeignKey<AiConversation>(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        // ERD draws Account - AIConversation as 1-1; 1-M since 16/11 (ERD review #5).
+        builder.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
     }
 }
 
@@ -55,10 +55,11 @@ internal sealed class AiMessageConfiguration : IEntityTypeConfiguration<AiMessag
         builder.ToTable("ai_messages");
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).UseIdentityAlwaysColumn();
-        builder.Property(x => x.Message).HasMaxLength(500);
+        // 2000 = the longest case description (CreateCaseRequestValidator); was 500.
+        builder.Property(x => x.Message).HasMaxLength(2000);
         builder.Property(x => x.Reply).HasColumnType("text");
-        // ERD draws AIConversation - AIMessage as 1-1.
-        builder.HasOne(x => x.Conversation).WithOne(x => x.Message)
-            .HasForeignKey<AiMessage>(x => x.ConversationId).OnDelete(DeleteBehavior.Cascade);
+        // ERD draws AIConversation - AIMessage as 1-1; 1-M since 16/11 (ERD review #5).
+        builder.HasOne(x => x.Conversation).WithMany(x => x.Messages)
+            .HasForeignKey(x => x.ConversationId).OnDelete(DeleteBehavior.Cascade);
     }
 }

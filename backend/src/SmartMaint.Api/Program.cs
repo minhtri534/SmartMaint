@@ -17,6 +17,7 @@ builder.Services
     .AddModules(builder.Configuration)
     .AddDatabase(builder.Configuration)
     .AddFileStorage(builder.Configuration)
+    .AddAiGateway(builder.Configuration)
     .AddApi(builder.Configuration);
 
 var app = builder.Build();

@@ -1960,3 +1960,49 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261116151052_AiConversationsOneToMany') THEN
+    DROP INDEX ix_ai_messages_conversation_id;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261116151052_AiConversationsOneToMany') THEN
+    DROP INDEX ix_ai_conversations_user_id;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261116151052_AiConversationsOneToMany') THEN
+    ALTER TABLE ai_messages ALTER COLUMN message TYPE character varying(2000);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261116151052_AiConversationsOneToMany') THEN
+    CREATE INDEX ix_ai_messages_conversation_id ON ai_messages (conversation_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261116151052_AiConversationsOneToMany') THEN
+    CREATE INDEX ix_ai_conversations_user_id ON ai_conversations (user_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261116151052_AiConversationsOneToMany') THEN
+    INSERT INTO __ef_migrations_history (migration_id, product_version)
+    VALUES ('20261116151052_AiConversationsOneToMany', '10.0.13');
+    END IF;
+END $EF$;
+COMMIT;
+

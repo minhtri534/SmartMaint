@@ -40,3 +40,22 @@ public sealed class FakeFileStorage : IFileStorage
         IReadOnlyCollection<string> paths, CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyDictionary<string, string>>(paths.Distinct().ToDictionary(p => p, p => $"https://files.test/{p}"));
 }
+
+/// <summary>Stands in for Replicate: answers with <see cref="Reply"/> (null = the AI failed) and keeps the prompt.</summary>
+public sealed class FakeAiGateway : SmartMaint.Api.Common.Ai.IAiGateway
+{
+    public bool IsAvailable { get; set; } = true;
+    public string? Reply { get; set; }
+    public int Calls { get; private set; }
+    public string? LastPrompt { get; private set; }
+
+    public string? LastSystemPrompt { get; private set; }
+
+    public Task<string?> AskAsync(string systemPrompt, string prompt, int maxTokens, CancellationToken cancellationToken)
+    {
+        Calls++;
+        LastPrompt = prompt;
+        LastSystemPrompt = systemPrompt;
+        return Task.FromResult(Reply);
+    }
+}
