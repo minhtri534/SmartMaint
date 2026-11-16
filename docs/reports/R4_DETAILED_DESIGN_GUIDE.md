@@ -54,6 +54,9 @@ Danh sách sequence chỉ là gợi ý — chủ luồng chốt theo function R3
 
 ## 4. Định dạng file
 
-- Nguồn diagram để trong repo: `docs/design/<mục>-<feature>/` (vd. `docs/design/3.1-auth/class.mmd`, `seq-login.mmd`) + PNG xuất ra cạnh đó để dán vào R4.
-- **Định dạng: chờ Leader chốt** (PROJECT_CONTEXT có quy tắc "UML → draw.io"). Đề xuất: Mermaid (text, sửa code xong sinh lại được, render bằng `npx @mermaid-js/mermaid-cli`, không cần Java); nếu cần đúng style mẫu trường hơn thì draw.io.
+- **Đã làm (28/10):** file nộp `docs/reports/Report4_Software_Design_Document_SmartMaint.docx`, dựng từ template trường (`docs/design/r4/template/`).
+  - Sơ đồ = file mô tả trong `docs/design/r4/specs/*.mjs` (system, auth, cases), vẽ ra `docs/design/r4/img/*.png` bằng `node docs/design/r4/diagrams.mjs` (Chrome headless của skill taste, kiểu hình mẫu trường).
+  - ERD = trang "Logical ERD" trong `ERD_SmartMaint_v5` của Hùng trên Drive, xuất PNG nguyên bản (`img/erd-logical.png`), không vẽ lại.
+  - Dựng lại file Word: `python docs/design/r4/build_report.py <out.docx>` rồi mở bằng Word, cập nhật mục lục (F9) và lưu.
+  - Thêm luồng mới: thêm `specs/<luồng>.mjs` + một hàm `section_...` trong `build_report.py`.
 - Vẽ **sau khi** code của function đó đã chạy và có unit test — diagram phải khớp code tại thời điểm nộp.

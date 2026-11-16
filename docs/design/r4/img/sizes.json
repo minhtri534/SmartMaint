@@ -1,0 +1,58 @@
+{
+  "architecture": {
+    "width": 1180,
+    "height": 475
+  },
+  "packages-backend": {
+    "width": 1086,
+    "height": 566
+  },
+  "packages-web": {
+    "width": 1026,
+    "height": 496
+  },
+  "erd": {
+    "width": 1170,
+    "height": 761
+  },
+  "auth-class": {
+    "width": 1368,
+    "height": 1005
+  },
+  "auth-seq-login": {
+    "width": 2284,
+    "height": 1306
+  },
+  "auth-seq-change-password": {
+    "width": 1977,
+    "height": 1014
+  },
+  "f3-class-services": {
+    "width": 1443,
+    "height": 995
+  },
+  "f3-class-entities": {
+    "width": 1276,
+    "height": 794
+  },
+  "f3-seq-list": {
+    "width": 1963,
+    "height": 830
+  },
+  "f3-seq-submit": {
+    "width": 2055,
+    "height": 1068
+  },
+  "f3-seq-approve": {
+    "width": 1966,
+    "height": 1140
+  },
+  "f3-seq-assign": {
+    "width": 2021,
+    "height": 982
+  },
+  "f3-seq-complete": {
+    "width": 2083,
+    "height": 790
+  }
+}
