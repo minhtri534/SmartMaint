@@ -1,0 +1,1 @@
+Source: https://github.com/rampstackco/claude-skills @ 0590510 (MIT). Copied 2026-11-16; update by re-copying skills/logo-design (README.md left out: it only links to the publisher's test site).

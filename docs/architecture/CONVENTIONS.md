@@ -16,6 +16,7 @@
 | React / Vite / TypeScript | 19 / 8 / 7 | `frontend/package-lock.json` |
 | Router / data / form | react-router 8, TanStack Query 5, axios, react-hook-form 7 + zod 4 | như trên |
 | QR (nhãn thiết bị F1) | qrcode 1.5.4 (Leader đồng ý 02/11) | như trên |
+| Chuyển động | motion 14.9.0 (Leader đồng ý 16/11) — token ở `index.css` (`ease-snap`…) và `shared/utils/motion.ts` | như trên |
 | CSS | Tailwind CSS 4 | như trên |
 | Font | IBM Plex Sans + Plex Mono (`@fontsource/*` 5.3, OFL) — tự host | như trên |
 
@@ -209,6 +210,18 @@ Skill nằm ở `.claude/skills/design-taste-frontend/` (MIT, bản chép từ L
 | U7 | Không gradient, không glow / kính mờ, không icon trong ô màu, không emoji (kể cả ★ ✓ — dùng SVG). Icon viền 16px một bộ (`Icon`). |
 | U8 | Font: IBM Plex Sans (gói `@fontsource`, không gọi Google). IBM Plex Mono **chỉ** cho mã (CS-000123). |
 | U9 | Mỗi khối có đủ trạng thái: đang tải (thanh xám đúng kích thước, không shimmer), lỗi (1 câu + nút Retry trong khối), rỗng (khung nét đứt + 1 câu). |
+
+**Logo** (chốt 16/11): mark "Tầng lệch" — `ProductMark` trong `shared/ui/Icon.tsx`, favicon `frontend/public/favicon.svg`; file gốc, icon app cho Flutter và luật dùng ở `docs/design/brand/README.md`.
+
+**Skill phụ** (cài 16/11, MIT, nguồn ghi trong `VENDORED.txt` của từng thư mục). Taste-skill vẫn là luật chính; skill phụ chỉ lo phần nó chuyên:
+
+| Skill | Dùng khi |
+|---|---|
+| `emil-design-eng`, `find-animation-opportunities`, `choreograph` | Thêm / sửa chuyển động: nút, dialog, tab, toast, chuyển trang |
+| `review-animations` | Soát chuyển động trước PR (chỉ chạy khi gọi `/review-animations`) |
+| `logo-design` | Chỉnh logo, làm bản cho ngữ cảnh mới (in, áo, slide) |
+
+Khi hai bên khác nhau: màn hình app **không có hiệu ứng xuất hiện** (không stagger danh sách, không trượt khối khi tải trang) — theo `app-screens.md` của taste-skill. Chuyển động chỉ để phản hồi thao tác (bấm, mở / đóng, đổi tab, đổi trạng thái) và lấy easing / thời lượng theo bộ của Emil. Luôn có `prefers-reduced-motion`.
 
 **Kiểm tra trước PR** (chạy ở thư mục gốc repo):
 - `node .claude/skills/design-taste-frontend/scripts/lint.mjs --app frontend/src` → phải **0 FAIL**.

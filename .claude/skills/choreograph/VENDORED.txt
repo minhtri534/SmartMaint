@@ -1,0 +1,1 @@
+Source: https://github.com/emilkowalski/skills @ 64eb3de (MIT). Copied 2026-11-16; update by re-copying skills/choreograph.

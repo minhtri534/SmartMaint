@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <title>SmartMaint app icon</title>
+  <!-- Full-bleed square: iOS and Android apply their own corner mask. The mark sits in the central 60% (adaptive-icon safe zone). -->
+  <rect width="512" height="512" fill="#131416"/>
+  <g transform="translate(112 112) scale(9)">
+    <rect x="4" y="1.5" width="11" height="5" rx="1.5" fill="#ffffff"/>
+    <rect x="4" y="9.5" width="18" height="5" rx="1.5" fill="#ffffff"/>
+    <rect x="10" y="17.5" width="18" height="5" rx="1.5" fill="#6cc0d4"/>
+    <rect x="4" y="25.5" width="18" height="5" rx="1.5" fill="#ffffff"/>
+  </g>
+</svg>

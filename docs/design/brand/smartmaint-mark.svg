@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <title>SmartMaint</title>
+  <!-- Master mark, 32-unit grid. Four floors of a building section (roof set back); the floor under service slides out by a third. -->
+  <rect x="4" y="1.5" width="11" height="5" rx="1.5" fill="#131416"/>
+  <rect x="4" y="9.5" width="18" height="5" rx="1.5" fill="#131416"/>
+  <rect x="10" y="17.5" width="18" height="5" rx="1.5" fill="#1b6c80"/>
+  <rect x="4" y="25.5" width="18" height="5" rx="1.5" fill="#131416"/>
+</svg>
