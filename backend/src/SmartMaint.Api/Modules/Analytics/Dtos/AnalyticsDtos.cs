@@ -20,7 +20,8 @@ public sealed record PeriodResponse(DateOnly From, DateOnly To);
 /// <summary>
 /// ANA-01 KPIs of one period (incidents F3 / F4; preventive work orders are in <see cref="PreventiveStats"/>).
 /// Counted: reported in the period, except merged reports and surveys (N5). Rates use the cases completed in the
-/// period. OnTimeRate = by the deadline in force (after moves); OnTimeOriginalRate = by the first SLA deadline (S02).
+/// period; the on-time rates also count, as missed, the cases not done yet whose deadline passed in the period.
+/// OnTimeRate = by the deadline in force (after moves); OnTimeOriginalRate = by the first SLA deadline (S02).
 /// </summary>
 public sealed record KpiSet(
     int Reported,
@@ -49,6 +50,10 @@ public sealed record HoldTimeRow(string Reason, int Times, double TotalHours, do
 
 public sealed record WeekPoint(DateOnly WeekStart, int Reported, int Completed);
 
+/// <summary>
+/// One building. OpenNow = all work not finished (pending → waiting for verification, preventive included, merged
+/// reports aside); OverdueNow = of those, not reported done and past the deadline. OnTimeRate as in <see cref="KpiSet"/>.
+/// </summary>
 public sealed record BuildingRow(
     long BuildingId, string Name, int Reported, int Completed, double? OnTimeRate, int OpenNow, int OverdueNow);
 

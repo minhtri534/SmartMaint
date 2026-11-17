@@ -32,6 +32,8 @@ internal sealed class AnalyticsService(AppDbContext db, ICurrentUser currentUser
         CaseStatus.Reopened,
     ];
 
+    private static readonly CaseStatus[] Final = [CaseStatus.Closed, CaseStatus.Rejected, CaseStatus.Cancelled];
+
     // ----- ANA-01 ---------------------------------------------------------------------------------------------
 
     public async Task<OverviewResponse> OverviewAsync(AnalyticsQuery query, CancellationToken cancellationToken)
@@ -72,14 +74,16 @@ internal sealed class AnalyticsService(AppDbContext db, ICurrentUser currentUser
             .Select(g =>
             {
                 var list = g.Where(IsIncident).ToList();
-                var done = list.Where(c => In(c.CompletedAt, from, to)).ToList();
+                // Open now = every piece of work not finished yet (pending → waiting for verification), merged
+                // reports aside; overdue = still to be done (not reported done) and past its deadline.
+                var openNow = g.Where(c => c.MergedIntoCaseId == null && !Final.Contains(c.Status)).ToList();
                 return new BuildingRow(
                     g.Key.BuildingId, g.Key.Name,
                     list.Count(c => In(c.SubmittedAt, from, to)),
-                    done.Count,
-                    Rate(done.Count(c => c.DueAt != null && c.CompletedAt <= c.DueAt), done.Count(c => c.DueAt != null)),
-                    g.Count(c => Open.Contains(c.Status)),
-                    g.Count(c => Open.Contains(c.Status) && c.DueAt < now));
+                    list.Count(c => In(c.CompletedAt, from, to)),
+                    OnTime(list, from, to, now, c => c.DueAt),
+                    openNow.Count,
+                    openNow.Count(c => c.Status != CaseStatus.Completed && c.DueAt < now));
             })
             .OrderBy(b => b.Name)
             .ToList();
@@ -87,8 +91,8 @@ internal sealed class AnalyticsService(AppDbContext db, ICurrentUser currentUser
         return new OverviewResponse(
             period,
             previous,
-            Kpis(incidents, from, to),
-            Kpis(incidents, Start(previous.From), Start(previous.To.AddDays(1))),
+            Kpis(incidents, from, to, now),
+            Kpis(incidents, Start(previous.From), Start(previous.To.AddDays(1)), now),
             emergency,
             preventive,
             HoldTime(cases, from, to, now),
@@ -97,12 +101,10 @@ internal sealed class AnalyticsService(AppDbContext db, ICurrentUser currentUser
             buildings);
     }
 
-    private KpiSet Kpis(List<Case> incidents, DateTimeOffset from, DateTimeOffset to)
+    private KpiSet Kpis(List<Case> incidents, DateTimeOffset from, DateTimeOffset to, DateTimeOffset now)
     {
         var reported = incidents.Where(c => In(c.SubmittedAt, from, to)).ToList();
         var done = incidents.Where(c => In(c.CompletedAt, from, to)).ToList();
-        var withDue = done.Where(c => c.DueAt != null).ToList();
-        var original = done.Select(c => (Case: c, Due: OriginalDue(c))).Where(x => x.Due != null).ToList();
         var moves = incidents.SelectMany(c => c.History.Where(h => In(h.ChangedAt, from, to) && Starts(h.Reason, CaseHistoryTags.DeadlineMoved))
             .Select(_ => c.Id)).ToList();
         var rated = incidents.Where(c => c.RatedAt != null && In(c.RatedAt.Value, from, to)).ToList();
@@ -114,8 +116,8 @@ internal sealed class AnalyticsService(AppDbContext db, ICurrentUser currentUser
             done.Count,
             Average(reported.Select(FirstResponseMinutes).Where(m => m != null).Select(m => m!.Value)),
             Average(done.Select(c => (c.CompletedAt!.Value - c.SubmittedAt).TotalHours)),
-            Rate(withDue.Count(c => c.CompletedAt <= c.DueAt), withDue.Count),
-            Rate(original.Count(x => x.Case.CompletedAt <= x.Due), original.Count),
+            OnTime(incidents, from, to, now, c => c.DueAt),
+            OnTime(incidents, from, to, now, OriginalDue),
             moves.Distinct().Count(),
             moves.Count,
             Rate(done.Count(c => c.History.Any(h => h.NewStatus == CaseStatus.Reopened)), done.Count),
@@ -139,6 +141,36 @@ internal sealed class AnalyticsService(AppDbContext db, ICurrentUser currentUser
 
         var decision = history.Skip(1).FirstOrDefault(h => h.NewStatus is CaseStatus.Approved or CaseStatus.Rejected);
         return decision is null ? null : (decision.ChangedAt - c.SubmittedAt).TotalMinutes;
+    }
+
+    /// <summary>
+    /// Share of deadlines met (17/11, Leader: "100% on time" next to 3 cases past the deadline was wrong). Counted:
+    /// the cases reported done in the period (met when done by the deadline) and the cases still not done whose
+    /// deadline already passed inside the period (missed, even though the work goes on). Null when none counts.
+    /// </summary>
+    private static double? OnTime(
+        IEnumerable<Case> cases, DateTimeOffset from, DateTimeOffset to, DateTimeOffset now, Func<Case, DateTimeOffset?> dueOf)
+    {
+        int met = 0, counted = 0;
+        foreach (var c in cases)
+        {
+            if (dueOf(c) is not { } due)
+            {
+                continue;
+            }
+
+            if (In(c.CompletedAt, from, to))
+            {
+                counted++;
+                met += c.CompletedAt <= due ? 1 : 0;
+            }
+            else if (c.CompletedAt == null && !Final.Contains(c.Status) && due < now && In(due, from, to))
+            {
+                counted++;
+            }
+        }
+
+        return Rate(met, counted);
     }
 
     /// <summary>The first SLA deadline, before any move: start of the clock + the SLA hours of the urgency.</summary>
@@ -201,6 +233,7 @@ internal sealed class AnalyticsService(AppDbContext db, ICurrentUser currentUser
     {
         var (_, from, to) = Resolve(query);
         var cases = await LoadAsync(query.BuildingId, cancellationToken);
+        var now = clock.GetUtcNow();
         var work = cases.Where(c => !c.IsSurvey && c.MergedIntoCaseId == null).ToList();
         var technicians = await db.Technicians.AsNoTracking()
             .Where(t => t.Status == UserStatus.Active)
@@ -211,7 +244,6 @@ internal sealed class AnalyticsService(AppDbContext db, ICurrentUser currentUser
             .Select(t =>
             {
                 var done = work.Where(c => c.AssignedTechnicianId == t.Id && In(c.CompletedAt, from, to)).ToList();
-                var withDue = done.Where(c => c.DueAt != null).ToList();
                 var declines = work.SelectMany(c => c.Rejections)
                     .Where(r => r.TechnicianId == t.Id && In(r.RejectedAt, from, to))
                     .OrderByDescending(r => r.RejectedAt).ToList();
@@ -220,7 +252,7 @@ internal sealed class AnalyticsService(AppDbContext db, ICurrentUser currentUser
                     new PersonRef(t.Id, t.FullName),
                     done.Count,
                     Average(done.Where(c => c.ActualCompletionHours != null).Select(c => (double)c.ActualCompletionHours!.Value)),
-                    Rate(withDue.Count(c => c.CompletedAt <= c.DueAt), withDue.Count),
+                    OnTime(work.Where(c => c.AssignedTechnicianId == t.Id), from, to, now, c => c.DueAt),
                     Rate(done.Count(c => c.History.Any(h => h.NewStatus == CaseStatus.Reopened)), done.Count),
                     Average(rated.Select(c => (double)c.RatingStars!.Value)),
                     done.Sum(c => c.ActualCompletionHours ?? 0),

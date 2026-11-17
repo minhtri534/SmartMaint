@@ -46,6 +46,36 @@ public sealed class AnalyticsTests : CaseTestBase
     }
 
     [Fact]
+    [Trait(TestType.Key, TestType.Abnormal)]
+    public async Task Overview_OpenCasePastItsDeadline_CountsAsMissed()
+    {
+        await CompletedAsync(2);                       // done on time
+        await CaseAtAsync(CaseStatus.InProgress);       // due in 24 h, still in work
+        Clock.Now = Clock.Now.AddHours(25);
+        As(Manager);
+
+        var overview = await Analytics.OverviewAsync(All, default);
+
+        Assert.Equal(1, overview.Current.Completed);
+        Assert.Equal(0.5, overview.Current.OnTimeRate); // not 100 %: the open one already missed its deadline
+        Assert.Equal(1, Assert.Single(overview.ByBuilding, b => b.OpenNow > 0).OverdueNow);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Boundary)]
+    public async Task Overview_PendingAndWaitingForVerification_AreOpenNow()
+    {
+        await NewCaseAsync();                            // pending
+        await CompletedAsync(2);                         // reported done, the staff have not verified it
+        As(Manager);
+
+        var building = Assert.Single((await Analytics.OverviewAsync(All, default)).ByBuilding, b => b.OpenNow > 0);
+
+        Assert.Equal(2, building.OpenNow);
+        Assert.Equal(0, building.OverdueNow);
+    }
+
+    [Fact]
     [Trait(TestType.Key, TestType.Boundary)]
     public async Task Overview_DeadlineMoved_BothRatesAreShown()
     {
