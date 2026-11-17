@@ -8,6 +8,9 @@ import '@fontsource/be-vietnam-pro/600.css'
 import '@fontsource/be-vietnam-pro/700.css'
 import '@fontsource/ibm-plex-mono/400.css'
 import '@/index.css'
+import { initTheme } from '@/shared/theme/theme'
+
+initTheme()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

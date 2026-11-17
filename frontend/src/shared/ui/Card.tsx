@@ -8,21 +8,9 @@ interface CardProps extends HTMLAttributes<HTMLDivElement> {
   padding?: keyof typeof PADDING
 }
 
-/**
- * Panel inside the sheet: white, 1px border, 12px corners and a very soft lift (16/11: a hairline shadow under
- * a lighter edge reads as depth without the "floating card" look).
- */
+/** Soft card on the desk (ui/mercato-style): white, hairline edge, 18px corners, a long low shadow. */
 export function Card({ padding = 'default', className, ...rest }: CardProps) {
-  return (
-    <div
-      className={cn(
-        'bg-surface border-border rounded-card border shadow-[0_1px_2px_rgb(15_27_45/0.04),0_6px_20px_-12px_rgb(15_27_45/0.12)]',
-        PADDING[padding],
-        className,
-      )}
-      {...rest}
-    />
-  )
+  return <div className={cn('card-soft rounded-card', PADDING[padding], className)} {...rest} />
 }
 
 /** A card's heading row: 16/600 title on the left, an optional link or meta on the right. */

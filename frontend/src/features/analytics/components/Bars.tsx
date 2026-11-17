@@ -83,7 +83,7 @@ export function WeekBars({
             />
             <span
               role="tooltip"
-              className="bg-ink pointer-events-none absolute -top-1 left-1/2 z-10 -translate-x-1/2 -translate-y-[90%] rounded-md px-2 py-1 text-[11px] whitespace-nowrap text-white opacity-0 transition-[opacity,transform] duration-150 group-hover/bar:-translate-y-full group-hover/bar:opacity-100 group-focus-visible/bar:-translate-y-full group-focus-visible/bar:opacity-100"
+              className="bg-ink text-surface pointer-events-none absolute -top-1 left-1/2 z-10 -translate-x-1/2 -translate-y-[90%] rounded-md px-2 py-1 text-[11px] whitespace-nowrap opacity-0 transition-[opacity,transform] duration-150 group-hover/bar:-translate-y-full group-hover/bar:opacity-100 group-focus-visible/bar:-translate-y-full group-focus-visible/bar:opacity-100"
             >
               <span className="text-white/70">Week of {formatDate(w.weekStart)}</span>
               <b className="ml-1.5 font-semibold tabular-nums">{w.value}</b>

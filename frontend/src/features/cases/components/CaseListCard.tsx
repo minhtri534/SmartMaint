@@ -120,7 +120,9 @@ export function CaseListCard({
   const period: Period | '' = isKey(PERIODS, rawPeriod) ? rawPeriod : ''
   const rawSort = params.get('sort')
   const sort: SortKey | '' = isKey(SORTS, rawSort) ? rawSort : ''
-  const filtered = status !== '' || urgency !== '' || period !== ''
+  // ui/mercato-style: the top bar's search lands here as ?q= (title, code, building or room).
+  const q = (params.get('q') ?? '').trim().toLowerCase()
+  const filtered = status !== '' || urgency !== '' || period !== '' || q !== ''
 
   if (cases.isPending) return <ListSkeleton cards={variant === 'cards' ? tabs.length : 0} />
   if (cases.error) {
@@ -141,7 +143,11 @@ export function CaseListCard({
     (c) =>
       (status === '' || c.status === status) &&
       (urgency === '' || c.urgency === urgency) &&
-      (since === null || new Date(c.submittedAt).getTime() >= since),
+      (since === null || new Date(c.submittedAt).getTime() >= since) &&
+      (q === '' ||
+        [c.title, c.code, c.location.buildingName, c.location.roomName].some((t) =>
+          t.toLowerCase().includes(q),
+        )),
   )
   if (sort) rows.sort(SORTS[sort].compare)
   else if (current.sort) rows.sort(current.sort)
@@ -168,7 +174,7 @@ export function CaseListCard({
                 aria-selected={selected}
                 onClick={() => select(t.value)}
                 className={cn(
-                  'rounded-card bg-surface relative isolate min-w-0 border px-4 py-3 text-left',
+                  'card-soft rounded-card relative isolate min-w-0 px-4 py-3 text-left',
                   'ease-snap transition-[border-color,transform] duration-150 active:scale-[0.98]',
                   selected ? 'border-transparent' : 'border-border hover:border-control',
                 )}
@@ -251,6 +257,11 @@ export function CaseListCard({
 
         {filtered && (
           <>
+            {q && (
+              <span className="bg-pill-accent-bg text-pill-accent-ink rounded-full px-2.5 py-1 text-xs whitespace-nowrap">
+                “{params.get('q')}”
+              </span>
+            )}
             <span className="text-muted ml-1 text-sm tabular-nums">
               {rows.length} of {inTab.length}
             </span>
@@ -260,7 +271,7 @@ export function CaseListCard({
                 setParams(
                   (prev) => {
                     const next = new URLSearchParams(prev)
-                    for (const key of ['status', 'urgency', 'period']) next.delete(key)
+                    for (const key of ['status', 'urgency', 'period', 'q']) next.delete(key)
                     return next
                   },
                   { replace: true },

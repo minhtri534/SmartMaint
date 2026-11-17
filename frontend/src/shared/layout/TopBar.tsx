@@ -1,25 +1,137 @@
 import { AnimatePresence, motion } from 'motion/react'
-import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { Link, useNavigate } from 'react-router'
 import { paths } from '@/app/paths'
 import { useAuth } from '@/features/auth'
 import { useUnseenNotifications } from '@/features/notifications'
-import { ROLE_LABELS } from '@/shared/types/role'
+import { setTheme, useTheme } from '@/shared/theme/theme'
+import { ROLE_LABELS, type Role } from '@/shared/types/role'
 import { Icon } from '@/shared/ui'
 import { cn } from '@/shared/utils/cn'
 import { EASE_SNAP } from '@/shared/utils/motion'
+import { StatusChips } from './StatusChips'
 
 /*
- * The right end of the top bar (16/11): the bell with what is new since the user last opened Notifications,
- * then the account button with its menu (who is signed in, change password, sign out). Used in the desktop bar
- * above the sheet and in the phone bar.
+ * Top bar (ui/mercato-style): search, theme switch, bell and the account pill on the right, each a raised round
+ * button; on the left one quiet line, "Welcome back, <name>" (17/11: the earlier "Hi, …! Welcome back." with a
+ * subtitle read as generated).
  */
-export function TopBarActions() {
+
+/** Where the search box looks: the role's own case list (filtered by ?q=). Admin has no case list. */
+const SEARCH_TARGET: Partial<Record<Role, string>> = {
+  customer: paths.myRequests,
+  staff: paths.cases,
+  manager: paths.cases,
+  technician: paths.workOrders,
+}
+
+/**
+ * The left of the top bar (Leader 17/11): one quiet line, "Welcome back, Trí" (the given name = the last word of
+ * a Vietnamese full name), then after a hairline the live status chips (what waits for this person now).
+ */
+export function Greeting() {
+  const { user } = useAuth()
+  if (!user) return null
+  const given = user.fullName.trim().split(/\s+/).at(-1) ?? user.fullName
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex min-w-0 items-center gap-4">
+      <p className="text-muted flex-none text-[17px] tracking-[-0.01em] whitespace-nowrap">
+        Welcome back, <span className="text-ink font-semibold">{given}</span>
+      </p>
+      {user.role !== 'admin' && (
+        <>
+          <span className="bg-border h-6 w-px flex-none" aria-hidden="true" />
+          <StatusChips role={user.role} />
+        </>
+      )}
+    </div>
+  )
+}
+
+export function TopBarActions() {
+  const { user } = useAuth()
+  const target = user ? SEARCH_TARGET[user.role] : undefined
+  return (
+    <div className="flex items-center gap-2">
+      {target && <Search target={target} />}
+      <ThemeSwitch />
       <Bell />
       <AccountMenu />
     </div>
+  )
+}
+
+function Search({ target }: { target: string }) {
+  const navigate = useNavigate()
+  const [q, setQ] = useState('')
+  const input = useRef<HTMLInputElement>(null)
+  // "/" focuses the search, as the hint in the box says.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const typing = (e.target as HTMLElement).closest('input, textarea, select, [contenteditable]')
+      if (e.key === '/' && !typing) {
+        e.preventDefault()
+        input.current?.focus()
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [])
+  const submit = (e: FormEvent) => {
+    e.preventDefault()
+    const text = q.trim()
+    navigate(text ? `${target}?q=${encodeURIComponent(text)}` : target)
+    input.current?.blur()
+  }
+  return (
+    <form
+      role="search"
+      onSubmit={submit}
+      className="well hidden h-10 w-72 items-center gap-2 rounded-full pr-1.5 pl-3.5 xl:flex"
+    >
+      <Icon name="search" className="text-muted size-4" />
+      <input
+        ref={input}
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder="Search cases…"
+        aria-label="Search cases by title, code or room"
+        className="placeholder:text-faint min-w-0 flex-1 bg-transparent text-sm outline-none"
+      />
+      <kbd className="bump text-muted grid h-6 min-w-6 place-items-center rounded-md px-1 font-mono text-[11px]">
+        /
+      </kbd>
+    </form>
+  )
+}
+
+const ROUND =
+  'bump text-muted hover:text-ink ease-snap relative grid size-10 place-items-center rounded-full transition-[color,transform] duration-150 active:scale-95'
+
+function ThemeSwitch() {
+  const theme = useTheme()
+  const next = theme === 'dark' ? 'light' : 'dark'
+  return (
+    <button
+      type="button"
+      onClick={() => setTheme(next)}
+      aria-label={`Switch to ${next} theme`}
+      title={`Switch to ${next} theme`}
+      className={ROUND}
+    >
+      <AnimatePresence initial={false} mode="popLayout">
+        <motion.span
+          key={theme}
+          initial={{ opacity: 0, rotate: -90, scale: 0.5 }}
+          animate={{ opacity: 1, rotate: 0, scale: 1 }}
+          exit={{ opacity: 0, rotate: 90, scale: 0.5 }}
+          transition={{ duration: 0.22, ease: EASE_SNAP }}
+          className="grid place-items-center"
+        >
+          <Icon name={theme === 'dark' ? 'moon' : 'sun'} className="size-[18px]" />
+        </motion.span>
+      </AnimatePresence>
+    </button>
   )
 }
 
@@ -29,11 +141,11 @@ function Bell() {
     <Link
       to={paths.notifications}
       aria-label={unseen > 0 ? `Notifications, ${unseen} new` : 'Notifications'}
-      className="text-muted hover:text-ink hover:bg-active ease-snap relative grid size-9 place-items-center rounded-full transition-[color,background-color,transform] duration-150 active:scale-95"
+      className={ROUND}
     >
       <Icon name="bell" className="size-[18px]" />
       {unseen > 0 && (
-        <span className="bg-accent ring-frame absolute top-0.5 -right-0.5 grid h-[15px] min-w-[15px] place-items-center rounded-full px-1 text-[9.5px] leading-none font-semibold text-white tabular-nums ring-2">
+        <span className="bg-accent ring-surface text-on-accent absolute -top-0.5 -right-0.5 grid h-[17px] min-w-[17px] place-items-center rounded-full px-1 text-[10px] leading-none font-semibold tabular-nums ring-2">
           {unseen > 9 ? '9+' : unseen}
         </span>
       )}
@@ -70,20 +182,26 @@ function AccountMenu() {
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="hover:bg-active ease-snap flex items-center gap-2 rounded-full py-1 pr-2.5 pl-1 transition-[background-color,transform] duration-150 active:scale-[0.97]"
+        className="bump ease-snap flex h-10 items-center gap-2.5 rounded-full py-1 pr-3 pl-1 transition-transform duration-150 active:scale-[0.97]"
       >
-        <span className="bg-accent grid size-7 place-items-center rounded-full text-[11px] font-semibold text-white">
+        <span className="bg-accent text-on-accent grid size-8 place-items-center rounded-full text-[11px] font-semibold">
           {initials(user.fullName)}
         </span>
-        <span className="hidden max-w-36 truncate text-sm font-medium sm:block">
-          {user.fullName}
+        <span className="hidden max-w-36 min-w-0 text-left leading-tight sm:block">
+          <span className="block truncate text-[13px] font-semibold">{user.fullName}</span>
+          <span className="text-muted block truncate text-[11px]">{ROLE_LABELS[user.role]}</span>
         </span>
-        <Icon name="back" className={cn('text-muted size-3.5 -rotate-90', open && 'rotate-90')} />
+        <Icon
+          name="back"
+          className={cn(
+            'text-muted size-3.5 -rotate-90 transition-transform duration-150',
+            open && 'rotate-90',
+          )}
+        />
       </button>
 
       <AnimatePresence>
         {open && (
-          // opens from its button (top right), 180ms; closes faster
           <motion.div
             role="menu"
             initial={{ opacity: 0, scale: 0.96, y: -4 }}
@@ -91,7 +209,7 @@ function AccountMenu() {
             exit={{ opacity: 0, scale: 0.97, transition: { duration: 0.12 } }}
             transition={{ duration: 0.18, ease: EASE_SNAP }}
             style={{ transformOrigin: 'top right' }}
-            className="bg-surface border-border absolute top-full right-0 z-40 mt-2 w-60 rounded-xl border p-1.5 shadow-[0_12px_32px_-8px_rgb(15_27_45/0.25)]"
+            className="card-soft absolute top-full right-0 z-40 mt-2 w-60 rounded-2xl p-1.5"
           >
             <div className="px-2.5 py-2">
               <div className="truncate text-sm font-semibold">{user.fullName}</div>

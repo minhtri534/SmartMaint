@@ -5,6 +5,18 @@ export { Button, LinkButton } from './Button'
 export { Card, CardHeader } from './Card'
 export { controlClass } from './control-class'
 export { ConfirmDialog, Dialog, DialogActions } from './Dialog'
+export {
+  CountUp,
+  Gauge,
+  KpiCard,
+  MiniStat,
+  PanelHeader,
+  PerformanceChart,
+  Rise,
+  type ChartPoint,
+  type ChipHue,
+  type KpiCardProps,
+} from './Dashboard'
 export { FilterSelect } from './FilterSelect'
 export { FormActions, FormSection } from './FormSection'
 export { Icon, ProductMark, type IconName } from './Icon'

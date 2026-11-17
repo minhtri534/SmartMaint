@@ -11,9 +11,11 @@ import { Spinner } from './Spinner'
  */
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger'
 
+// ui/mercato-style: buttons are raised keys (a light top edge, a short shadow under them).
 const VARIANTS: Record<Variant, string> = {
-  primary: 'bg-primary text-white hover:bg-primary-hover border border-transparent',
-  secondary: 'border border-control bg-surface text-ink hover:bg-raised',
+  primary:
+    'bg-primary text-on-primary hover:bg-primary-hover border border-black/20 shadow-[inset_0_1px_0_rgb(255_255_255/0.18),0_2px_6px_-2px_rgb(0_0_0/0.45)]',
+  secondary: 'bump text-ink hover:bg-raised',
   ghost: 'border border-transparent text-ink hover:bg-raised',
   danger: 'border border-negative/40 bg-surface text-negative hover:bg-pill-negative-bg',
 }

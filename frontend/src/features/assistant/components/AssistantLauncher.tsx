@@ -100,7 +100,7 @@ export function AssistantLauncher() {
         aria-controls="assistant-panel"
         aria-label={open ? 'Close the assistant' : 'Open the assistant'}
         className={cn(
-          'bg-primary hover:bg-primary-hover ease-snap fixed right-4 bottom-4 z-40 flex h-12 items-center justify-center gap-2 rounded-full text-sm font-medium text-white shadow-[0_10px_28px_-8px_rgb(15_27_45/0.5)] transition-[background-color,transform] duration-150 active:scale-[0.97] sm:right-5 sm:bottom-5 print:hidden',
+          'bg-primary hover:bg-primary-hover ease-snap text-on-primary fixed right-4 bottom-4 z-40 flex h-12 items-center justify-center gap-2 rounded-full text-sm font-medium shadow-[0_10px_28px_-8px_rgb(15_27_45/0.5)] transition-[background-color,transform] duration-150 active:scale-[0.97] sm:right-5 sm:bottom-5 print:hidden',
           'w-12 sm:w-auto sm:pr-5 sm:pl-4',
           open && 'max-sm:hidden',
         )}
@@ -269,7 +269,7 @@ function ChatPanel({
             type="submit"
             disabled={!text.trim() || chat.pending}
             aria-label="Send"
-            className="bg-primary hover:bg-primary-hover ease-snap grid size-8 flex-none place-items-center rounded-lg text-white transition-[background-color,opacity,transform] duration-150 active:scale-95 disabled:opacity-30"
+            className="bg-primary hover:bg-primary-hover ease-snap text-on-primary grid size-8 flex-none place-items-center rounded-lg transition-[background-color,opacity,transform] duration-150 active:scale-95 disabled:opacity-30"
           >
             <Icon name="send" className="size-4" />
           </button>
@@ -395,7 +395,7 @@ function TurnView({
       transition={{ duration: 0.18, ease: EASE_SNAP }}
       className="flex flex-col gap-2.5"
     >
-      <div className="bg-primary ml-auto max-w-[85%] rounded-2xl rounded-br-md px-3.5 py-2 text-sm leading-[22px] whitespace-pre-wrap text-white">
+      <div className="bg-primary text-on-primary ml-auto max-w-[85%] rounded-2xl rounded-br-md px-3.5 py-2 text-sm leading-[22px] whitespace-pre-wrap">
         {turn.question}
       </div>
       <div className="flex items-start gap-2.5">
@@ -450,7 +450,9 @@ function CardView({ card }: { card: AssistantCard }) {
             }}
             className={cn(
               'ease-snap mt-2.5 inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-[13px] font-medium transition-[background-color,transform] duration-150 active:scale-[0.97]',
-              done ? 'bg-raised text-positive' : 'bg-primary hover:bg-primary-hover text-white',
+              done
+                ? 'bg-raised text-positive'
+                : 'bg-primary hover:bg-primary-hover text-on-primary',
             )}
           >
             {done ? card.action.doneLabel : card.action.label}

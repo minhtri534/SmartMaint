@@ -1,21 +1,28 @@
 import { motion } from 'motion/react'
-import { useState } from 'react'
-import { NavLink, Outlet, useLocation } from 'react-router'
+import { useEffect, useState } from 'react'
+import { Link, Outlet, useLocation } from 'react-router'
 import { navItemsFor } from '@/app/navigation'
+import { paths } from '@/app/paths'
 import { AssistantLauncher } from '@/features/assistant'
 import { useAuth } from '@/features/auth'
-import { ROLE_LABELS, ROLE_WORKSPACES } from '@/shared/types/role'
+import { ROLE_WORKSPACES } from '@/shared/types/role'
 import { Icon, ProductMark } from '@/shared/ui'
 import { cn } from '@/shared/utils/cn'
 import { pageFade } from '@/shared/utils/motion'
-import { TopBarActions } from './TopBar'
+import { Greeting, TopBarActions } from './TopBar'
 
 /**
- * Signed-in shell (style "framed-sheet"): the sidebar sits on the tinted frame, the page on a white sheet
- * inset 8px from the window's right and bottom with a 1px edge and 16px corners — no rule between frame and
- * sidebar. Since 16/11 a 48px top bar on the frame carries the bell (what is new) and the account menu.
- * Phone and tablet (< 1024px): the frame goes, a 48px bar with the menu button appears, the sidebar opens as a full sheet.
+ * Signed-in shell, ui/mercato-style (17/11, blue since the 60/30/10 re-colour): a navy board on the left holds the product, the role's workspace
+ * tag, the pages as raised keys, an LED clock and the account keys. The work sits on a light grey desk: the
+ * dashboards (Home, Analytics) lay their cards straight on it, every other page sits in one soft sheet.
+ * Phone and tablet (< 1024px): a 56px bar with the menu button; the board slides in as a drawer.
  */
+
+/** Pages built as a grid of cards (dashboards, the case lists): no sheet behind them, the cards sit on the desk. */
+const CARD_PAGES: string[] = [paths.home, paths.myRequests, paths.cases, paths.workOrders]
+const isDashboard = (pathname: string) =>
+  CARD_PAGES.includes(pathname) || pathname.startsWith(paths.analytics)
+
 export function AppLayout() {
   const { user, signOut } = useAuth()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -23,102 +30,128 @@ export function AppLayout() {
   if (!user) return null
 
   const closeMenu = () => setMenuOpen(false)
+  const bare = isDashboard(pathname)
 
   return (
-    <div className="min-h-full lg:grid lg:grid-cols-[228px_minmax(0,1fr)]">
-      <header className="bg-frame sticky top-0 z-20 flex h-12 items-center gap-3 px-4 lg:hidden print:hidden">
+    <div className="min-h-full lg:grid lg:grid-cols-[264px_minmax(0,1fr)]">
+      <header className="bg-frame sticky top-0 z-20 flex h-14 items-center gap-3 px-4 lg:hidden print:hidden">
         <button
           type="button"
           onClick={() => setMenuOpen(true)}
-          className="hover:bg-nav-active -ml-1.5 grid size-9 place-items-center rounded-lg"
+          className="bump grid size-10 place-items-center rounded-full"
           aria-label="Open menu"
         >
           <Icon name="menu" className="size-5" />
         </button>
-        <ProductName />
         <div className="ml-auto">
           <TopBarActions />
         </div>
       </header>
 
+      {menuOpen && (
+        <button
+          type="button"
+          aria-label="Close menu"
+          onClick={closeMenu}
+          className="fixed inset-0 z-30 bg-black/40 lg:hidden"
+        />
+      )}
       <aside
         className={cn(
-          'bg-frame ease-drawer fixed inset-0 z-30 flex flex-col px-3 pt-4 pb-3 transition-transform duration-300 print:hidden',
+          'ease-drawer fixed inset-y-0 left-0 z-40 w-[264px] p-3 transition-transform duration-300 print:hidden',
           'lg:sticky lg:top-0 lg:z-auto lg:h-screen lg:translate-x-0',
           menuOpen ? 'translate-x-0' : '-translate-x-full',
         )}
       >
-        <div className="flex items-start justify-between gap-2 px-2">
-          <div>
-            <ProductName />
-            <div className="text-muted mt-0.5 pl-7 text-xs">{ROLE_WORKSPACES[user.role]}</div>
-          </div>
-          <button
-            type="button"
-            onClick={closeMenu}
-            className="hover:bg-nav-active grid size-9 place-items-center rounded-lg lg:hidden"
-            aria-label="Close menu"
-          >
-            <Icon name="close" className="size-5" />
-          </button>
-        </div>
-
-        <nav className="mt-6 flex flex-col gap-0.5">
-          {navItemsFor(user.role).map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end
+        <div className="board flex h-full flex-col rounded-[22px] px-3.5 pt-3 pb-3.5">
+          <div className="flex items-center gap-2.5 px-1">
+            <span className="key key-light grid size-10 flex-none place-items-center rounded-xl">
+              <ProductMark className="size-5" />
+            </span>
+            <div className="min-w-0 leading-tight">
+              <div className="truncate text-[16px] font-semibold tracking-[-0.01em]">
+                SmartMaint
+              </div>
+              <div className="text-board-muted truncate text-[10px] tracking-[0.1em] uppercase">
+                Facility care
+              </div>
+            </div>
+            <button
+              type="button"
               onClick={closeMenu}
-              className={({ isActive: exact }) => {
-                const isActive = exact || (item.also ?? []).some((p) => pathname.startsWith(p))
-                return cn(
-                  'ease-snap flex h-8 items-center gap-2.5 rounded-lg px-2 text-sm transition-[color,background-color,transform] duration-150 active:scale-[0.98]',
-                  isActive
-                    ? 'bg-nav-active text-accent-ink font-medium'
-                    : 'text-muted hover:bg-active hover:text-ink',
-                )
-              }}
+              className="text-board-muted hover:bg-board-ink/10 ml-auto grid size-9 place-items-center rounded-lg lg:hidden"
+              aria-label="Close menu"
             >
-              <Icon name={item.icon} />
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
-
-        {/* the account row stays in the phone menu; on desktop the top bar holds it */}
-        <div className="mt-auto flex items-center gap-2.5 px-2 pt-4 lg:hidden">
-          <span className="bg-pill-accent-bg text-pill-accent-ink grid size-7 flex-none place-items-center rounded-full text-xs font-semibold">
-            {initials(user.fullName)}
-          </span>
-          <div className="min-w-0 flex-1 leading-tight">
-            <div className="truncate text-sm font-medium">{user.fullName}</div>
-            <div className="text-muted truncate text-xs">{ROLE_LABELS[user.role]}</div>
+              <Icon name="close" className="size-5" />
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => signOut()}
-            className="text-muted hover:bg-nav-active hover:text-ink grid size-8 place-items-center rounded-lg"
-            aria-label="Sign out"
-            title="Sign out"
-          >
-            <Icon name="logout" />
-          </button>
+
+          <div className="mt-6 px-1">
+            <span className="bg-accent text-on-accent rounded-md px-2 py-0.5 text-[10px] font-semibold tracking-[0.12em] uppercase shadow-[inset_0_1px_0_rgb(255_255_255/0.35),0_1px_2px_rgb(0_0_0/0.4)]">
+              {ROLE_WORKSPACES[user.role]}
+            </span>
+          </div>
+
+          <nav className="mt-3 flex flex-col gap-2 overflow-y-auto p-1">
+            {navItemsFor(user.role).map((item) => {
+              const active =
+                pathname === item.to || (item.also ?? []).some((p) => pathname.startsWith(p))
+              return (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  onClick={closeMenu}
+                  aria-current={active ? 'page' : undefined}
+                  className="key flex h-10 flex-none items-center gap-2.5 rounded-xl px-3 text-[13.5px] font-medium"
+                >
+                  <Icon
+                    name={item.icon}
+                    className={cn('size-[17px]', active ? 'text-board-accent' : 'opacity-70')}
+                  />
+                  <span className="truncate">{item.label}</span>
+                  {active && (
+                    <span className="bg-board-accent ml-auto size-1.5 rounded-full shadow-[0_0_6px_var(--color-board-accent)]" />
+                  )}
+                </Link>
+              )
+            })}
+          </nav>
+
+          <div className="mt-auto flex flex-col gap-2 p-1 pt-4">
+            <LedClock />
+            <Link
+              to={paths.changePassword}
+              onClick={closeMenu}
+              className="key flex h-10 items-center gap-2.5 rounded-xl px-3 text-[13.5px] font-medium"
+            >
+              <Icon name="shield" className="size-[17px] opacity-70" />
+              Change password
+            </Link>
+            <button
+              type="button"
+              onClick={() => signOut()}
+              className="key key-danger flex h-10 items-center gap-2.5 rounded-xl px-3 text-left text-[13.5px] font-semibold"
+            >
+              <Icon name="logout" className="size-[17px]" />
+              Sign out
+            </button>
+          </div>
         </div>
       </aside>
 
-      <main className="min-w-0 lg:pr-2 lg:pb-2">
-        <div className="hidden h-12 items-center justify-end lg:flex print:hidden">
+      <main className="min-w-0 px-4 pb-4 sm:px-6 lg:pr-5 lg:pl-3">
+        {/* 88px: the row's centre (44px) lines up with the logo key on the board (12 + 12 + half of 40). */}
+        <div className="hidden h-[88px] items-center justify-between gap-6 lg:flex print:hidden">
+          <Greeting />
           <TopBarActions />
         </div>
-        {/* Bottom padding: the assistant's launcher floats over the bottom-right corner (not for Admin, who has none). */}
+        {/* Bottom padding: the assistant's launcher floats over the bottom-right corner (not for Admin). */}
         <div
           className={cn(
-            'bg-surface lg:border-border lg:rounded-sheet min-h-[calc(100vh-48px)] px-4 py-5 sm:px-6 lg:min-h-[calc(100vh-56px)] lg:border lg:p-6',
-            user.role !== 'admin' && 'pb-24 lg:pb-24',
+            !bare && 'card-soft rounded-sheet px-4 py-5 sm:px-6 lg:p-6',
+            user.role !== 'admin' && 'mb-20',
           )}
         >
-          {/* A new screen fades in over 150ms (opacity only, nothing travels) instead of flashing. */}
           <motion.div
             key={pathname}
             initial={{ opacity: 0 }}
@@ -134,16 +167,28 @@ export function AppLayout() {
   )
 }
 
-function ProductName() {
+/** The LED clock on the board: hours and minutes with a blinking colon, the date under it. */
+function LedClock() {
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(new Date()), 1000)
+    return () => window.clearInterval(id)
+  }, [])
+  const hh = String(now.getHours()).padStart(2, '0')
+  const mm = String(now.getMinutes()).padStart(2, '0')
+  const ss = String(now.getSeconds()).padStart(2, '0')
+  const day = now.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
   return (
-    <div className="flex items-center gap-2">
-      <ProductMark />
-      <span className="text-[15px] font-semibold tracking-[-0.01em]">SmartMaint</span>
+    <div className="led rounded-xl px-3.5 py-2.5" role="timer" aria-label={`Time ${hh}:${mm}`}>
+      <div className="flex items-baseline gap-1.5 font-mono">
+        <span className="text-[28px] leading-8 font-semibold tracking-[0.06em] tabular-nums">
+          {hh}
+          <span className="led-colon">:</span>
+          {mm}
+        </span>
+        <span className="text-[13px] tabular-nums opacity-70">{ss}</span>
+      </div>
+      <div className="text-[10px] tracking-[0.16em] uppercase opacity-70">{day}</div>
     </div>
   )
-}
-
-function initials(name: string) {
-  const parts = name.trim().split(/\s+/)
-  return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? (parts.at(-1)?.[0] ?? '') : '')).toUpperCase()
 }

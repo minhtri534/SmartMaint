@@ -12,12 +12,18 @@ import {
   PageHeader,
   controlClass,
   FilterSelect,
+  Gauge,
+  KpiCard,
+  MiniStat,
+  PanelHeader,
+  PerformanceChart,
+  Rise,
   Segmented,
   Tabs,
+  type KpiCardProps,
 } from '@/shared/ui'
 import { formatDate } from '@/shared/utils/format'
-import { BarList, WeekBars } from '../components/Bars'
-import { StatStrip } from '../components/StatStrip'
+import { BarList } from '../components/Bars'
 import { change, hours, minutes, percent } from '../format'
 import { useExport, useFailures, useOverview, useTechnicianStats } from '../hooks'
 import type { AnalyticsFilters, ExportReport, Overview } from '../types'
@@ -191,55 +197,94 @@ function OverviewTab({ filters, isManager }: { filters: AnalyticsFilters; isMana
   )
 }
 
-/** Exported for the Manager home (MGR-01 uses the same numbers). */
-export function KpiTiles({ o, isManager }: { o: Overview; isManager: boolean }) {
+/**
+ * Exported for the Manager home (MGR-01 uses the same numbers). ui/mercato-style: KPI cards with an icon chip;
+ * `compact` keeps the four the home shows (the full dashboard shows six).
+ */
+export function KpiTiles({
+  o,
+  isManager,
+  compact = false,
+}: {
+  o: Overview
+  isManager: boolean
+  compact?: boolean
+}) {
   const c = o.current
   const p = o.previous
-  // One divided strip, not six tiles (16/11).
+  const cards: (Omit<KpiCardProps, 'index'> & { full?: boolean })[] = [
+    {
+      label: 'Reported',
+      value: c.reported,
+      icon: 'requests',
+      hue: 'orange',
+      change: change(c.reported, p.reported, 'down', 'number'),
+      hint: `${c.completed} completed`,
+    },
+    {
+      label: 'First response',
+      value: minutes(c.avgFirstResponseMinutes),
+      icon: 'clock',
+      hue: 'blue',
+      change: change(c.avgFirstResponseMinutes, p.avgFirstResponseMinutes, 'down', 'minutes'),
+      hint: 'report → decision',
+    },
+    {
+      label: 'Resolution',
+      value: hours(c.avgResolutionHours),
+      icon: 'wrench',
+      hue: 'violet',
+      change: change(c.avgResolutionHours, p.avgResolutionHours, 'down', 'hours'),
+      hint: 'report → done',
+    },
+    {
+      label: 'On time',
+      value: percent(c.onTimeRate),
+      icon: 'checklist',
+      hue: 'green',
+      change: change(c.onTimeRate, p.onTimeRate, 'up', 'rate'),
+      hint: `${percent(c.onTimeOriginalRate)} by the first deadline`,
+      full: true,
+    },
+    {
+      label: 'Reopened',
+      value: percent(c.reopenRate),
+      icon: 'swap',
+      hue: 'red',
+      change: change(c.reopenRate, p.reopenRate, 'down', 'rate'),
+      hint: `${c.deadlineMoves} deadline moves`,
+      full: true,
+    },
+    isManager
+      ? {
+          label: 'Rating',
+          value: c.avgRating === null ? '—' : `${c.avgRating} / 5`,
+          icon: 'users',
+          hue: 'green',
+          change: change(c.avgRating, p.avgRating, 'up', 'number'),
+          hint: `${c.technicianDeclines} jobs declined`,
+        }
+      : {
+          label: 'Jobs declined',
+          value: c.technicianDeclines,
+          icon: 'users',
+          hue: 'green',
+          hint: 'by technicians',
+        },
+  ]
+  const shown = compact ? cards.filter((k) => !k.full) : cards
   return (
-    <StatStrip
-      className="md:grid-cols-3 xl:grid-cols-6"
-      items={[
-        {
-          label: 'Reported',
-          value: c.reported,
-          change: change(c.reported, p.reported, 'down', 'number'),
-          hint: `${c.completed} completed`,
-        },
-        {
-          label: 'First response',
-          value: minutes(c.avgFirstResponseMinutes),
-          change: change(c.avgFirstResponseMinutes, p.avgFirstResponseMinutes, 'down', 'minutes'),
-          hint: 'report → decision',
-        },
-        {
-          label: 'Resolution',
-          value: hours(c.avgResolutionHours),
-          change: change(c.avgResolutionHours, p.avgResolutionHours, 'down', 'hours'),
-          hint: 'report → done',
-        },
-        {
-          label: 'On time',
-          value: percent(c.onTimeRate),
-          change: change(c.onTimeRate, p.onTimeRate, 'up', 'rate'),
-          hint: `${percent(c.onTimeOriginalRate)} by the first deadline`,
-        },
-        {
-          label: 'Reopened',
-          value: percent(c.reopenRate),
-          change: change(c.reopenRate, p.reopenRate, 'down', 'rate'),
-          hint: `${c.deadlineMoves} deadline moves`,
-        },
-        isManager
-          ? {
-              label: 'Rating',
-              value: c.avgRating === null ? '—' : `${c.avgRating} / 5`,
-              change: change(c.avgRating, p.avgRating, 'up', 'number'),
-              hint: `${c.technicianDeclines} jobs declined`,
-            }
-          : { label: 'Jobs declined', value: c.technicianDeclines, hint: 'by technicians' },
-      ]}
-    />
+    <div
+      className={
+        compact
+          ? 'grid grid-cols-2 gap-3 sm:gap-5 xl:grid-cols-4'
+          : 'grid grid-cols-2 gap-3 sm:gap-5 xl:grid-cols-3'
+      }
+    >
+      {shown.map(({ full: _full, ...k }, i) => (
+        <KpiCard key={k.label} index={i} {...k} />
+      ))}
+    </div>
   )
 }
 
@@ -253,23 +298,41 @@ function OverviewView({ o, isManager }: { o: Overview; isManager: boolean }) {
       </p>
       <KpiTiles o={o} isManager={isManager} />
 
-      <div className="grid gap-5 lg:grid-cols-2">
-        <Card>
-          <CardHeader title="Cases per week" />
-          <div className="grid gap-5 sm:grid-cols-2">
-            <WeekBars
-              title="Reported"
-              weeks={o.weekly.map((w) => ({ weekStart: w.weekStart, value: w.reported }))}
+      <div className="grid items-stretch gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <Rise index={6}>
+          <Card className="h-full">
+            <PanelHeader title="Cases per week" />
+            <PerformanceChart
+              data={o.weekly.map((w) => {
+                const label = new Date(w.weekStart).toLocaleDateString('en-GB', {
+                  day: 'numeric',
+                  month: 'short',
+                })
+                return { label, title: `Week of ${label}`, bar: w.reported, line: w.completed }
+              })}
+              barName="Reported"
+              lineName="Completed"
             />
-            <WeekBars
-              title="Completed"
-              weeks={o.weekly.map((w) => ({ weekStart: w.weekStart, value: w.completed }))}
-            />
-          </div>
-        </Card>
+          </Card>
+        </Rise>
+        <Rise index={7}>
+          <Card className="flex h-full flex-col">
+            <PanelHeader title="On time" />
+            <div className="flex flex-1 items-center justify-center">
+              <Gauge value={o.current.onTimeRate} caption="finished by the deadline" />
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <MiniStat label="First deadline" value={percent(o.current.onTimeOriginalRate)} />
+              <MiniStat label="Reopened" value={percent(o.current.reopenRate)} />
+            </div>
+          </Card>
+        </Rise>
+      </div>
+
+      <div>
         <Card>
           <CardHeader title="Emergencies and preventive work" />
-          <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+          <dl className="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
             <Row label="Emergencies">{o.emergency.count}</Row>
             <Row label="Acknowledged after">{minutes(o.emergency.avgAcknowledgeMinutes)}</Row>
             <Row label="Made safe after">{minutes(o.emergency.avgMadeSafeMinutes)}</Row>

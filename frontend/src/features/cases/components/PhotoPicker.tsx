@@ -47,7 +47,7 @@ export function PhotoPicker({ label, value, onChange, max = 5, error, hint }: Ph
             <button
               type="button"
               onClick={() => onChange(value.filter((_, j) => j !== i))}
-              className="bg-primary absolute -top-2 -right-2 grid size-5 place-items-center rounded-full text-xs text-white"
+              className="bg-primary text-on-primary absolute -top-2 -right-2 grid size-5 place-items-center rounded-full text-xs"
               aria-label="Remove photo"
             >
               ×

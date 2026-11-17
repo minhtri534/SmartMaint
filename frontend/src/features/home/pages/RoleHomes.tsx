@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { caseDetailPath, paths } from '@/app/paths'
-import { AttentionList, KpiTiles, StatStrip, useOverview } from '@/features/analytics'
+import { AttentionList, KpiTiles, useOverview } from '@/features/analytics'
 import {
   FINAL_STATUSES,
   isOverdue,
@@ -15,19 +15,34 @@ import {
   CardHeader,
   EmptyBlock,
   ErrorBlock,
+  Gauge,
+  KpiCard,
   LinkButton,
   LoadingBlock,
+  MiniStat,
   PageHeader,
+  PanelHeader,
+  Rise,
 } from '@/shared/ui'
 import { formatDateTime, formatRelative } from '@/shared/utils/format'
 import { BuildingFloors } from '../components/BuildingFloors'
+import { BreakdownDonut, RequestTracker } from '../components/CustomerViz'
+import { BuildingLeague, EmergencyResponse, ThroughputArea } from '../components/ManagerViz'
+import { CasePipeline, UrgencyMix } from '../components/StaffViz'
+import { DeadlineRings, WeekPlanner } from '../components/TechnicianViz'
 
 /*
- * Home pages per role (Screen catalog rule 15, F6): one strip of numbers and "what to do now". Every number is a
- * link to the list behind it. Counts come from the cases the role may see; KPIs from the F6 analytics (same
- * definitions). Titles are nouns with a finding from the data under them, never "Hello" (U5, 16/11).
+ * Home pages per role (Screen catalog rule 15, F6), ui/mercato-style. 17/11, Leader: one home per role, each
+ * built around the question that role asks every day:
+ *   Customer   — "where is my request?"            → a parcel-style tracker per open request, what breaks most
+ *   Technician — "what do I do this week?"         → a 7-day planner and the deadlines running out
+ *   Staff      — "where is the work stuck?"        → the case pipeline by stage, the urgency mix, the floor map
+ *   Manager    — "is the team keeping up?"         → KPIs, throughput in vs out, building league, emergency speed
+ * Every number links to the list behind it. Counts come from the cases the role may see; trends and on-time rates
+ * from the F6 analytics (same definitions). The page title stays a noun with a finding under it.
  */
 
+const DAY = 86_400_000
 const isOpen = (c: CaseSummary) => !FINAL_STATUSES.includes(c.status)
 
 function useHomeCases() {
@@ -39,6 +54,12 @@ function useHomeCases() {
 function sentence(parts: [number, string][], none: string) {
   const said = parts.filter(([n]) => n > 0).map(([n, words]) => `${n} ${words}`)
   return said.length ? said.join(', ') + '.' : none
+}
+
+/** yyyy-MM-dd in local time, `offsetDays` from today (read once, when the page opens). */
+const localDate = (offsetDays: number) => {
+  const d = new Date(Date.now() + offsetDays * DAY)
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 10)
 }
 
 function CasesState({ cases }: { cases: ReturnType<typeof useCases> }) {
@@ -93,15 +114,23 @@ function CaseList({
 
 // ----- EMP-01 -----
 
-/** Customer: "Where are my requests?" */
+/** Customer: "Where is my request?" */
 export function CustomerHome() {
   const { cases, data } = useHomeCases()
   const open = data.filter(isOpen)
   const done = data.filter((c) => c.status === 'completed')
-  const month = cases.dataUpdatedAt - 30 * 86_400_000
-  const closed = data.filter(
-    (c) => c.status === 'closed' && new Date(c.submittedAt).getTime() >= month,
+  const notFixed = open.filter((c) => c.status !== 'completed')
+  const now = cases.dataUpdatedAt
+  // Fixed = reported done by the technician (completed or already closed), counted by when it was fixed.
+  const fixed30 = data.filter(
+    (c) =>
+      (c.status === 'completed' || c.status === 'closed') &&
+      c.completedAt !== null &&
+      Date.parse(c.completedAt) >= now - 30 * DAY,
   )
+  const finished = data
+    .filter((c) => c.status === 'closed')
+    .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''))
 
   return (
     <div className="flex flex-col gap-5">
@@ -111,10 +140,7 @@ export function CustomerHome() {
           cases.data &&
           sentence(
             [
-              [
-                open.length - done.length,
-                open.length - done.length === 1 ? 'request open' : 'requests open',
-              ],
+              [notFixed.length, notFixed.length === 1 ? 'request open' : 'requests open'],
               [done.length, 'fixed and waiting for the building to check'],
             ],
             'No open request. Report a problem when something breaks.',
@@ -129,37 +155,75 @@ export function CustomerHome() {
       <CasesState cases={cases} />
       {cases.data && (
         <>
-          <StatStrip
-            className="md:grid-cols-3"
-            items={[
-              { label: 'Open requests', value: open.length, to: `${paths.myRequests}?tab=open` },
-              {
-                label: 'Fixed, being checked',
-                value: done.length,
-                to: `${paths.myRequests}?tab=open`,
-              },
-              {
-                label: 'Closed in 30 days',
-                value: closed.length,
-                to: `${paths.myRequests}?tab=finished`,
-              },
-            ]}
-          />
-          <Card>
-            <CardHeader
-              title="Open requests"
-              aside={
-                <Link to={paths.myRequests} className="underline">
-                  All
-                </Link>
-              }
+          <div className="grid grid-cols-2 gap-3 sm:gap-5 xl:grid-cols-4">
+            <KpiCard
+              index={0}
+              label="Open requests"
+              value={notFixed.length}
+              icon="requests"
+              hue="orange"
+              hint="reported, not fixed yet"
+              to={`${paths.myRequests}?tab=open`}
             />
-            <CaseList
-              rows={open.slice(0, 6)}
-              note={(c) => `reported ${formatRelative(c.submittedAt)}`}
-              empty="You have no open request."
+            <KpiCard
+              index={1}
+              label="Being checked"
+              value={done.length}
+              icon="checklist"
+              hue="green"
+              hint="fixed, the building checks it"
+              to={`${paths.myRequests}?tab=open`}
             />
-          </Card>
+            <KpiCard
+              index={2}
+              label="Fixed in 30 days"
+              value={fixed30.length}
+              icon="clock"
+              hue="blue"
+              hint="fixed in the last 30 days"
+              to={`${paths.myRequests}?tab=finished`}
+            />
+            <KpiCard
+              index={3}
+              label="All requests"
+              value={data.length}
+              icon="list"
+              hue="violet"
+              hint="since you joined"
+              to={paths.myRequests}
+            />
+          </div>
+          <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+            <Rise index={4}>
+              <Card>
+                <PanelHeader
+                  title="Where your requests are"
+                  aside={
+                    <Link to={paths.myRequests} className="text-muted text-xs underline">
+                      All requests
+                    </Link>
+                  }
+                />
+                <RequestTracker cases={open} />
+              </Card>
+            </Rise>
+            <Rise index={5}>
+              <Card>
+                <PanelHeader title="What you reported" />
+                <BreakdownDonut cases={data} />
+              </Card>
+            </Rise>
+          </div>
+          <Rise index={6}>
+            <Card>
+              <CardHeader title="Recently closed" />
+              <CaseList
+                rows={finished.slice(0, 5)}
+                note={(c) => (c.completedAt ? `fixed ${formatRelative(c.completedAt)}` : 'closed')}
+                empty="Nothing closed yet."
+              />
+            </Card>
+          </Rise>
         </>
       )}
     </div>
@@ -168,7 +232,7 @@ export function CustomerHome() {
 
 // ----- TEC-01 -----
 
-/** Technician: "What do I do next?" — new jobs to answer, then the work by deadline. */
+/** Technician: "What do I do this week?" — the planner, the deadlines running out, then the list. */
 export function TechnicianHome() {
   const { cases, data } = useHomeCases()
   // Meeting 07/11: a job given to the technician waits as "approved" until they accept it.
@@ -206,47 +270,82 @@ export function TechnicianHome() {
       <CasesState cases={cases} />
       {cases.data && (
         <>
-          <StatStrip
-            className="md:grid-cols-4"
-            items={[
-              {
-                label: 'New jobs',
-                value: newJobs.length,
-                tone: newJobs.length > 0 ? 'action' : undefined,
-                to: paths.workOrders,
-                hint: 'accept or decline',
-              },
-              { label: 'Working on', value: working.length, to: paths.workOrders },
-              { label: 'On hold', value: onHold.length, to: paths.workOrders },
-              {
-                label: 'Waiting for check',
-                value: waitingCheck.length,
-                to: `${paths.workOrders}?tab=done`,
-              },
-            ]}
-          />
-          <Card>
-            <CardHeader title="By deadline" aside="soonest first" />
-            <CaseList
-              rows={byDeadline.slice(0, 8)}
-              // Meeting 07/11: when each job is planned to start, then where its deadline stands.
-              note={(c) =>
-                [
-                  c.plannedStartAt && `starts ${formatDateTime(c.plannedStartAt)}`,
-                  isOverdue(c)
-                    ? 'overdue'
-                    : c.dueAt
-                      ? `due ${formatDateTime(c.dueAt)}`
-                      : c.isEmergencyFlow
-                        ? 'emergency'
-                        : 'deadline starts with the work',
-                ]
-                  .filter(Boolean)
-                  .join(' · ')
-              }
-              empty="Nothing to do right now."
+          <div className="grid grid-cols-2 gap-3 sm:gap-5 xl:grid-cols-4">
+            <KpiCard
+              index={0}
+              label="New jobs"
+              value={newJobs.length}
+              icon="bell"
+              hue="orange"
+              hint="accept or decline"
+              to={paths.workOrders}
             />
-          </Card>
+            <KpiCard
+              index={1}
+              label="Working on"
+              value={working.length}
+              icon="wrench"
+              hue="violet"
+              hint="accepted or in progress"
+              to={paths.workOrders}
+            />
+            <KpiCard
+              index={2}
+              label="On hold"
+              value={onHold.length}
+              icon="clock"
+              hue="blue"
+              hint="paused for now"
+              to={paths.workOrders}
+            />
+            <KpiCard
+              index={3}
+              label="Waiting for check"
+              value={waitingCheck.length}
+              icon="checklist"
+              hue="green"
+              hint="the staff check your work"
+              to={`${paths.workOrders}?tab=done`}
+            />
+          </div>
+          <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+            <Rise index={4}>
+              <Card>
+                <PanelHeader title="Your next 7 days" />
+                <WeekPlanner cases={data} now={cases.dataUpdatedAt} />
+              </Card>
+            </Rise>
+            <Rise index={5}>
+              <Card>
+                <PanelHeader title="Deadlines running out" />
+                <DeadlineRings cases={data} />
+              </Card>
+            </Rise>
+          </div>
+          <Rise index={6}>
+            <Card>
+              <CardHeader title="By deadline" aside="soonest first" />
+              <CaseList
+                rows={byDeadline.slice(0, 8)}
+                // Meeting 07/11: when each job is planned to start, then where its deadline stands.
+                note={(c) =>
+                  [
+                    c.plannedStartAt && `starts ${formatDateTime(c.plannedStartAt)}`,
+                    isOverdue(c)
+                      ? 'overdue'
+                      : c.dueAt
+                        ? `due ${formatDateTime(c.dueAt)}`
+                        : c.isEmergencyFlow
+                          ? 'emergency'
+                          : 'deadline starts with the work',
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')
+                }
+                empty="Nothing to do right now."
+              />
+            </Card>
+          </Rise>
         </>
       )}
     </div>
@@ -255,23 +354,16 @@ export function TechnicianHome() {
 
 // ----- OFF-01 -----
 
-/** Staff: "What waits for me in my buildings?" */
+/** Staff: "Where is the work stuck in my buildings?" */
 export function StaffHome() {
   const { cases, data } = useHomeCases()
   const tree = useFacilityTree()
-  const overview = useOverview({})
   const review = data.filter((c) => c.status === 'pending')
   // Approved with nobody: a technician declined, or an emergency came in on its own.
   const assign = data.filter(
     (c) => c.status === 'approved' && !c.technician && !c.emergency?.mergedInto,
   )
   const verify = data.filter((c) => c.status === 'completed')
-  const emergencies = data.filter(
-    (c) => c.isEmergencyFlow && isOpen(c) && !c.emergency?.acknowledgedAt,
-  )
-  const decisions = data.filter(
-    (c) => c.status === 'on_hold' && c.holdReason === 'waiting_staff_decision',
-  )
   const overdue = data.filter((c) => isOverdue(c)).length
   // The title is the building itself when the staff member looks after one.
   const title = (tree.data?.length === 1 && tree.data[0]?.name) || 'Your buildings'
@@ -296,81 +388,55 @@ export function StaffHome() {
       />
       <CasesState cases={cases} />
       {cases.data && (
-        <StatStrip
-          className="md:grid-cols-3 xl:grid-cols-6"
-          items={[
-            {
-              label: 'To review',
-              value: review.length,
-              to: paths.cases,
-              tone: review.length > 0 ? 'action' : undefined,
-            },
-            {
-              label: 'To assign',
-              value: assign.length,
-              to: paths.cases,
-              tone: assign.length > 0 ? 'action' : undefined,
-            },
-            {
-              label: 'To verify',
-              value: verify.length,
-              to: paths.cases,
-              tone: verify.length > 0 ? 'action' : undefined,
-            },
-            {
-              label: 'Emergencies',
-              value: emergencies.length,
-              hint: 'not acknowledged',
-              to: `${paths.cases}?tab=all&urgency=emergency`,
-              tone: emergencies.length > 0 ? 'alert' : undefined,
-            },
-            {
-              label: 'Your decision',
-              value: decisions.length,
-              hint: 'repair or replace',
-              to: `${paths.cases}?tab=all&status=on_hold`,
-            },
-            {
-              label: 'On time, 30 days',
-              value:
-                overview.data?.current.onTimeRate === null || !overview.data
-                  ? '—'
-                  : `${Math.round(overview.data.current.onTimeRate * 100)}%`,
-            },
-          ]}
-        />
+        <>
+          <Rise index={0}>
+            <CasePipeline cases={data} />
+          </Rise>
+          <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
+            <Rise index={3}>
+              <BuildingFloors cases={data} />
+            </Rise>
+            <div className="flex flex-col gap-5">
+              <Rise index={4}>
+                <Card>
+                  <PanelHeader title="Urgency of open cases" />
+                  <UrgencyMix cases={data} now={cases.dataUpdatedAt} />
+                </Card>
+              </Rise>
+              <Rise index={5}>
+                <AttentionList limit={6} />
+              </Rise>
+            </div>
+          </div>
+        </>
       )}
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-        {cases.data && <BuildingFloors cases={data} />}
-        <AttentionList limit={8} />
-      </div>
     </div>
   )
 }
 
 // ----- MGR-01 -----
 
-const localDate = (offsetDays: number) => {
-  const d = new Date(Date.now() + offsetDays * 86_400_000)
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 10)
-}
-
-/** Manager: "How is maintenance doing this week, and what needs attention?" Read only (BR-12). */
+/** Manager: "Is the team keeping up, and where not?" Read only (BR-12). */
 export function ManagerHome() {
-  // The 7 days are fixed when the page opens (no clock reads while rendering).
-  const [range] = useState(() => ({ from: localDate(-6), to: localDate(0) }))
-  const week = useOverview(range)
-  const { cases, data } = useHomeCases()
-  const openNow = week.data?.byBuilding.reduce((n, b) => n + b.openNow, 0) ?? 0
-  const overdueNow = week.data?.byBuilding.reduce((n, b) => n + b.overdueNow, 0) ?? 0
+  // Both ranges are fixed when the page opens (no clock reads while rendering).
+  const [week] = useState(() => ({ from: localDate(-6), to: localDate(0) }))
+  // The weekly points start on a Monday: begin 11 Mondays before this week's, so the chart holds exactly 12 weeks.
+  const [quarter] = useState(() => ({
+    from: localDate(-(((new Date().getDay() + 6) % 7) + 77)),
+    to: localDate(0),
+  }))
+  const last7 = useOverview(week)
+  const last12w = useOverview(quarter)
+  const openNow = last7.data?.byBuilding.reduce((n, b) => n + b.openNow, 0) ?? 0
+  const overdueNow = last7.data?.byBuilding.reduce((n, b) => n + b.overdueNow, 0) ?? 0
 
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
         title="This week"
         description={
-          week.data &&
-          `${week.data.current.reported} reported in the last 7 days; ${sentence(
+          last7.data &&
+          `${last7.data.current.reported} reported in the last 7 days; ${sentence(
             [
               [openNow, 'open now'],
               [overdueNow, 'past the deadline'],
@@ -380,22 +446,72 @@ export function ManagerHome() {
         }
         actions={<LinkButton to={paths.analytics}>See full dashboard</LinkButton>}
       />
-      {week.isPending ? (
+      {last7.isPending ? (
         <LoadingBlock rows={2} />
-      ) : week.error ? (
+      ) : last7.error ? (
         <ErrorBlock
           what="the numbers"
-          message={week.error.message}
-          onRetry={() => void week.refetch()}
+          message={last7.error.message}
+          onRetry={() => void last7.refetch()}
         />
       ) : (
-        <KpiTiles o={week.data} isManager />
+        <KpiTiles o={last7.data} isManager compact />
       )}
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-        {/* Floors replace the "Buildings now" table: the tabs carry each building's open count. */}
-        {cases.data ? <BuildingFloors cases={data} /> : <CasesState cases={cases} />}
-        <AttentionList limit={10} />
+      <div className="grid items-stretch gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <Rise index={4}>
+          <Card className="h-full">
+            <PanelHeader title="Keeping up · last 12 weeks" />
+            {last12w.data ? (
+              <ThroughputArea weekly={last12w.data.weekly} />
+            ) : (
+              <LoadingBlock rows={4} />
+            )}
+          </Card>
+        </Rise>
+        <Rise index={5}>
+          <Card className="flex h-full flex-col">
+            <PanelHeader title="On time, 7 days" />
+            <div className="flex flex-1 items-center justify-center">
+              <Gauge
+                value={last7.data?.current.onTimeRate ?? null}
+                caption="of the deadlines met"
+              />
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <MiniStat label="Open now" value={openNow} />
+              <MiniStat
+                label="Past deadline"
+                value={<span className={overdueNow > 0 ? 'text-negative' : ''}>{overdueNow}</span>}
+              />
+            </div>
+          </Card>
+        </Rise>
       </div>
+      <div className="grid items-start gap-5 lg:grid-cols-2">
+        <Rise index={6}>
+          <Card>
+            <PanelHeader title="Buildings, ranked by on time" />
+            {last12w.data ? (
+              <BuildingLeague buildings={last12w.data.byBuilding} />
+            ) : (
+              <LoadingBlock rows={3} />
+            )}
+          </Card>
+        </Rise>
+        <Rise index={7}>
+          <Card>
+            <PanelHeader title="Emergency response · 12 weeks" />
+            {last12w.data ? (
+              <EmergencyResponse e={last12w.data.emergency} />
+            ) : (
+              <LoadingBlock rows={3} />
+            )}
+          </Card>
+        </Rise>
+      </div>
+      <Rise index={8}>
+        <AttentionList limit={8} />
+      </Rise>
     </div>
   )
 }

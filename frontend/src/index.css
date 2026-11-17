@@ -1,12 +1,16 @@
 @import 'tailwindcss';
 
 /*
- * Design tokens. Style "framed-sheet" (taste skill, 28/10) re-skinned 16/11 as direction A, "drawing sheet":
- * the frame is blueprint paper with a faint 24px grid, the page a white sheet; ink is navy, blueprint blue
- * marks data, the selected item and counts that need action; safety orange marks late work and errors only.
- * The one primary button per screen stays near-black (navy). Use the token classes, never raw hex.
+ * Design tokens — EXPERIMENT branch ui/mercato-style. 17/11: the "Mercato" layout and motion, re-coloured blue
+ * after the Leader's call (UpKeep-like tone) with a 60 / 30 / 10 split:
+ *   60%  grounds  — white cards on a cool grey desk (frame, surface, raised, border…)
+ *   30%  navy     — the sidebar board, the primary button, the ink of titles
+ *   10%  blue     — the accent: selected page, chart bars, gauge, links, counts that need action
+ * Status colours (green done, red late / error, amber waiting) sit outside the split and stay small.
+ * Dark values live under [data-theme='dark']. The two gradients below carry a taste-skill-ignore note
+ * (U7 of CONVENTIONS 5.4 is knowingly broken on this branch). Use the token classes, never raw hex.
  */
-@theme {
+@theme static {
   --font-sans: 'Be Vietnam Pro', system-ui, 'Segoe UI', sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
 
@@ -18,58 +22,123 @@
   --text-kpi: 26px;
   --text-kpi--line-height: 32px;
 
-  /* grounds and lines: blueprint paper, a white sheet */
-  --color-frame: #e9eef4;
-  --color-surface: #fbfcfe;
-  --color-raised: #f0f4f9;
-  --color-active: #e6ecf3;
-  --color-nav-active: #d5e2f5; /* one step stronger than accent-soft so the pill reads on the paper */
-  --color-border: #d9e1ec;
-  --color-rule: #e8edf4;
-  --color-control: #c3cfde;
-  --color-slab: #c9d5e5; /* floor lines of the building drawings */
+  /* 60% — grounds and lines: a cool grey desk, white cards */
+  --color-frame: #e8ecf3;
+  --color-surface: #ffffff;
+  --color-raised: #f5f7fb;
+  --color-active: #edf1f7;
+  --color-nav-active: #e3ecfd;
+  --color-border: #e1e6ee;
+  --color-rule: #ebeff5;
+  --color-control: #cdd5e1;
+  --color-slab: #d3dae6;
 
-  /* navy ink in three tiers, all 4.5:1 or more on the sheet and the frame */
-  --color-ink: #0f1b2d;
-  --color-muted: #55627a;
-  --color-faint: #5f6b80;
+  /* 30% — navy: ink in three tiers (4.5:1 or more on the cards and the desk), the board, the primary button */
+  --color-ink: #0f1f3d;
+  --color-muted: #56627a;
+  --color-faint: #5f6b82;
+  /* the sidebar board: light theme = a blue-grey tint of the navy (17/11), dark = navy */
+  --color-board: #d3ddec; /* clearly one step darker than the desk (#e8ecf3), 17/11 */
+  --color-board-ink: #0f1f3d;
+  --color-board-muted: #56627a;
+  --color-board-accent: #2f6fed;
+  --color-primary: #0f1f3d;
+  --color-primary-hover: #1b2f57;
+  --color-on-primary: #ffffff;
 
-  /* blueprint blue: data, focus, the selected item, counts that need action */
-  --color-accent: #1f5fae;
-  --color-accent-soft: #e2ebf7;
-  --color-accent-ink: #143f77;
-  --color-primary: #0f1b2d;
-  --color-primary-hover: #24324a;
+  /* 10% — blue accent: data, focus, the selected item, counts that need action */
+  --color-accent: #2f6fed;
+  --color-accent-soft: #e3ecfd;
+  --color-accent-ink: #1c4fc4;
+  --color-on-accent: #ffffff;
 
-  /* status: safety orange for late work and errors; pale pill pairs */
-  --color-positive: #1e7b4f;
-  --color-negative: #c2410c;
-  --color-warning: #8a5a00;
-  --color-pill-positive-bg: #dcf5e5;
-  --color-pill-positive-ink: #0b3a1f;
-  --color-pill-negative-bg: #fdece2;
-  --color-pill-negative-ink: #8a2c07;
-  --color-pill-warning-bg: #fbf3d9;
+  /* status (outside the split): green done, red late / errors, amber waiting; pale pill pairs */
+  --color-positive: #15803d;
+  --color-negative: #d1361b;
+  --color-warning: #92600a;
+  --color-pill-positive-bg: #dcf5e6;
+  --color-pill-positive-ink: #0f5132;
+  --color-pill-negative-bg: #fde4df;
+  --color-pill-negative-ink: #8f2410;
+  --color-pill-warning-bg: #fbf0d6;
   --color-pill-warning-ink: #6b4500;
-  --color-pill-neutral-bg: #e9eef4;
-  --color-pill-neutral-ink: #39465a;
-  --color-pill-accent-bg: #e2ebf7;
-  --color-pill-accent-ink: #143f77;
+  --color-pill-neutral-bg: #edf1f7;
+  --color-pill-neutral-ink: #39465c;
+  --color-pill-accent-bg: #e3ecfd;
+  --color-pill-accent-ink: #173f9e;
   --color-notice-border: #f2d98a;
 
-  /* radius: softer since 16/11 (12 cards / 8 controls / 16 the sheet) */
-  --radius-card: 12px;
-  --radius-control: 8px;
-  --radius-sheet: 16px;
-
   /*
-   * Motion (16/11/2026, values from the emil-design-eng skill). Motion is feedback, never an entrance on
-   * app screens: press, open / close, tab change, state change. UI stays under 300ms; dialogs up to 500ms.
-   * Classes: ease-snap, ease-glide, ease-drawer. The same curves for the motion library: shared/utils/motion.ts.
+   * KPI icon chips: four slots inside the blue family so the 10% stays one hue family. The names are slots
+   * (the classes already use them), not the colours: orange = main blue, violet = indigo, green = teal,
+   * blue = sky.
    */
-  --ease-snap: cubic-bezier(0.23, 1, 0.32, 1); /* enter / exit, press */
-  --ease-glide: cubic-bezier(0.77, 0, 0.175, 1); /* something moving across the screen */
-  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1); /* the phone menu sheet */
+  --color-chip-orange: #2f6fed;
+  --color-chip-violet: #5b5bd6;
+  --color-chip-green: #0e9384;
+  --color-chip-blue: #0284c7;
+  --color-line: #0e9384; /* the line drawn over the bars */
+
+  /* radius: rounder, tactile */
+  --radius-card: 18px;
+  --radius-control: 10px;
+  --radius-sheet: 22px;
+
+  /* Motion. On this branch cards also rise into place once when a dashboard opens (Leader 17/11). */
+  --ease-snap: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-glide: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* Dark theme: same names, night values, same 60 / 30 / 10. Set by the theme switch on <html data-theme="dark">. */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --color-frame: #0b111c;
+  --color-surface: #131b2a;
+  --color-raised: #192334;
+  --color-active: #1f2a3d;
+  --color-nav-active: #1c2f57;
+  --color-border: #243046;
+  --color-rule: #1e283a;
+  --color-control: #3a4760;
+  --color-slab: #2e3a52;
+
+  --color-ink: #eef2f8;
+  --color-muted: #a3aec2;
+  --color-faint: #8f9bb0;
+  --color-board: #16213a;
+  --color-board-ink: #eef2f8;
+  --color-board-muted: #a3aec2;
+  --color-board-accent: #93c5fd;
+  --color-primary: #4d8dff;
+  --color-primary-hover: #6aa0ff;
+  --color-on-primary: #08101f;
+
+  --color-accent: #4d8dff;
+  --color-accent-soft: #1c2d4f;
+  --color-accent-ink: #9cc0ff;
+  --color-on-accent: #08101f;
+
+  --color-positive: #3fcf7f;
+  --color-negative: #ff6b4f;
+  --color-warning: #f0b44c;
+  --color-pill-positive-bg: #133624;
+  --color-pill-positive-ink: #8ff0b5;
+  --color-pill-negative-bg: #44201b;
+  --color-pill-negative-ink: #ffb4a5;
+  --color-pill-warning-bg: #3a2d13;
+  --color-pill-warning-ink: #f6d58e;
+  --color-pill-neutral-bg: #1f2a3d;
+  --color-pill-neutral-ink: #c9d2e1;
+  --color-pill-accent-bg: #1c2d4f;
+  --color-pill-accent-ink: #b5d0ff;
+  --color-notice-border: #6b5420;
+
+  --color-chip-orange: #4d8dff;
+  --color-chip-violet: #8b8bf0;
+  --color-chip-green: #2dd4bf;
+  --color-chip-blue: #38bdf8;
+  --color-line: #2dd4bf;
 }
 
 @layer base {
@@ -81,12 +150,7 @@
 
   body {
     @apply bg-frame text-ink font-sans text-sm antialiased;
-    /* direction A: the frame is drawing paper. The grid stays under 8% so it reads as paper, not as lines;
-       the sheet (white) covers it wherever the work is. */
-    /* a 24px tile drawn as an SVG line pair (blueprint blue at 7%), not a gradient */
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath d='M24 .5H.5V24' fill='none' stroke='%231f5fae' stroke-opacity='.07'/%3E%3C/svg%3E");
-    background-size: 24px 24px;
-    background-attachment: fixed;
+    transition: background-color 200ms ease;
   }
 
   :focus-visible {
@@ -97,7 +161,7 @@
   /* Native select: the browser's arrow replaced by the icon set's chevron (16px, muted). */
   select.control-select {
     appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235d5f60' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 10l5 5 5-5'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23808590' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 10l5 5 5-5'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 10px center;
     background-size: 16px;
@@ -118,6 +182,232 @@
       transition-duration: 0.01ms !important;
       animation: none !important;
     }
+  }
+}
+
+@layer components {
+  /*
+   * The sidebar board. Light theme (17/11, Leader: the navy board clashed with the light page): a soft blue-grey
+   * panel one step darker than the desk, white raised keys on it — it carries the 30% as a tint of the navy.
+   * Dark theme: the navy panel. Both have a faint blueprint grid drawn as an SVG tile (lines, not a gradient).
+   */
+  .board {
+    background-color: var(--color-board);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath d='M24 .5H.5V24' fill='none' stroke='%230f1f3d' stroke-opacity='.05'/%3E%3C/svg%3E");
+    background-size: 24px 24px;
+    color: var(--color-board-ink);
+    border: 1px solid rgb(15 31 61 / 0.16);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.75),
+      inset 0 0 0 1px rgb(255 255 255 / 0.25),
+      0 1px 2px rgb(15 31 61 / 0.12),
+      0 4px 10px -4px rgb(15 31 61 / 0.14),
+      0 24px 44px -20px rgb(15 31 61 / 0.42);
+  }
+  :root[data-theme='dark'] .board {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath d='M24 .5H.5V24' fill='none' stroke='%23ffffff' stroke-opacity='.045'/%3E%3C/svg%3E");
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.1),
+      inset 0 0 0 1px rgb(0 0 0 / 0.3),
+      0 18px 40px -18px rgb(0 0 0 / 0.6);
+  }
+
+  /* A raised key on the board (nav items, sidebar buttons). Pressed = the selected page. */
+  .key {
+    --key-top: #ffffff;
+    --key-bottom: #f1f4f9;
+    --key-ink: #1d2c4a;
+    /* taste-skill-ignore below: Mercato experiment (Leader 17/11) */
+    background-image: linear-gradient(/* taste-skill-ignore */ var(--key-top), var(--key-bottom));
+    color: var(--key-ink);
+    border: 1px solid rgb(15 31 61 / 0.13);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 1),
+      0 1px 0 rgb(15 31 61 / 0.08),
+      0 3px 6px -3px rgb(15 31 61 / 0.25);
+    transition:
+      transform 150ms var(--ease-snap),
+      box-shadow 150ms var(--ease-snap),
+      filter 150ms ease;
+  }
+  .key:hover {
+    filter: brightness(1.02);
+    --key-bottom: #f7f9fc;
+  }
+  .key:active,
+  .key[aria-current='page'] {
+    --key-top: #dbe6fb;
+    --key-bottom: #e8effd;
+    --key-ink: #173f9e;
+    transform: translateY(1px);
+    border-color: rgb(47 111 237 / 0.35);
+    box-shadow:
+      inset 0 2px 4px rgb(23 63 158 / 0.18),
+      0 1px 0 rgb(255 255 255 / 0.7);
+  }
+  :root[data-theme='dark'] .key {
+    --key-top: #24324f;
+    --key-bottom: #1a2540;
+    --key-ink: #e6edf9;
+    border-color: rgb(0 0 0 / 0.45);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.1),
+      0 1px 0 rgb(0 0 0 / 0.4),
+      0 3px 6px -2px rgb(0 0 0 / 0.55);
+  }
+  :root[data-theme='dark'] .key:hover {
+    filter: brightness(1.12);
+  }
+  :root[data-theme='dark'] .key:active,
+  :root[data-theme='dark'] .key[aria-current='page'] {
+    --key-top: #121b30;
+    --key-bottom: #1b2742;
+    --key-ink: #e6edf9;
+    border-color: rgb(77 141 255 / 0.35);
+    box-shadow:
+      inset 0 2px 5px rgb(0 0 0 / 0.5),
+      0 1px 0 rgb(255 255 255 / 0.06);
+  }
+  /* the logo tile: a light key on the light board (on the dark board it stays a dark key, so the mark's light ink shows) */
+  .key-light {
+    --key-top: #ffffff;
+    --key-bottom: #e4e9f2;
+    --key-ink: #0f1f3d;
+  }
+  /* the red key at the bottom of the board */
+  .key-danger {
+    --key-top: #ef5a43;
+    --key-bottom: #c43a24;
+    --key-ink: #ffffff;
+  }
+  :root[data-theme='dark'] .key-danger {
+    --key-top: #e5533c;
+    --key-bottom: #b2321e;
+    --key-ink: #ffffff;
+  }
+
+  /*
+   * Elevation (17/11, Leader: the cards sank into the desk). Every raised surface gets three layers:
+   *   1. a rim — a 1px edge a little darker than the desk (light) or a faint blue-white line (dark), drawn as a
+   *      ring so it sits outside the border and reads crisp at any zoom;
+   *   2. a contact shadow right under the edge (short, darker) that pins the card to the desk;
+   *   3. an ambient shadow (long, soft) that lifts it.
+   * In the dark theme a very soft blue glow replaces most of the ambient shadow (black shadows vanish on a dark
+   * desk); interactive cards brighten their rim on hover (.card-hover).
+   */
+  .bump {
+    background-color: var(--color-surface);
+    border: 1px solid rgb(15 31 61 / 0.1);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.9),
+      0 1px 1px rgb(15 31 61 / 0.08),
+      0 4px 10px -4px rgb(15 31 61 / 0.22);
+  }
+  :root[data-theme='dark'] .bump {
+    border-color: rgb(255 255 255 / 0.08);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.07),
+      0 1px 1px rgb(0 0 0 / 0.5),
+      0 4px 12px -4px rgb(0 0 0 / 0.7);
+  }
+
+  /* Soft card: white, a crisp rim, pinned and lifted. */
+  .card-soft {
+    background-color: var(--color-surface);
+    border: 1px solid rgb(15 31 61 / 0.08);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 1),
+      0 0 0 1px rgb(255 255 255 / 0.6),
+      0 1px 2px rgb(15 31 61 / 0.07),
+      0 3px 6px -2px rgb(15 31 61 / 0.06),
+      0 18px 36px -18px rgb(15 31 61 / 0.28);
+  }
+  :root[data-theme='dark'] .card-soft {
+    border-color: rgb(148 180 255 / 0.15);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.06),
+      0 0 0 1px rgb(0 0 0 / 0.35),
+      0 2px 4px rgb(0 0 0 / 0.45),
+      0 18px 40px -20px rgb(0 0 0 / 0.85),
+      0 0 34px -12px rgb(77 141 255 / 0.28);
+  }
+
+  /* Cards you can click (case cards, KPI links): on hover the rim turns blue and the card rises a little. */
+  .card-hover {
+    transition:
+      transform 200ms var(--ease-snap),
+      box-shadow 200ms var(--ease-snap),
+      border-color 200ms var(--ease-snap);
+  }
+  .card-hover:hover {
+    transform: translateY(-2px);
+    border-color: rgb(47 111 237 / 0.35);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 1),
+      0 0 0 3px rgb(47 111 237 / 0.1),
+      0 2px 4px rgb(15 31 61 / 0.08),
+      0 22px 40px -18px rgb(15 31 61 / 0.32);
+  }
+  :root[data-theme='dark'] .card-hover:hover {
+    border-color: rgb(77 141 255 / 0.45);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.08),
+      0 0 0 3px rgb(77 141 255 / 0.14),
+      0 22px 44px -20px rgb(0 0 0 / 0.9),
+      0 0 40px -12px rgb(77 141 255 / 0.4);
+  }
+
+  /* Inset well: the search field, the small figures under a gauge. */
+  .well {
+    background-color: var(--color-raised);
+    border: 1px solid rgb(15 31 61 / 0.1);
+    box-shadow:
+      inset 0 2px 4px rgb(15 31 61 / 0.08),
+      0 1px 0 rgb(255 255 255 / 0.9);
+  }
+  :root[data-theme='dark'] .well {
+    border-color: rgb(255 255 255 / 0.07);
+    box-shadow:
+      inset 0 2px 5px rgb(0 0 0 / 0.5),
+      0 1px 0 rgb(255 255 255 / 0.04);
+  }
+
+  /* LED clock in the sidebar. Light theme: a pale blue display with navy-blue digits; dark: black glass, glowing blue. */
+  .led {
+    background-color: #f4f7fc;
+    border: 1px solid rgb(15 31 61 / 0.12);
+    box-shadow: inset 0 2px 5px rgb(15 31 61 / 0.12);
+    color: #1c4fc4;
+    text-shadow: 0 0 6px rgb(47 111 237 / 0.25);
+  }
+  :root[data-theme='dark'] .led {
+    background-color: #060a14;
+    border-color: rgb(0 0 0 / 0.7);
+    box-shadow:
+      inset 0 2px 8px rgb(0 0 0 / 0.9),
+      0 1px 0 rgb(255 255 255 / 0.1);
+    color: #7fb2ff;
+    text-shadow:
+      0 0 6px rgb(77 141 255 / 0.8),
+      0 0 14px rgb(47 111 237 / 0.4);
+  }
+  .led-colon {
+    animation: led-blink 1s steps(1) infinite;
+  }
+
+  /* 3D blue bar for the charts (the 10% accent). */
+  .bar-3d {
+    /* prettier-ignore */
+    background-image: linear-gradient(90deg, #7aa8ff, #2f6fed 45%, #1d4fc0); /* taste-skill-ignore: Mercato experiment */
+    box-shadow:
+      inset 0 1px 0 rgb(220 232 255 / 0.6),
+      0 6px 12px -6px rgb(29 79 192 / 0.55);
+  }
+}
+
+@keyframes led-blink {
+  50% {
+    opacity: 0.2;
   }
 }
 
