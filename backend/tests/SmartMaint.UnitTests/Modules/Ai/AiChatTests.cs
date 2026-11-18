@@ -1,4 +1,5 @@
 using SmartMaint.Api.Entities.Accounts;
+using SmartMaint.Api.Entities.Cases;
 using SmartMaint.Api.Modules.Ai;
 using SmartMaint.Api.Modules.Ai.Dtos;
 using SmartMaint.Api.Modules.Ai.Validators;
@@ -219,7 +220,80 @@ public sealed class AiChatTests : CaseTestBase
 
         await Ask("Anything for me?");
 
-        Assert.Contains("Cases this user can see (0 of 0, newest first):\n- none", _ai.LastPrompt);
+        Assert.Contains("Cases this user can see (0 of 0, overdue first, then newest):\n- none", _ai.LastPrompt);
+        Assert.Contains("EXACT COUNTS over all 0 cases", _ai.LastPrompt);
+        Assert.Contains("- By status: none", _ai.LastPrompt);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Normal)]
+    public async Task Chat_Staff_OnlyPendingCasesCountAsWaitingForReview()
+    {
+        var first = await NewCaseAsync();
+        var second = await NewCaseAsync();
+        var approved = await NewCaseAsync();
+        As(Staff);
+        await Sut.ApproveAsync(approved.Id, Approval(), default);
+
+        await Ask("How many cases do I have to review?");
+
+        Assert.Contains("EXACT COUNTS over all 3 cases", _ai.LastPrompt);
+        var review = _ai.LastPrompt!.Split('\n').Single(l => l.StartsWith("- Waiting for staff review", StringComparison.Ordinal));
+        Assert.StartsWith("- Waiting for staff review (pending): 2 (", review);
+        Assert.Contains(first.Code, review);
+        Assert.Contains(second.Code, review);
+        Assert.DoesNotContain(approved.Code, review);
+        Assert.Contains("never count the list yourself", _ai.LastSystemPrompt);
+        Assert.Contains("Approve and Reject do not exist on a case that is already approved",
+            _ai.LastSystemPrompt!.ReplaceLineEndings(" ").Replace("  ", " ", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Abnormal)]
+    public async Task Chat_PastTheDeadline_CountsOnlyWorkNotReportedDone()
+    {
+        var late = await CaseAtAsync(CaseStatus.InProgress);
+        await CaseAtAsync(CaseStatus.Completed);
+        Clock.Now = Clock.Now.AddDays(30);
+        As(Staff);
+
+        await Ask("What is overdue?");
+
+        Assert.Contains($"- Overdue now: 1 ({Case.CodeOf(late)})\n", _ai.LastPrompt);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Boundary)]
+    public async Task Chat_MoreCasesThanTheList_StillCountsThemAll()
+    {
+        for (var i = 0; i <= AiService.ChatCaseLimit; i++)
+        {
+            await NewCaseAsync();
+        }
+
+        As(Staff);
+
+        await Ask("How many cases are open?");
+
+        var total = AiService.ChatCaseLimit + 1;
+        Assert.Contains($"EXACT COUNTS over all {total} cases", _ai.LastPrompt);
+        Assert.Contains($"({AiService.ChatCaseLimit} of {total}, overdue first, then newest)", _ai.LastPrompt);
+        Assert.Contains($"- Open now: {total} (", _ai.LastPrompt);
+        Assert.Contains($", and {total - 8} more)", _ai.LastPrompt);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Normal)]
+    public async Task Chat_CaseLine_LabelsTheTitleApartFromTheProblemType()
+    {
+        var mine = await NewCaseAsync();
+        As(Customer);
+
+        await Ask();
+
+        Assert.Contains($"{mine.Code} | title \"{mine.Title}\" | status pending", _ai.LastPrompt);
+        Assert.Contains($"problem type {mine.ServiceTypeName}", _ai.LastPrompt);
+        Assert.Contains("use its title exactly as written", _ai.LastSystemPrompt);
     }
 
     [Theory]
