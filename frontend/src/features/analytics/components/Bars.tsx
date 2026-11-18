@@ -40,7 +40,7 @@ export function BarList({
           >
             {/* scaleX: a new period or building moves the bar on the GPU instead of redrawing it */}
             <div
-              className="bg-accent ease-snap h-full origin-left rounded-full transition-transform duration-500"
+              className="bar-3d ease-snap h-full origin-left rounded-full transition-transform duration-500"
               style={{ transform: `scaleX(${Math.max(0.02, r.value / max)})` }}
             />
           </div>
@@ -93,7 +93,7 @@ export function WeekBars({
             </span>
             {/* height eases to the new value when the filters change (12 small bars: cheap) */}
             <div
-              className="bg-accent ease-snap w-full max-w-8 rounded-t-[4px] transition-[height,opacity] duration-500 group-hover/bar:opacity-100! group-hover/plot:opacity-35 group-focus-visible/bar:opacity-100!"
+              className="bar-3d ease-snap w-full max-w-8 rounded-t-[4px] transition-[height,opacity] duration-500 group-hover/bar:opacity-100! group-hover/plot:opacity-35 group-focus-visible/bar:opacity-100!"
               style={{ height: `${(w.value / max) * 80}%`, minHeight: w.value > 0 ? 2 : 0 }}
             />
           </div>

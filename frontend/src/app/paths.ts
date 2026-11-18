@@ -31,8 +31,6 @@ export const paths = {
   planNew: '/maintenance/plans/new',
   planDetail: '/maintenance/plans/:id',
   planEdit: '/maintenance/plans/:id/edit',
-  // Core — every role
-  notifications: '/notifications',
   // Core — Administrator (ADM-01 is paths.home)
   accounts: '/admin/accounts',
   accountNew: '/admin/accounts/new',

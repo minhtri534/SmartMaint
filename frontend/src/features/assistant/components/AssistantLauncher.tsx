@@ -10,13 +10,14 @@ import {
 import { useLocation } from 'react-router'
 import { useAuth } from '@/features/auth'
 import type { Role } from '@/shared/types/role'
-import { Icon, ProductMark, Spinner, type IconName } from '@/shared/ui'
+import { Icon, Spinner, type IconName } from '@/shared/ui'
 import { cn } from '@/shared/utils/cn'
 import { EASE_SNAP } from '@/shared/utils/motion'
 import { usePageAction } from '../actions'
 import type { AssistantAction, AssistantCard, Turn } from '../types'
 import { useAssistantChat } from '../useAssistantChat'
 import { AnswerText } from './AnswerText'
+import { AssistantBot, AssistantIcon } from './AssistantIcon'
 
 /*
  * The assistant (Leader 16/11): a chat in the bottom-right corner of every page, for every role but Admin.
@@ -99,13 +100,13 @@ export function AssistantLauncher() {
         aria-expanded={open}
         aria-controls="assistant-panel"
         aria-label={open ? 'Close the assistant' : 'Open the assistant'}
+        title={open ? 'Close the assistant' : 'Assistant'}
         className={cn(
-          'bg-primary hover:bg-primary-hover ease-snap text-on-primary fixed right-4 bottom-4 z-40 flex h-12 items-center justify-center gap-2 rounded-full text-sm font-medium shadow-[0_10px_28px_-8px_rgb(15_27_45/0.5)] transition-[background-color,transform] duration-150 active:scale-[0.97] sm:right-5 sm:bottom-5 print:hidden',
-          'w-12 sm:w-auto sm:pr-5 sm:pl-4',
+          'brand-fill group ease-snap fixed right-4 bottom-4 z-40 grid size-14 place-items-center rounded-full shadow-[0_10px_26px_-8px_rgb(30_130_220/0.65)] transition-[filter,transform] duration-150 hover:scale-105 active:scale-95 sm:right-5 sm:bottom-5 print:hidden',
           open && 'max-sm:hidden',
         )}
       >
-        <span className="relative grid size-5 place-items-center">
+        <span className="relative grid size-8 place-items-center">
           <AnimatePresence initial={false} mode="popLayout">
             <motion.span
               key={open ? 'close' : 'chat'}
@@ -115,11 +116,14 @@ export function AssistantLauncher() {
               transition={{ duration: 0.16, ease: EASE_SNAP }}
               className="grid place-items-center"
             >
-              <Icon name={open ? 'close' : 'chat'} className="size-5" />
+              {open ? (
+                <Icon name="close" className="size-6" />
+              ) : (
+                <AssistantIcon animated className="size-8" />
+              )}
             </motion.span>
           </AnimatePresence>
         </span>
-        <span className="hidden sm:inline">Assistant</span>
       </button>
     </>
   )
@@ -192,8 +196,8 @@ function ChatPanel({
       className="bg-surface sm:border-border fixed inset-0 z-40 flex flex-col sm:inset-auto sm:right-5 sm:bottom-[84px] sm:h-[min(640px,calc(100vh-112px))] sm:w-[400px] sm:overflow-hidden sm:rounded-[16px] sm:border sm:shadow-[0_24px_64px_-16px_rgb(15_27_45/0.35),0_2px_6px_rgb(15_27_45/0.06)] print:hidden"
     >
       <header className="border-rule flex h-14 flex-none items-center gap-3 border-b pr-2 pl-4">
-        <span className="bg-accent-soft grid size-8 flex-none place-items-center rounded-lg">
-          <ProductMark className="size-4" />
+        <span className="bg-accent-soft text-accent-ink grid size-8 flex-none place-items-center rounded-lg">
+          <AssistantBot className="size-5" />
         </span>
         <div className="min-w-0 flex-1">
           <h2 className="text-sm leading-5 font-semibold">SmartMaint Assistant</h2>
@@ -269,7 +273,7 @@ function ChatPanel({
             type="submit"
             disabled={!text.trim() || chat.pending}
             aria-label="Send"
-            className="bg-primary hover:bg-primary-hover ease-snap text-on-primary grid size-8 flex-none place-items-center rounded-lg transition-[background-color,opacity,transform] duration-150 active:scale-95 disabled:opacity-30"
+            className="brand-fill ease-snap grid size-8 flex-none place-items-center rounded-lg transition-[filter,opacity,transform] duration-150 active:scale-95 disabled:opacity-30"
           >
             <Icon name="send" className="size-4" />
           </button>
@@ -395,12 +399,12 @@ function TurnView({
       transition={{ duration: 0.18, ease: EASE_SNAP }}
       className="flex flex-col gap-2.5"
     >
-      <div className="bg-primary text-on-primary ml-auto max-w-[85%] rounded-2xl rounded-br-md px-3.5 py-2 text-sm leading-[22px] whitespace-pre-wrap">
+      <div className="brand-fill ml-auto max-w-[85%] rounded-2xl rounded-br-md px-3.5 py-2 text-sm leading-[22px] whitespace-pre-wrap hover:brightness-100">
         {turn.question}
       </div>
       <div className="flex items-start gap-2.5">
-        <span className="bg-accent-soft mt-0.5 grid size-6 flex-none place-items-center rounded-md">
-          <ProductMark className="size-3" />
+        <span className="bg-accent-soft text-accent-ink mt-0.5 grid size-6 flex-none place-items-center rounded-md">
+          <AssistantBot className="size-4" />
         </span>
         <div className="min-w-0 flex-1 text-sm leading-[22px]">
           {turn.state === 'pending' ? (
@@ -450,9 +454,7 @@ function CardView({ card }: { card: AssistantCard }) {
             }}
             className={cn(
               'ease-snap mt-2.5 inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-[13px] font-medium transition-[background-color,transform] duration-150 active:scale-[0.97]',
-              done
-                ? 'bg-raised text-positive'
-                : 'bg-primary hover:bg-primary-hover text-on-primary',
+              done ? 'bg-raised text-positive' : 'brand-fill',
             )}
           >
             {done ? card.action.doneLabel : card.action.label}

@@ -4,10 +4,12 @@
  * Design tokens — EXPERIMENT branch ui/mercato-style. 17/11: the "Mercato" layout and motion, re-coloured blue
  * after the Leader's call (UpKeep-like tone) with a 60 / 30 / 10 split:
  *   60%  grounds  — white cards on a cool grey desk (frame, surface, raised, border…)
- *   30%  navy     — the sidebar board, the primary button, the ink of titles
+ *   30%  navy     — the ink of titles and text, the logo tile, the assistant
  *   10%  blue     — the accent: selected page, chart bars, gauge, links, counts that need action
+ * 18/11: the sign-in page's blue-to-cyan (--brand-*) is the product's signature inside the app too: the one primary
+ * button per screen, the open page in the sidebar, the chart bars. Dark uses the sign-in page's navy.
  * Status colours (green done, red late / error, amber waiting) sit outside the split and stay small.
- * Dark values live under [data-theme='dark']. The two gradients below carry a taste-skill-ignore note
+ * Dark values live under [data-theme='dark']. The gradients below carry a taste-skill-ignore note
  * (U7 of CONVENTIONS 5.4 is knowingly broken on this branch). Use the token classes, never raw hex.
  */
 @theme static {
@@ -33,15 +35,10 @@
   --color-control: #cdd5e1;
   --color-slab: #d3dae6;
 
-  /* 30% — navy: ink in three tiers (4.5:1 or more on the cards and the desk), the board, the primary button */
+  /* 30% — navy: ink in three tiers (4.5:1 or more on the cards and the desk), the primary button */
   --color-ink: #0f1f3d;
   --color-muted: #56627a;
   --color-faint: #5f6b82;
-  /* the sidebar board: light theme = a blue-grey tint of the navy (17/11), dark = navy */
-  --color-board: #d3ddec; /* clearly one step darker than the desk (#e8ecf3), 17/11 */
-  --color-board-ink: #0f1f3d;
-  --color-board-muted: #56627a;
-  --color-board-accent: #2f6fed;
   --color-primary: #0f1f3d;
   --color-primary-hover: #1b2f57;
   --color-on-primary: #ffffff;
@@ -75,9 +72,9 @@
    */
   --color-chip-orange: #2f6fed;
   --color-chip-violet: #5b5bd6;
-  --color-chip-green: #0e9384;
-  --color-chip-blue: #0284c7;
-  --color-line: #0e9384; /* the line drawn over the bars */
+  --color-chip-green: #0e97ad;
+  --color-chip-blue: #0369a1;
+  --color-line: #0e97ad; /* the line drawn over the bars */
 
   /* radius: rounder, tactile */
   --radius-card: 18px;
@@ -90,34 +87,45 @@
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
+/* The sign-in page's colours, shared with the app (Leader 18/11). */
+:root {
+  --brand-from: #5aa2ff;
+  --brand-to: #38d3f2;
+  --on-brand: #05101f;
+  --brand-night: #050b1e;
+  --auth-bg: #e9f1fc;
+  --ribbon-deep: #0c2aa8;
+  --ribbon-mid: #2f6fed;
+  --ribbon-bright: #22cdf0;
+  --ribbon-light: #dff7ff;
+  --ribbon-shade: #01040f;
+}
+
 /* Dark theme: same names, night values, same 60 / 30 / 10. Set by the theme switch on <html data-theme="dark">. */
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --color-frame: #0b111c;
-  --color-surface: #131b2a;
-  --color-raised: #192334;
-  --color-active: #1f2a3d;
-  --color-nav-active: #1c2f57;
-  --color-border: #243046;
-  --color-rule: #1e283a;
-  --color-control: #3a4760;
-  --color-slab: #2e3a52;
+  --auth-bg: var(--brand-night);
+  --color-frame: #050b1e;
+  --color-surface: #0d1730;
+  --color-raised: #122042;
+  --color-active: #16264d;
+  --color-nav-active: #14284f;
+  --color-border: #1e2d52;
+  --color-rule: #18254a;
+  --color-control: #33466f;
+  --color-slab: #27375c;
 
-  --color-ink: #eef2f8;
-  --color-muted: #a3aec2;
-  --color-faint: #8f9bb0;
-  --color-board: #16213a;
-  --color-board-ink: #eef2f8;
-  --color-board-muted: #a3aec2;
-  --color-board-accent: #93c5fd;
-  --color-primary: #4d8dff;
-  --color-primary-hover: #6aa0ff;
-  --color-on-primary: #08101f;
+  --color-ink: #f2f6fd;
+  --color-muted: #b4c1d8;
+  --color-faint: #98a7c2;
+  --color-primary: #5aa2ff;
+  --color-primary-hover: #86c8ff;
+  --color-on-primary: #05101f;
 
-  --color-accent: #4d8dff;
-  --color-accent-soft: #1c2d4f;
-  --color-accent-ink: #9cc0ff;
-  --color-on-accent: #08101f;
+  --color-accent: #5aa2ff;
+  --color-accent-soft: #14284f;
+  --color-accent-ink: #a6d0ff;
+  --color-on-accent: #05101f;
 
   --color-positive: #3fcf7f;
   --color-negative: #ff6b4f;
@@ -128,17 +136,17 @@
   --color-pill-negative-ink: #ffb4a5;
   --color-pill-warning-bg: #3a2d13;
   --color-pill-warning-ink: #f6d58e;
-  --color-pill-neutral-bg: #1f2a3d;
+  --color-pill-neutral-bg: #16264d;
   --color-pill-neutral-ink: #c9d2e1;
-  --color-pill-accent-bg: #1c2d4f;
+  --color-pill-accent-bg: #14284f;
   --color-pill-accent-ink: #b5d0ff;
   --color-notice-border: #6b5420;
 
-  --color-chip-orange: #4d8dff;
+  --color-chip-orange: #5aa2ff;
   --color-chip-violet: #8b8bf0;
-  --color-chip-green: #2dd4bf;
-  --color-chip-blue: #38bdf8;
-  --color-line: #2dd4bf;
+  --color-chip-green: #38d3f2;
+  --color-chip-blue: #7cc4ff;
+  --color-line: #38d3f2;
 }
 
 @layer base {
@@ -186,106 +194,6 @@
 }
 
 @layer components {
-  /*
-   * The sidebar board. Light theme (17/11, Leader: the navy board clashed with the light page): a soft blue-grey
-   * panel one step darker than the desk, white raised keys on it — it carries the 30% as a tint of the navy.
-   * Dark theme: the navy panel. Both have a faint blueprint grid drawn as an SVG tile (lines, not a gradient).
-   */
-  .board {
-    background-color: var(--color-board);
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath d='M24 .5H.5V24' fill='none' stroke='%230f1f3d' stroke-opacity='.05'/%3E%3C/svg%3E");
-    background-size: 24px 24px;
-    color: var(--color-board-ink);
-    border: 1px solid rgb(15 31 61 / 0.16);
-    box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.75),
-      inset 0 0 0 1px rgb(255 255 255 / 0.25),
-      0 1px 2px rgb(15 31 61 / 0.12),
-      0 4px 10px -4px rgb(15 31 61 / 0.14),
-      0 24px 44px -20px rgb(15 31 61 / 0.42);
-  }
-  :root[data-theme='dark'] .board {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath d='M24 .5H.5V24' fill='none' stroke='%23ffffff' stroke-opacity='.045'/%3E%3C/svg%3E");
-    box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.1),
-      inset 0 0 0 1px rgb(0 0 0 / 0.3),
-      0 18px 40px -18px rgb(0 0 0 / 0.6);
-  }
-
-  /* A raised key on the board (nav items, sidebar buttons). Pressed = the selected page. */
-  .key {
-    --key-top: #ffffff;
-    --key-bottom: #f1f4f9;
-    --key-ink: #1d2c4a;
-    /* taste-skill-ignore below: Mercato experiment (Leader 17/11) */
-    background-image: linear-gradient(/* taste-skill-ignore */ var(--key-top), var(--key-bottom));
-    color: var(--key-ink);
-    border: 1px solid rgb(15 31 61 / 0.13);
-    box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 1),
-      0 1px 0 rgb(15 31 61 / 0.08),
-      0 3px 6px -3px rgb(15 31 61 / 0.25);
-    transition:
-      transform 150ms var(--ease-snap),
-      box-shadow 150ms var(--ease-snap),
-      filter 150ms ease;
-  }
-  .key:hover {
-    filter: brightness(1.02);
-    --key-bottom: #f7f9fc;
-  }
-  .key:active,
-  .key[aria-current='page'] {
-    --key-top: #dbe6fb;
-    --key-bottom: #e8effd;
-    --key-ink: #173f9e;
-    transform: translateY(1px);
-    border-color: rgb(47 111 237 / 0.35);
-    box-shadow:
-      inset 0 2px 4px rgb(23 63 158 / 0.18),
-      0 1px 0 rgb(255 255 255 / 0.7);
-  }
-  :root[data-theme='dark'] .key {
-    --key-top: #24324f;
-    --key-bottom: #1a2540;
-    --key-ink: #e6edf9;
-    border-color: rgb(0 0 0 / 0.45);
-    box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.1),
-      0 1px 0 rgb(0 0 0 / 0.4),
-      0 3px 6px -2px rgb(0 0 0 / 0.55);
-  }
-  :root[data-theme='dark'] .key:hover {
-    filter: brightness(1.12);
-  }
-  :root[data-theme='dark'] .key:active,
-  :root[data-theme='dark'] .key[aria-current='page'] {
-    --key-top: #121b30;
-    --key-bottom: #1b2742;
-    --key-ink: #e6edf9;
-    border-color: rgb(77 141 255 / 0.35);
-    box-shadow:
-      inset 0 2px 5px rgb(0 0 0 / 0.5),
-      0 1px 0 rgb(255 255 255 / 0.06);
-  }
-  /* the logo tile: a light key on the light board (on the dark board it stays a dark key, so the mark's light ink shows) */
-  .key-light {
-    --key-top: #ffffff;
-    --key-bottom: #e4e9f2;
-    --key-ink: #0f1f3d;
-  }
-  /* the red key at the bottom of the board */
-  .key-danger {
-    --key-top: #ef5a43;
-    --key-bottom: #c43a24;
-    --key-ink: #ffffff;
-  }
-  :root[data-theme='dark'] .key-danger {
-    --key-top: #e5533c;
-    --key-bottom: #b2321e;
-    --key-ink: #ffffff;
-  }
-
   /*
    * Elevation (17/11, Leader: the cards sank into the desk). Every raised surface gets three layers:
    *   1. a rim — a 1px edge a little darker than the desk (light) or a faint blue-white line (dark), drawn as a
@@ -372,45 +280,125 @@
       0 1px 0 rgb(255 255 255 / 0.04);
   }
 
-  /* LED clock in the sidebar. Light theme: a pale blue display with navy-blue digits; dark: black glass, glowing blue. */
-  .led {
-    background-color: #f4f7fc;
-    border: 1px solid rgb(15 31 61 / 0.12);
-    box-shadow: inset 0 2px 5px rgb(15 31 61 / 0.12);
-    color: #1c4fc4;
-    text-shadow: 0 0 6px rgb(47 111 237 / 0.25);
-  }
-  :root[data-theme='dark'] .led {
-    background-color: #060a14;
-    border-color: rgb(0 0 0 / 0.7);
-    box-shadow:
-      inset 0 2px 8px rgb(0 0 0 / 0.9),
-      0 1px 0 rgb(255 255 255 / 0.1);
-    color: #7fb2ff;
-    text-shadow:
-      0 0 6px rgb(77 141 255 / 0.8),
-      0 0 14px rgb(47 111 237 / 0.4);
-  }
-  .led-colon {
-    animation: led-blink 1s steps(1) infinite;
-  }
-
-  /* 3D blue bar for the charts (the 10% accent). */
+  /* Chart bars: the blue running into cyan of the sign-in page. */
   .bar-3d {
     /* prettier-ignore */
-    background-image: linear-gradient(90deg, #7aa8ff, #2f6fed 45%, #1d4fc0); /* taste-skill-ignore: Mercato experiment */
+    background-image: linear-gradient(90deg, #2f6fed, #2cc6ea); /* taste-skill-ignore: the product's signature */
     box-shadow:
       inset 0 1px 0 rgb(220 232 255 / 0.6),
-      0 6px 12px -6px rgb(29 79 192 / 0.55);
+      0 6px 12px -6px rgb(30 130 220 / 0.45);
+  }
+
+  /* The one primary button of a screen: the same fill as Sign in. */
+  .brand-fill {
+    /* prettier-ignore */
+    background-image: linear-gradient(100deg, var(--brand-from), var(--brand-to)); /* taste-skill-ignore: the product's signature */
+    color: var(--on-brand);
+  }
+  .brand-fill:hover:not(:disabled) {
+    filter: brightness(1.06);
+  }
+
+  /*
+   * The logo tile follows the theme. Light: navy floors and the blue floor on a pale blue tile.
+   * Dark: as on the sign-in page, white floors and the cyan floor on the night colour.
+   */
+  .brand-tile {
+    background-color: #e3effe;
+    box-shadow: inset 0 0 0 1px rgb(47 111 237 / 0.2);
+  }
+  :root[data-theme='dark'] .brand-tile {
+    --color-ink: #f2f6fd;
+    --color-accent: #5cc8ff;
+    background-color: var(--brand-night);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.12);
+  }
+
+  /* The open page in the sidebar. */
+  .nav-surface {
+    /* prettier-ignore */
+    background-image: linear-gradient(100deg, rgb(90 162 255 / 0.2), rgb(56 211 242 / 0.16)); /* taste-skill-ignore: the product's signature */
+    box-shadow: inset 0 0 0 1px rgb(56 160 240 / 0.3);
+  }
+
+  /*
+   * The ribbons across the desk. Page titles sit straight on them, so in the light theme they stay pale: no deep blue,
+   * and the muted subtitle keeps 4.5:1 on the strongest part.
+   */
+  .desk-ribbon {
+    --ribbon-shade: transparent;
+    --ribbon-deep: #7ab6ff;
+    --ribbon-mid: #6aaeff;
+    --ribbon-bright: #38d3f2;
+    opacity: 0.2;
+  }
+  :root[data-theme='dark'] .desk-ribbon {
+    --ribbon-deep: #0c2aa8;
+    --ribbon-mid: #2f6fed;
+    --ribbon-bright: #22cdf0;
+    opacity: 0.3;
+  }
+
+  /* After signing in the app fades up from the sign-in page's night colour. */
+  .sign-in-veil {
+    background-color: var(--auth-bg);
+    animation: sign-in-veil 620ms ease-out forwards;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .sign-in-veil {
+      display: none;
+    }
   }
 
   /*
    * The sign-in scene (Leader 18/11, the one place that uses frosted glass: exception to U7 in CONVENTIONS 5.4).
-   * It is always the night scene, so the tokens are set again here and the shared fields, buttons and alerts
-   * inside it need no special version.
+   * It has a light and a night version. The tokens are set again here, so the shared fields, buttons and alerts
+   * inside it need no special version. Light: the text keeps 4.5:1 on the strongest ribbon seen through the glass.
    */
   .auth-scene {
+    --color-muted: #47556e;
+    --color-faint: #4f5d76;
+    --color-surface: rgb(255 255 255 / 0.74);
+    --color-raised: rgb(255 255 255 / 0.6);
+    --color-border: rgb(15 31 61 / 0.14);
+    --color-control: rgb(15 31 61 / 0.24);
+    --color-negative: #a32a12;
+    --ribbon-deep: #8fc1ff;
+    --ribbon-mid: #5aa2ff;
+    --ribbon-bright: #38d3f2;
+    --ribbon-light: #ffffff;
+    --ribbon-shade: #7ea6e6;
+    --auth-veil-strong: rgb(233 241 252 / 0.86);
+    --auth-veil-soft: rgb(233 241 252 / 0.4);
+    --auth-glass: rgb(255 255 255 / 0.7);
+    --auth-glass-solid: rgb(255 255 255 / 0.95);
+    --auth-glass-rim: rgb(255 255 255 / 0.85);
+    --auth-glass-top: rgb(255 255 255 / 0.9);
+    --auth-glass-shadow: rgb(47 91 170 / 0.3);
+    --auth-autofill: #eef5ff;
+    --auth-glow-blue: rgb(90 162 255 / 0.42);
+    --auth-glow-cyan: rgb(56 211 242 / 0.34);
+    background-color: var(--auth-bg);
+    color: var(--color-ink);
+    transition: background-color 300ms ease;
+  }
+  :root[data-theme='dark'] .auth-scene {
     color-scheme: dark;
+    --ribbon-deep: #0c2aa8;
+    --ribbon-mid: #2f6fed;
+    --ribbon-bright: #22cdf0;
+    --ribbon-light: #dff7ff;
+    --ribbon-shade: #01040f;
+    --auth-veil-strong: rgb(5 11 30 / 0.74);
+    --auth-veil-soft: rgb(5 11 30 / 0.3);
+    --auth-glass: rgb(9 18 40 / 0.66);
+    --auth-glass-solid: rgb(9 18 40 / 0.94);
+    --auth-glass-rim: rgb(255 255 255 / 0.18);
+    --auth-glass-top: rgb(255 255 255 / 0.22);
+    --auth-glass-shadow: rgb(1 4 15 / 0.85);
+    --auth-autofill: #0e1a36;
+    --auth-glow-blue: rgb(47 111 237 / 0.36);
+    --auth-glow-cyan: rgb(34 205 240 / 0.18);
     --color-ink: #f2f6fd;
     --color-muted: #c8d4e8;
     --color-faint: #b2c0d6;
@@ -428,14 +416,33 @@
     --color-pill-warning-bg: #3a2d13;
     --color-pill-warning-ink: #f6d58e;
     --color-notice-border: #6b5420;
-    /* the ribbons: the product's blue running into cyan */
-    --ribbon-deep: #0c2aa8;
-    --ribbon-mid: #2f6fed;
-    --ribbon-bright: #22cdf0;
-    --ribbon-light: #dff7ff;
-    --ribbon-shade: #01040f;
-    background-color: #050b1e;
-    color: var(--color-ink);
+  }
+
+  /* The light / dark pill in the corner of the sign-in page. */
+  .auth-pill {
+    background-color: var(--auth-glass);
+    box-shadow:
+      inset 0 0 0 1px var(--auth-glass-rim),
+      0 8px 24px -12px var(--auth-glass-shadow);
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
+  }
+  .auth-pill-thumb {
+    background-color: #ffffff;
+    box-shadow: 0 1px 4px rgb(15 31 61 / 0.18);
+  }
+  :root[data-theme='dark'] .auth-pill-thumb {
+    background-color: rgb(255 255 255 / 0.16);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.14);
+  }
+
+  /* The dots in the assistant's bubble: a short "typing" wave every few seconds, a steady one under the pointer. */
+  .assistant-dot {
+    transform-box: fill-box;
+    animation: assistant-dot 6s ease-in-out infinite;
+  }
+  .group:hover .assistant-dot {
+    animation: assistant-dot-hover 900ms ease-in-out infinite;
   }
 
   .auth-ribbon {
@@ -458,29 +465,45 @@
   }
 
   .auth-veil {
-    background-image: linear-gradient(90deg, rgb(5 11 30 / 0.74), rgb(5 11 30 / 0.3) 46%, transparent 62%); /* taste-skill-ignore: dark layer under text */
+    /* prettier-ignore */
+    background-image: linear-gradient(90deg, var(--auth-veil-strong), var(--auth-veil-soft) 46%, transparent 62%); /* taste-skill-ignore: a layer under text */
   }
 
-  /* Dark enough behind the text wherever the brightest part of a ribbon passes under the pane. */
+  /* The soft glow in the top-left corner: two pools of colour, blurred so no edge shows. */
+  .auth-glow {
+    position: absolute;
+    top: -34dvh;
+    left: -14vw;
+    width: min(70vw, 1000px);
+    height: 84dvh;
+    /* prettier-ignore */
+    background-image: radial-gradient(closest-side at 36% 50%, var(--auth-glow-blue), transparent), radial-gradient(closest-side at 68% 40%, var(--auth-glow-cyan), transparent); /* taste-skill-ignore: a soft light, not a fill */
+    filter: blur(32px);
+    will-change: transform;
+  }
+
+  /* Solid enough behind the text wherever the strongest part of a ribbon passes under the pane. */
   .auth-glass {
-    background-color: rgb(9 18 40 / 0.66);
-    border: 1px solid rgb(255 255 255 / 0.18);
+    background-color: var(--auth-glass);
+    border: 1px solid var(--auth-glass-rim);
     box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.22),
-      0 32px 80px -24px rgb(1 4 15 / 0.85);
+      inset 0 1px 0 var(--auth-glass-top),
+      0 32px 80px -24px var(--auth-glass-shadow);
     -webkit-backdrop-filter: blur(22px) saturate(150%);
     backdrop-filter: blur(22px) saturate(150%);
     animation: auth-rise 520ms var(--ease-snap);
   }
   @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-    .auth-glass {
-      background-color: rgb(9 18 40 / 0.94);
+    .auth-glass,
+    .auth-pill {
+      background-color: var(--auth-glass-solid);
     }
   }
 
   .auth-scene button[type='submit'] {
     height: 44px;
-    background-image: linear-gradient(100deg, #5aa2ff, #38d3f2); /* taste-skill-ignore: the sign-in scene only */
+    /* prettier-ignore */
+    background-image: linear-gradient(100deg, var(--brand-from), var(--brand-to)); /* taste-skill-ignore: the product's signature */
     border-color: transparent;
     font-weight: 600;
   }
@@ -494,7 +517,7 @@
   .auth-scene input:-webkit-autofill:focus {
     -webkit-text-fill-color: var(--color-ink);
     caret-color: var(--color-ink);
-    box-shadow: inset 0 0 0 100px #0e1a36;
+    box-shadow: inset 0 0 0 100px var(--auth-autofill);
   }
 }
 
@@ -515,16 +538,38 @@
   }
 }
 
+@keyframes assistant-dot {
+  0%,
+  10%,
+  100% {
+    transform: translateY(0);
+  }
+  5% {
+    transform: translateY(-70%);
+  }
+}
+
+@keyframes assistant-dot-hover {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-70%);
+  }
+}
+
+@keyframes sign-in-veil {
+  to {
+    opacity: 0;
+  }
+}
+
 @keyframes auth-rise {
   from {
     opacity: 0;
     transform: translateY(12px);
-  }
-}
-
-@keyframes led-blink {
-  50% {
-    opacity: 0.2;
   }
 }
 

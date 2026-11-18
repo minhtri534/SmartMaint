@@ -51,9 +51,15 @@ export function WeekPlanner({ cases, now }: { cases: CaseSummary[]; now: number 
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-7 gap-2">
+      {/* Phone: seven readable days that slide sideways inside the card, so the page itself never scrolls sideways. */}
+      <div
+        tabIndex={0}
+        role="group"
+        aria-label="Your next 7 days"
+        className="-mx-5 grid snap-x scroll-px-5 [scrollbar-width:thin] [scrollbar-color:var(--color-control)_transparent] grid-cols-[repeat(7,minmax(112px,1fr))] gap-2 overflow-x-auto px-5 pb-2 sm:mx-0 sm:grid-cols-7 sm:overflow-visible sm:px-0 sm:pb-0"
+      >
         {days.map((d, i) => (
-          <div key={d.getTime()} className="flex min-w-0 flex-col gap-2">
+          <div key={d.getTime()} className="flex min-w-0 snap-start flex-col gap-2">
             <div
               className={cn(
                 'rounded-xl px-2 py-1.5 text-center',

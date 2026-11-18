@@ -1,10 +1,9 @@
 import { useSyncExternalStore } from 'react'
-import { useNotifications } from './hooks'
 
 /*
- * "New since you last looked" for the bell in the top bar (16/11). The ERD has no read flag on Notifications,
- * so this is per browser: the time the user last opened the Notifications page, kept in localStorage.
- * Nothing is sent to the server; a cleared browser simply shows the latest notifications as new again.
+ * "New since you last marked them read" for the bell in the top bar. The ERD has no read flag on Notifications, so
+ * this is per browser: the time of the newest notification the user marked as read, kept in localStorage.
+ * Nothing is sent to the server; another browser or a cleared one shows the latest notifications as new again.
  */
 const KEY = 'smartmaint.notificationsSeenAt'
 const EVENT = 'smartmaint:notifications-seen'
@@ -26,7 +25,7 @@ function subscribe(onChange: () => void) {
   }
 }
 
-/** Called by the Notifications page once the list has loaded. */
+/** "Mark all as read": everything up to this notification stops counting as new. */
 export function markNotificationsSeen(latestSentAt: string) {
   try {
     if (latestSentAt > read()) localStorage.setItem(KEY, latestSentAt)
@@ -36,9 +35,7 @@ export function markNotificationsSeen(latestSentAt: string) {
   window.dispatchEvent(new Event(EVENT))
 }
 
-/** How many of the latest notifications arrived after the user last opened the list. */
-export function useUnseenNotifications() {
-  const seen = useSyncExternalStore(subscribe, read, () => '')
-  const list = useNotifications()
-  return (list.data?.items ?? []).filter((n) => n.sentAt > seen).length
+/** Notifications sent after this time are new. */
+export function useNotificationsSeenAt() {
+  return useSyncExternalStore(subscribe, read, () => '')
 }

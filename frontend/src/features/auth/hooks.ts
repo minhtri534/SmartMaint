@@ -1,6 +1,7 @@
 import { useMutation } from '@tanstack/react-query'
 import { createContext, useContext } from 'react'
 import { authApi } from './api'
+import { markJustSignedIn } from './just-signed-in'
 import type { LoginResponse, CurrentUser } from './types'
 
 export type SignOutReason = 'manual' | 'session_expired'
@@ -25,7 +26,13 @@ export function useAuth(): AuthContextValue {
 
 export function useLogin() {
   const { acceptSession } = useAuth()
-  return useMutation({ mutationFn: authApi.login, onSuccess: acceptSession })
+  return useMutation({
+    mutationFn: authApi.login,
+    onSuccess: (session) => {
+      markJustSignedIn()
+      acceptSession(session)
+    },
+  })
 }
 
 export function useChangePassword() {

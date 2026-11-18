@@ -4,7 +4,7 @@ import { cn } from '@/shared/utils/cn'
 import { Spinner } from './Spinner'
 
 /**
- * primary   — near-black fill. ONE per screen: the main job (Approve, Send request, Report completed).
+ * primary   — the blue-to-cyan of the Sign in button. ONE per screen: the main job (Approve, Send request, Report completed).
  * secondary — white with a 1px border: every other action.
  * ghost     — text only: "Back", "Reset demo data".
  * danger    — outlined in the negative colour: destructive actions (Reject, Cancel case, Decline).
@@ -14,7 +14,7 @@ type Variant = 'primary' | 'secondary' | 'ghost' | 'danger'
 // ui/mercato-style: buttons are raised keys (a light top edge, a short shadow under them).
 const VARIANTS: Record<Variant, string> = {
   primary:
-    'bg-primary text-on-primary hover:bg-primary-hover border border-black/20 shadow-[inset_0_1px_0_rgb(255_255_255/0.18),0_2px_6px_-2px_rgb(0_0_0/0.45)]',
+    'brand-fill border border-transparent font-semibold shadow-[0_2px_8px_-2px_rgb(30_130_220/0.45)]',
   secondary: 'bump text-ink hover:bg-raised',
   ghost: 'border border-transparent text-ink hover:bg-raised',
   danger: 'border border-negative/40 bg-surface text-negative hover:bg-pill-negative-bg',

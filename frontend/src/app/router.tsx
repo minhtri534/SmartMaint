@@ -26,7 +26,6 @@ import { ForbiddenPage, NotFoundPage, RouteErrorPage } from '@/features/errors/p
 import { FacilityTreePage } from '@/features/facilities'
 import { HomePage } from '@/features/home/pages/HomePage'
 import { ChecklistsPage, PlanDetailPage, PlanFormPage, PlansPage } from '@/features/maintenance'
-import { NotificationsPage } from '@/features/notifications'
 import { SlaSettingsPage } from '@/features/settings'
 import { AppLayout } from '@/shared/layout/AppLayout'
 import { AuthLayout } from '@/shared/layout/AuthLayout'
@@ -187,8 +186,6 @@ export const router = createBrowserRouter([
           })),
           // AST-07: every role may scan a label
           { path: paths.qrLanding, element: <QrLandingPage /> },
-          // Core — every role (NotificationsController)
-          { path: paths.notifications, element: <NotificationsPage /> },
           // Core — Administrator (AccountsController, AuditLogsController, PriorityLevelsController: Admin)
           ...[
             { path: paths.accounts, element: <AccountListPage /> },

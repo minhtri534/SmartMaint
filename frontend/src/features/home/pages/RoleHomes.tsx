@@ -308,7 +308,7 @@ export function TechnicianHome() {
               to={`${paths.workOrders}?tab=done`}
             />
           </div>
-          <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
             <Rise index={4}>
               <Card>
                 <PanelHeader title="Your next 7 days" />
