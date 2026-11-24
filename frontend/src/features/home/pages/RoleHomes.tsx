@@ -24,7 +24,7 @@ import {
   PanelHeader,
   Rise,
 } from '@/shared/ui'
-import { formatDateTime, formatRelative } from '@/shared/utils/format'
+import { formatDate, formatDateTime, formatRelative } from '@/shared/utils/format'
 import { BuildingFloors } from '../components/BuildingFloors'
 import { BreakdownDonut, RequestTracker } from '../components/CustomerViz'
 import { BuildingLeague, EmergencyResponse, ThroughputArea } from '../components/ManagerViz'
@@ -327,17 +327,21 @@ export function TechnicianHome() {
               <CardHeader title="By deadline" aside="soonest first" />
               <CaseList
                 rows={byDeadline.slice(0, 8)}
-                // Meeting 07/11: when each job is planned to start, then where its deadline stands.
+                // Meeting 07/11 and note 18/11: every job shows when it starts, then where its deadline stands.
                 note={(c) =>
                   [
-                    c.plannedStartAt && `starts ${formatDateTime(c.plannedStartAt)}`,
+                    c.plannedStartAt
+                      ? `starts ${formatDateTime(c.plannedStartAt)}`
+                      : 'start not set',
                     isOverdue(c)
                       ? 'overdue'
                       : c.dueAt
                         ? `due ${formatDateTime(c.dueAt)}`
-                        : c.isEmergencyFlow
-                          ? 'emergency'
-                          : 'deadline starts with the work',
+                        : c.expectedDueAt
+                          ? `expected due ${formatDateTime(c.expectedDueAt)}`
+                          : c.isEmergencyFlow
+                            ? 'emergency'
+                            : 'not scheduled yet',
                   ]
                     .filter(Boolean)
                     .join(' · ')
@@ -389,24 +393,23 @@ export function StaffHome() {
       <CasesState cases={cases} />
       {cases.data && (
         <>
+          {/* Meeting note 18/11: what needs the staff member comes first. */}
           <Rise index={0}>
+            <AttentionList limit={6} />
+          </Rise>
+          <Rise index={1}>
             <CasePipeline cases={data} />
           </Rise>
           <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
             <Rise index={3}>
               <BuildingFloors cases={data} />
             </Rise>
-            <div className="flex flex-col gap-5">
-              <Rise index={4}>
-                <Card>
-                  <PanelHeader title="Urgency of open cases" />
-                  <UrgencyMix cases={data} now={cases.dataUpdatedAt} />
-                </Card>
-              </Rise>
-              <Rise index={5}>
-                <AttentionList limit={6} />
-              </Rise>
-            </div>
+            <Rise index={4}>
+              <Card>
+                <PanelHeader title="Urgency of open cases" />
+                <UrgencyMix cases={data} now={cases.dataUpdatedAt} />
+              </Card>
+            </Rise>
           </div>
         </>
       )}
@@ -460,7 +463,11 @@ export function ManagerHome() {
       <div className="grid items-stretch gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <Rise index={4}>
           <Card className="h-full">
-            <PanelHeader title="Keeping up · last 12 weeks" />
+            <PanelHeader
+              title="Keeping up"
+              subtitle={`Last 12 weeks · ${formatDate(quarter.from)} – ${formatDate(quarter.to)}`}
+              help="Cases reported each week (came in) against cases reported done (finished). When more come in than are finished, the backlog grows."
+            />
             {last12w.data ? (
               <ThroughputArea weekly={last12w.data.weekly} />
             ) : (
@@ -470,7 +477,11 @@ export function ManagerHome() {
         </Rise>
         <Rise index={5}>
           <Card className="flex h-full flex-col">
-            <PanelHeader title="On time, 7 days" />
+            <PanelHeader
+              title="On time"
+              subtitle="Last 7 days"
+              help="Share of deadlines met: cases reported done by their deadline, out of those done in the 7 days plus those still open whose deadline passed in them. Open now and past deadline are counted at this moment."
+            />
             <div className="flex flex-1 items-center justify-center">
               <Gauge
                 value={last7.data?.current.onTimeRate ?? null}
@@ -490,9 +501,15 @@ export function ManagerHome() {
       <div className="grid items-start gap-5 lg:grid-cols-2">
         <Rise index={6}>
           <Card>
-            <PanelHeader title="Buildings, ranked by on time" />
+            <PanelHeader
+              title="Buildings"
+              subtitle={`Ranked by on time · last 12 weeks, ${formatDate(quarter.from)} – ${formatDate(quarter.to)}`}
+              help="Each building's share of deadlines met in the last 12 weeks. Open and late are counted now. A long list scrolls inside the card."
+            />
             {last12w.data ? (
-              <BuildingLeague buildings={last12w.data.byBuilding} />
+              <div className="-mr-2 max-h-[360px] overflow-y-auto pr-2">
+                <BuildingLeague buildings={last12w.data.byBuilding} />
+              </div>
             ) : (
               <LoadingBlock rows={3} />
             )}
@@ -500,7 +517,11 @@ export function ManagerHome() {
         </Rise>
         <Rise index={7}>
           <Card>
-            <PanelHeader title="Emergency response · 12 weeks" />
+            <PanelHeader
+              title="Emergency response"
+              subtitle={`Last 12 weeks · ${formatDate(quarter.from)} – ${formatDate(quarter.to)}`}
+              help="Average time from when a case became an emergency to the staff acknowledging it, and to the technician reporting it fixed."
+            />
             {last12w.data ? (
               <EmergencyResponse e={last12w.data.emergency} />
             ) : (
@@ -510,7 +531,7 @@ export function ManagerHome() {
         </Rise>
       </div>
       <Rise index={8}>
-        <AttentionList limit={8} />
+        <AttentionList limit={8} viewAll />
       </Rise>
     </div>
   )

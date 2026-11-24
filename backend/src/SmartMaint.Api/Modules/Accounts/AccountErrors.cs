@@ -11,14 +11,11 @@ internal static class AccountErrors
     public static AppException UsernameTaken() =>
         new(ErrorKind.Conflict, "account.username_taken", "This username is already used.");
 
+    public static AppException PhoneTaken() =>
+        new(ErrorKind.Conflict, "account.phone_taken", "Another account already has this phone number.");
+
     public static AppException EmailTaken() =>
         new(ErrorKind.Conflict, "account.email_taken", "This e-mail is already used by another account.");
-
-    public static AppException UnknownRoom() =>
-        new(ErrorKind.BadRequest, "account.unknown_room", "Choose the customer's room.");
-
-    public static AppException CommonAreaRoom() =>
-        new(ErrorKind.BadRequest, "account.common_area_room", "A customer rents a room, not a common area.");
 
     public static AppException UnknownSpecialty() =>
         new(ErrorKind.BadRequest, "account.unknown_specialty", "One of the specialties does not exist.");
@@ -29,10 +26,6 @@ internal static class AccountErrors
     public static AppException ActionNotAllowed() =>
         new(ErrorKind.Conflict, "account.action_not_allowed",
             "This action is not possible for this account any more. Reload the page.");
-
-    public static AppException HasHistory() =>
-        new(ErrorKind.Conflict, "account.has_history",
-            "This account already has history in its role. Deactivate it and create a new account instead.");
 
     public static AppException OpenWork(int count) =>
         new(ErrorKind.Conflict, "account.open_work",

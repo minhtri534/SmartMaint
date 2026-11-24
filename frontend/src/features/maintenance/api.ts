@@ -6,7 +6,7 @@ import type {
   PlanDetail,
   PlanRequest,
   PlanSummary,
-  ServiceTypeOption,
+  PlanWorkOrder,
   TechnicianOption,
 } from './types'
 
@@ -30,10 +30,13 @@ export const maintenanceApi = {
   plans: () => apiClient.get<PlanSummary[]>('/maintenance/plans').then((r) => r.data),
   /** GET /api/maintenance/plans/{id} — PM-03 */
   plan: (id: number) => apiClient.get<PlanDetail>(`/maintenance/plans/${id}`).then((r) => r.data),
+  /** GET /api/maintenance/plans/{id}/work-orders — the "Work orders" tab */
+  workOrders: (id: number) =>
+    apiClient.get<PlanWorkOrder[]>(`/maintenance/plans/${id}/work-orders`).then((r) => r.data),
   /** POST /api/maintenance/plans — PM-02, Staff */
   createPlan: (body: PlanRequest) =>
     apiClient.post<PlanDetail>('/maintenance/plans', body).then((r) => r.data),
-  /** PUT /api/maintenance/plans/{id} — PM-02, Staff (back to approval) */
+  /** PUT /api/maintenance/plans/{id} — PM-02, Staff (back to approval, unless only end days moved) */
   updatePlan: ({ id, ...body }: Id & PlanRequest) =>
     apiClient.put<PlanDetail>(`/maintenance/plans/${id}`, body).then((r) => r.data),
   /** POST /api/maintenance/plans/{id}/approve — Manager */
@@ -42,13 +45,13 @@ export const maintenanceApi = {
   /** POST /api/maintenance/plans/{id}/reject — Manager */
   reject: ({ id, reason }: Id & { reason: string }) =>
     apiClient.post<PlanDetail>(`/maintenance/plans/${id}/reject`, { reason }).then((r) => r.data),
-  /** POST /api/maintenance/plans/{id}/pause | resume | end — Staff */
+  /** POST /api/maintenance/plans/{id}/pause | resume | archive — Staff */
   pause: ({ id }: Id) =>
     apiClient.post<PlanDetail>(`/maintenance/plans/${id}/pause`).then((r) => r.data),
   resume: ({ id }: Id) =>
     apiClient.post<PlanDetail>(`/maintenance/plans/${id}/resume`).then((r) => r.data),
-  end: ({ id }: Id) =>
-    apiClient.post<PlanDetail>(`/maintenance/plans/${id}/end`).then((r) => r.data),
+  archive: ({ id }: Id) =>
+    apiClient.post<PlanDetail>(`/maintenance/plans/${id}/archive`).then((r) => r.data),
 
   /** GET /api/asset-register (the caller's buildings) */
   assets: () =>
@@ -57,8 +60,6 @@ export const maintenanceApi = {
       .then((r) => r.data.items),
   /** GET /api/technicians */
   technicians: () => apiClient.get<TechnicianOption[]>('/technicians').then((r) => r.data),
-  /** GET /api/service-types */
-  serviceTypes: () => apiClient.get<ServiceTypeOption[]>('/service-types').then((r) => r.data),
 }
 
 export const maintenanceKeys = {
@@ -66,7 +67,7 @@ export const maintenanceKeys = {
   checklists: ['maintenance', 'checklists'] as const,
   plans: ['maintenance', 'plans'] as const,
   plan: (id: number) => ['maintenance', 'plan', id] as const,
+  workOrders: (id: number) => ['maintenance', 'plan', id, 'work-orders'] as const,
   assets: ['maintenance', 'ref', 'assets'] as const,
   technicians: ['maintenance', 'ref', 'technicians'] as const,
-  serviceTypes: ['maintenance', 'ref', 'service-types'] as const,
 }

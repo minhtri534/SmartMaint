@@ -11,12 +11,10 @@ const code = z
 const description = z.string().trim().max(300)
 
 export const caseCategorySchema = z.object({
-  groupName: name(60),
   name: name(100),
   description,
-  isEmergency: z.boolean(),
-  defaultPriority: z.enum(['emergency', 'high', 'normal', 'low']),
-  photoRequired: z.boolean(),
+  /** '' = every asset type. */
+  assetTypeId: z.string(),
 })
 export type CaseCategoryValues = z.infer<typeof caseCategorySchema>
 

@@ -30,19 +30,11 @@ import {
   useServiceTypeSuggestion,
 } from '../hooks'
 import { newRequestSchema, type NewRequestFormValues } from '../schemas'
-import {
-  URGENCIES,
-  URGENCY_LABELS,
-  type AssetLookup,
-  type Building,
-  type ServiceType,
-  type Urgency,
-} from '../types'
+import { URGENCIES, URGENCY_LABELS, type AssetLookup, type Building, type Urgency } from '../types'
 
 const EMPTY: NewRequestFormValues = {
-  serviceGroup: '',
   serviceTypeId: '',
-  urgency: '',
+  urgency: 'normal',
   buildingId: '',
   floorId: '',
   roomId: '',
@@ -60,15 +52,12 @@ const URGENCY_HINTS: Record<Urgency, string> = {
   low: 'Cosmetic or can wait',
 }
 
-/** An emergency problem type is always an emergency; otherwise its default urgency is only a starting point. */
-const urgencyOf = (s: ServiceType): Urgency => (s.isEmergency ? 'emergency' : s.defaultUrgency)
-
 /**
- * EMP-02 New request (F3 step ①). Meeting 07/11: the customer chooses the category and the urgency (the staff
- * corrects them on approval), and names the asset by its code or finds it by place + a keyword.
- * With ?from=<id> it is the "Submit again" form after a rejection (N6): the old content is filled in and a NEW case
- * is created. With ?roomId=&assetId= (QR label, AST-07) the place and the asset are filled in. The server only offers
- * the customer's own room and the common areas of their building.
+ * EMP-02 New request (F3 step ①). The customer names the asset by its code or finds it by place + a keyword, in any
+ * building (meeting note 18/11). The asset decides which fault categories are offered; the urgency starts at Normal.
+ * The staff correct both on approval. With ?from=<id> it is the "Submit again" form after a rejection (N6): the old
+ * content is filled in and a NEW case is created. With ?roomId=&assetId= (QR label, AST-07) the place and the asset are
+ * filled in.
  */
 export function NewRequestPage() {
   const navigate = useNavigate()
@@ -109,7 +98,6 @@ export function NewRequestPage() {
     const service = serviceTypes.data.find((s) => s.id === c.serviceTypeId)
     reset({
       ...EMPTY,
-      serviceGroup: service?.groupName ?? '',
       serviceTypeId: service ? String(service.id) : '',
       urgency: c.urgency,
       buildingId: place ? String(place.buildingId) : '',
@@ -139,27 +127,36 @@ export function NewRequestPage() {
 
   // Selects whose options depend on another field also get value={...}: their options appear one render
   // later, so the DOM must re-apply the form value then (AI "Use this", "Submit again" pre-fill, asset code).
-  const [group, serviceTypeId, urgency, buildingId, floorId, roomId, assetId] = useWatch({
+  const [serviceTypeId, urgency, buildingId, floorId, roomId, assetId] = useWatch({
     control,
-    name: [
-      'serviceGroup',
-      'serviceTypeId',
-      'urgency',
-      'buildingId',
-      'floorId',
-      'roomId',
-      'assetId',
-    ],
+    name: ['serviceTypeId', 'urgency', 'buildingId', 'floorId', 'roomId', 'assetId'],
   })
   const assets = useAssets(roomId ? Number(roomId) : null)
 
+  // The faults of the chosen asset's type, plus the ones that apply to every type.
+  const assetTypeId =
+    assets.data?.find((a) => String(a.id) === assetId)?.typeId ??
+    (found && String(found.id) === assetId ? found.typeId : undefined)
+  const faults =
+    assetTypeId === undefined
+      ? []
+      : (serviceTypes.data ?? []).filter(
+          (s) => s.assetTypeId === null || s.assetTypeId === assetTypeId,
+        )
+
   // Leader 16/11: the AI suggestion lives in the assistant chat. While this page is open the chat offers
   // "Suggest a category from my description"; its card fills the form only when the customer presses "Use this".
-  const types = serviceTypes.data
   useAssistantAction(
     'Suggest a category from my description',
-    types
+    serviceTypes.data
       ? async (): Promise<AssistantCard> => {
+          if (faults.length === 0) {
+            return {
+              title: 'Choose the asset first',
+              detail: 'The fault categories depend on the asset that has the problem.',
+              tips: [],
+            }
+          }
           const description = getValues('description').trim()
           if (!description) {
             return {
@@ -168,8 +165,8 @@ export function NewRequestPage() {
               tips: [],
             }
           }
-          const result = await suggestion.mutateAsync({ description, serviceTypes: types })
-          const type = types.find((t) => t.id === result.serviceTypeId)
+          const result = await suggestion.mutateAsync({ description, serviceTypes: faults })
+          const type = faults.find((t) => t.id === result.serviceTypeId)
           const note =
             result.source === 'rules'
               ? 'The AI is offline, so this was matched by keywords.'
@@ -182,10 +179,9 @@ export function NewRequestPage() {
               note,
             }
           }
-          // The AI may judge this description more or less urgent than the type's default; an emergency type stays one.
-          const urgency = type.isEmergency ? 'emergency' : (result.urgency ?? urgencyOf(type))
+          const urgency = result.urgency ?? 'normal'
           return {
-            title: `${type.groupName} · ${type.name}`,
+            title: type.name,
             detail: `Urgency: ${URGENCY_LABELS[urgency]}`,
             tips: result.tips,
             note,
@@ -193,7 +189,6 @@ export function NewRequestPage() {
               label: 'Use this',
               doneLabel: 'Filled in the form',
               run: () => {
-                setValue('serviceGroup', type.groupName)
                 setValue('serviceTypeId', String(type.id), { shouldValidate: true })
                 setValue('urgency', urgency, { shouldValidate: true })
               },
@@ -208,13 +203,13 @@ export function NewRequestPage() {
     return <Alert>{(serviceTypes.error ?? buildings.error)?.message}</Alert>
   }
 
-  const groups = [...new Set(serviceTypes.data.map((s) => s.groupName))]
-  const service = serviceTypes.data.find((s) => String(s.id) === serviceTypeId)
   const building = buildings.data.find((b) => String(b.id) === buildingId)
   const floor = building?.floors.find((f) => String(f.id) === floorId)
 
-  const chooseType = (s: ServiceType | undefined) => {
-    if (s) setValue('urgency', urgencyOf(s), { shouldValidate: !!errors.urgency })
+  /** Another asset may not have the chosen fault. */
+  const keepFaultFor = (typeId: number | undefined) => {
+    const fault = serviceTypes.data.find((s) => String(s.id) === getValues('serviceTypeId'))
+    if (fault?.assetTypeId && fault.assetTypeId !== typeId) setValue('serviceTypeId', '')
   }
 
   // Asset code: the place comes with the asset, so the customer does not look for the room.
@@ -230,14 +225,14 @@ export function NewRequestPage() {
       onSuccess: (asset) => {
         const place = findRoom(buildings.data, asset.location.roomId)
         if (asset.isRetired) setCodeError('This asset is no longer in service.')
-        else if (!asset.canReport || !place)
-          setCodeError('This asset is not in your room or a common area of your building.')
+        else if (!place) setCodeError('No asset has this code.')
         else {
           setValue('buildingId', String(place.buildingId))
           setValue('floorId', String(place.floorId))
           setValue('roomId', String(asset.location.roomId), { shouldValidate: !!errors.roomId })
-          setValue('assetId', String(asset.id))
+          setValue('assetId', String(asset.id), { shouldValidate: !!errors.assetId })
           setFound(asset)
+          keepFaultFor(asset.typeId)
         }
       },
       onError: (error) =>
@@ -249,14 +244,11 @@ export function NewRequestPage() {
     if (from === 'building') setValue('floorId', '')
     if (from !== 'room') setValue('roomId', '')
     setValue('assetId', '')
+    setValue('serviceTypeId', '')
     setFound(null)
   }
 
   const onSubmit = handleSubmit((values) => {
-    if (service?.photoRequired && values.photos.length === 0) {
-      setError('photos', { message: `"${service.name}" needs at least one photo.` })
-      return
-    }
     create.mutate(
       {
         title: values.title,
@@ -264,7 +256,7 @@ export function NewRequestPage() {
         serviceTypeId: Number(values.serviceTypeId),
         urgency: values.urgency as Urgency,
         roomId: Number(values.roomId),
-        assetId: values.assetId ? Number(values.assetId) : null,
+        assetId: Number(values.assetId),
         photos: values.photos,
       },
       {
@@ -292,105 +284,6 @@ export function NewRequestPage() {
       >
         <Card padding="none" className="flex flex-col">
           <section className="flex flex-col gap-4 p-5 sm:p-6">
-            <h2 className="text-section font-semibold">What is wrong?</h2>
-            <TextField
-              label="Short title"
-              placeholder="e.g. Air conditioner blows warm air"
-              error={errors.title?.message}
-              {...register('title')}
-            />
-            <TextArea
-              label="Description"
-              rows={5}
-              placeholder="What happens, exactly where, and since when?"
-              error={errors.description?.message}
-              {...register('description')}
-            />
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Select
-                label="Category"
-                placeholder="Choose…"
-                hint="Electrical, water, air conditioning…"
-                error={errors.serviceGroup?.message}
-                {...register('serviceGroup', { onChange: () => setValue('serviceTypeId', '') })}
-              >
-                {groups.map((g) => (
-                  <option key={g} value={g}>
-                    {g}
-                  </option>
-                ))}
-              </Select>
-              <Select
-                label="Problem"
-                placeholder={group ? 'Choose…' : 'Choose a category first'}
-                disabled={!group}
-                error={errors.serviceTypeId?.message}
-                {...register('serviceTypeId', {
-                  onChange: (e) =>
-                    chooseType(serviceTypes.data.find((s) => String(s.id) === e.target.value)),
-                })}
-                value={serviceTypeId}
-              >
-                {serviceTypes.data
-                  .filter((s) => s.groupName === group)
-                  .map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-              </Select>
-            </div>
-            {service?.isEmergency ? (
-              <Alert>
-                Emergency problem: it goes straight to the emergency team (F4), not the normal
-                queue. If anyone is in danger, also call the building hotline now.
-              </Alert>
-            ) : (
-              <Select
-                label="Urgency"
-                placeholder="Choose…"
-                hint={
-                  urgency
-                    ? `${URGENCY_HINTS[urgency as Urgency]}. The staff checks it when approving.`
-                    : 'Filled in from the problem; change it if needed. The staff checks it when approving.'
-                }
-                error={errors.urgency?.message}
-                {...register('urgency')}
-                value={urgency}
-              >
-                {URGENCIES.map((u) => (
-                  <option key={u} value={u}>
-                    {URGENCY_LABELS[u]}
-                  </option>
-                ))}
-              </Select>
-            )}
-            {!service?.isEmergency && urgency === 'emergency' && (
-              <Alert tone="info">
-                The staff confirms an emergency before it goes to the emergency team. If anyone is
-                in danger, call the building hotline now.
-              </Alert>
-            )}
-            <Controller
-              control={control}
-              name="photos"
-              render={({ field }) => (
-                <PhotoPicker
-                  label={service?.photoRequired ? 'Photos *' : 'Photos'}
-                  value={field.value}
-                  onChange={field.onChange}
-                  error={errors.photos?.message}
-                  hint={
-                    service?.photoRequired
-                      ? `"${service.name}" needs at least one photo.`
-                      : 'Optional, up to 5.'
-                  }
-                />
-              )}
-            />
-          </section>
-
-          <section className="border-border flex flex-col gap-4 border-t p-5 sm:p-6">
             <h2 className="text-section font-semibold">Which asset, and where?</h2>
             <div className="flex flex-col gap-2">
               <div className="flex items-end gap-2">
@@ -466,7 +359,7 @@ export function NewRequestPage() {
                   ))}
                 </Select>
                 <Select
-                  label="Room or area"
+                  label="Room"
                   placeholder="Choose…"
                   disabled={!floor}
                   error={errors.roomId?.message}
@@ -484,13 +377,80 @@ export function NewRequestPage() {
                 assets={roomId ? assets.data : undefined}
                 value={assetId}
                 disabled={!roomId}
+                error={errors.assetId?.message}
                 onChange={(id) => {
-                  setValue('assetId', id)
+                  setValue('assetId', id, { shouldValidate: !!errors.assetId })
                   if (!id) setFound(null)
                   else setCode(formatAssetCode(Number(id)))
+                  keepFaultFor(assets.data?.find((a) => String(a.id) === id)?.typeId)
                 }}
               />
             </div>
+          </section>
+
+          <section className="border-border flex flex-col gap-4 border-t p-5 sm:p-6">
+            <h2 className="text-section font-semibold">What is wrong?</h2>
+            <TextField
+              label="Short title"
+              placeholder="e.g. Air conditioner blows warm air"
+              error={errors.title?.message}
+              {...register('title')}
+            />
+            <TextArea
+              label="Description"
+              rows={5}
+              placeholder="What happens, exactly where, and since when?"
+              error={errors.description?.message}
+              {...register('description')}
+            />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Select
+                label="Fault category"
+                placeholder={assetId ? 'Choose…' : 'Choose the asset first'}
+                disabled={!assetId}
+                error={errors.serviceTypeId?.message}
+                {...register('serviceTypeId')}
+                value={serviceTypeId}
+              >
+                {faults.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </Select>
+              <Select
+                label="Urgency"
+                hint={`${URGENCY_HINTS[urgency as Urgency]}. The staff checks it when approving.`}
+                error={errors.urgency?.message}
+                {...register('urgency')}
+                value={urgency}
+              >
+                {URGENCIES.map((u) => (
+                  <option key={u} value={u}>
+                    {URGENCY_LABELS[u]}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            {urgency === 'emergency' && (
+              <Alert tone="info">
+                The staff confirms an emergency before work starts. If anyone is in danger, call the
+                building hotline now.
+              </Alert>
+            )}
+            <Controller
+              control={control}
+              name="photos"
+              render={({ field }) => (
+                <PhotoPicker
+                  label="Photos"
+                  value={field.value}
+                  onChange={field.onChange}
+                  error={errors.photos?.message}
+                  hint="Optional, up to 5."
+                />
+              )}
+            />
           </section>
 
           <div className="border-border flex flex-col gap-3 border-t px-5 py-4 sm:flex-row sm:items-center sm:justify-end sm:px-6">
@@ -540,7 +500,7 @@ export function NewRequestPage() {
 const NEXT_STEPS = [
   {
     title: 'The facility staff reviews it',
-    text: 'Checks the category and urgency, then approves it or sends it back with the reason.',
+    text: 'Checks the fault and urgency, then approves it or sends it back with the reason.',
   },
   {
     title: 'A technician is assigned',

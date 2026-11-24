@@ -38,16 +38,23 @@ export function useSpecialties() {
  * Every account mutation refreshes all account queries (list, detail, overview) and the audit log.
  * Usage: const deactivate = useAccountMutation(accountsApi.deactivate)
  */
+/** After a delete the account leaves the cache first, so its page does not ask for it again. */
 export function useAccountMutation<TVariables, TResult>(
   fn: (variables: TVariables) => Promise<TResult>,
+  options: { deletes?: boolean } = {},
 ) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: fn,
-    onSuccess: () =>
-      Promise.all([
+    onSuccess: (_result, variables) => {
+      if (options.deletes)
+        queryClient.removeQueries({
+          queryKey: accountKeys.detail((variables as { id: number }).id),
+        })
+      return Promise.all([
         queryClient.invalidateQueries({ queryKey: accountKeys.all }),
         queryClient.invalidateQueries({ queryKey: ['audit'] }),
-      ]),
+      ])
+    },
   })
 }

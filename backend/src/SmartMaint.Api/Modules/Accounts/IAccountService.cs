@@ -24,12 +24,6 @@ public interface IAccountService
     /// <summary>ADM-03 edit.</summary>
     Task<AccountDetailResponse> UpdateAsync(long id, UpdateAccountRequest request, CancellationToken cancellationToken);
 
-    /// <summary>
-    /// DLG-16. Only while the account has no history in its role (no case, history row or audit row): the account is
-    /// made again in the new role's table with the same username and password, so its <b>id changes</b>.
-    /// </summary>
-    Task<AccountDetailResponse> ChangeRoleAsync(long id, ChangeRoleRequest request, CancellationToken cancellationToken);
-
     /// <summary>DLG-16. Blocked for yourself, for the last active admin and for a technician holding open cases.</summary>
     Task<AccountDetailResponse> DeactivateAsync(long id, CancellationToken cancellationToken);
 
@@ -40,4 +34,7 @@ public interface IAccountService
 
     /// <summary>DLG-16: ends a BR-18 sign-in lock early.</summary>
     Task<AccountDetailResponse> UnlockAsync(long id, CancellationToken cancellationToken);
+
+    /// <summary>Only an account with no data at all (meeting note 18/11); otherwise deactivate it.</summary>
+    Task DeleteAsync(long id, CancellationToken cancellationToken);
 }

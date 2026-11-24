@@ -39,12 +39,23 @@ public sealed class EmergencyTests : CaseTestBase
     private bool Told(Account user, string text) => Db.Notifications.Any(n => n.UserId == user.Id && n.Details.Contains(text));
 
     /// <summary>
-    /// A burst pipe reported by the customer of room 501, driven to <paramref name="target"/> by the staff and the
-    /// technician. At Approved, <paramref name="named"/> = the staff already named the technician (with Edit).
+    /// An emergency nobody has acknowledged yet (what a dangerous failed checklist item makes: a customer's emergency
+    /// waits for the staff's approval), driven to <paramref name="target"/> by the staff and the technician. At Approved,
+    /// <paramref name="named"/> = the staff already named the technician (with Edit).
     /// </summary>
     private async Task<long> EmergencyAtAsync(CaseStatus target, bool named = false)
     {
-        var id = (await NewCaseAsync(BurstPipe)).Id;
+        var id = (await NewCaseAsync()).Id;
+        var entity = Db.Cases.Single(c => c.Id == id);
+        entity.Status = CaseStatus.Approved;
+        CaseService.EnterEmergency(entity, Db.PriorityLevels.Single(p => p.Code == CasePriority.Emergency), Clock.GetUtcNow(), acknowledged: false);
+        entity.Tasks.Add(new SmartMaint.Api.Entities.Maintenance.CaseTask
+        {
+            Name = entity.Title,
+            Status = SmartMaint.Api.Entities.Maintenance.CaseTaskStatus.Pending,
+        });
+        entity.History.Add(new CaseStatusHistory { NewStatus = CaseStatus.Approved, ChangedById = Staff.Id, ChangedAt = Clock.GetUtcNow() });
+        await Db.SaveChangesAsync();
         if (target == CaseStatus.Approved && !named)
         {
             return id;
@@ -52,7 +63,7 @@ public sealed class EmergencyTests : CaseTestBase
 
         As(Staff);
         await Sut.AcknowledgeAsync(id, default);
-        await Sut.EditAsync(id, await EditOfAsync(id) with { TechnicianId = Technician.Id }, default);
+        await Sut.ReassignAsync(id, new ReassignRequest(Technician.Id), default);
         if (target == CaseStatus.Approved)
         {
             return id;
@@ -85,12 +96,14 @@ public sealed class EmergencyTests : CaseTestBase
 
     [Fact]
     [Trait(TestType.Key, TestType.Normal)]
-    public async Task Create_Emergency_TellsOnlyThePrimaryStaffFirst()
+    public async Task Create_CustomerChoosesEmergency_TellsEveryStaffMemberOfTheBuilding()
     {
-        await NewCaseAsync(BurstPipe);
+        As(Customer);
 
-        Assert.True(Told(Staff, "EMERGENCY"));
-        Assert.False(Told(_backup, "EMERGENCY"));
+        await Sut.CreateAsync(NewRequest(NotCooling, RoomA) with { Urgency = CasePriority.Emergency }, default);
+
+        Assert.True(Told(Staff, "EMERGENCY request"));
+        Assert.True(Told(_backup, "EMERGENCY request"));
     }
 
     [Fact]
@@ -106,7 +119,7 @@ public sealed class EmergencyTests : CaseTestBase
         Assert.Equal(Clock.Now, result.Emergency!.AcknowledgedAt);
         Assert.Equal(Staff.Id, result.Staff!.Id);
         Assert.DoesNotContain(CaseAction.Acknowledge, result.AllowedActions);
-        Assert.Single(result.History); // meeting 07/11: no history row, the time is on the case
+        Assert.Equal(2, result.History.Count); // meeting 07/11: no new row, the time is on the case
         Assert.True(Told(Customer, "is handling your emergency"));
     }
 
@@ -211,7 +224,7 @@ public sealed class EmergencyTests : CaseTestBase
         var due = (await Sut.GetAsync(id, default)).DueAt;
         Clock.Now = Clock.Now.AddMinutes(20);
 
-        var result = await Sut.EditAsync(id, await EditOfAsync(id) with { TechnicianId = Technician.Id }, default);
+        var result = await Sut.EditAsync(id, await EditOfAsync(id), default);
 
         Assert.True(result.IsEmergencyFlow);
         Assert.Equal(due, result.DueAt);
@@ -234,20 +247,6 @@ public sealed class EmergencyTests : CaseTestBase
 
     [Fact]
     [Trait(TestType.Key, TestType.Boundary)]
-    public async Task MarkSafe_Technician_RecordsTheFirstMilestoneOnce()
-    {
-        var id = await EmergencyAtAsync(CaseStatus.InProgress);
-        Clock.Now = Clock.Now.AddMinutes(25);
-
-        var result = await Sut.MarkSafeAsync(id, default);
-
-        Assert.Equal(Clock.Now, result.Emergency!.MadeSafeAt);
-        Assert.Equal(CaseStatus.InProgress, result.Status);
-        Assert.Equal("case.invalid_transition", await ErrorCodeAsync(() => Sut.MarkSafeAsync(id, default)));
-    }
-
-    [Fact]
-    [Trait(TestType.Key, TestType.Boundary)]
     public async Task SlaReminder_EmergencyNotYetAssigned_IsOverdueTwoHoursAfterTheReport()
     {
         await EmergencyAtAsync(CaseStatus.Approved);
@@ -266,10 +265,9 @@ public sealed class EmergencyTests : CaseTestBase
         var id = await EmergencyAtAsync(CaseStatus.Closed);
         Clock.Now = Clock.Now.AddDays(1);
 
-        var result = await Sut.EditAsync(id, await EditOfAsync(id) with { StatusChange = EditStatusChange.Reopen, Reason = "Water is leaking again from the joint" }, default);
+        var result = await Sut.ReopenAsync(id, new ReasonRequest("Water is leaking again from the joint"), default);
 
         Assert.Equal(Clock.Now.AddHours(2), result.DueAt);
-        Assert.Null(result.Emergency!.MadeSafeAt);
     }
 
     // ----- post-incident report -----

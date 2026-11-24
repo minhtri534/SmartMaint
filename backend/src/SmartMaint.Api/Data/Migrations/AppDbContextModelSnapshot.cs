@@ -129,6 +129,10 @@ namespace SmartMaint.Api.Data.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
 
+                    b.Property<DateTimeOffset?>("ArchivedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("archived_at");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
@@ -298,6 +302,211 @@ namespace SmartMaint.Api.Data.Migrations
                     b.ToTable("asset_categories", (string)null);
                 });
 
+            modelBuilder.Entity("SmartMaint.Api.Entities.Buildings.AssetChangeItem", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Address")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("address");
+
+                    b.Property<long?>("AssetId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("asset_id");
+
+                    b.Property<long?>("BuildingId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("building_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<long?>("FloorId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("floor_id");
+
+                    b.Property<bool?>("HasCopyright")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_copyright");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("key");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("kind");
+
+                    b.Property<long>("ListId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("list_id");
+
+                    b.Property<long?>("ManufacturerId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("manufacturer_id");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("ParentKey")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("parent_key");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer")
+                        .HasColumnName("position");
+
+                    b.Property<long?>("RoomId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("room_id");
+
+                    b.Property<string>("TargetLabel")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("target_label");
+
+                    b.Property<long?>("TypeId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("type_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<DateOnly?>("WarrantyEndDate")
+                        .HasColumnType("date")
+                        .HasColumnName("warranty_end_date");
+
+                    b.HasKey("Id")
+                        .HasName("pk_asset_change_items");
+
+                    b.HasIndex("AssetId")
+                        .HasDatabaseName("ix_asset_change_items_asset_id");
+
+                    b.HasIndex("BuildingId")
+                        .HasDatabaseName("ix_asset_change_items_building_id");
+
+                    b.HasIndex("FloorId")
+                        .HasDatabaseName("ix_asset_change_items_floor_id");
+
+                    b.HasIndex("ManufacturerId")
+                        .HasDatabaseName("ix_asset_change_items_manufacturer_id");
+
+                    b.HasIndex("RoomId")
+                        .HasDatabaseName("ix_asset_change_items_room_id");
+
+                    b.HasIndex("TypeId")
+                        .HasDatabaseName("ix_asset_change_items_type_id");
+
+                    b.HasIndex("ListId", "Key")
+                        .IsUnique()
+                        .HasDatabaseName("ix_asset_change_items_list_id_key");
+
+                    b.ToTable("asset_change_items", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_asset_change_items_kind", "kind IN ('add_building', 'edit_building', 'delete_building', 'add_floor', 'rename_floor', 'delete_floor', 'add_room', 'rename_room', 'delete_room', 'add_asset', 'edit_asset', 'retire_asset', 'delete_asset')");
+                        });
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Buildings.AssetChangeList", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<long?>("BuildingId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("building_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("note");
+
+                    b.Property<string>("RejectReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("reject_reason");
+
+                    b.Property<DateTimeOffset?>("ReviewedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("reviewed_at");
+
+                    b.Property<long?>("ReviewerId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("reviewer_id");
+
+                    b.Property<long>("StaffId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("staff_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset?>("SubmittedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("submitted_at");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.HasKey("Id")
+                        .HasName("pk_asset_change_lists");
+
+                    b.HasIndex("ReviewerId")
+                        .HasDatabaseName("ix_asset_change_lists_reviewer_id");
+
+                    b.HasIndex("StaffId")
+                        .HasDatabaseName("ix_asset_change_lists_staff_id");
+
+                    b.HasIndex("BuildingId", "Status")
+                        .HasDatabaseName("ix_asset_change_lists_building_id_status");
+
+                    b.ToTable("asset_change_lists", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_asset_change_lists_status", "status IN ('draft', 'pending', 'approved', 'rejected')");
+                        });
+                });
+
             modelBuilder.Entity("SmartMaint.Api.Entities.Buildings.AssetType", b =>
                 {
                     b.Property<long>("Id")
@@ -380,6 +589,10 @@ namespace SmartMaint.Api.Data.Migrations
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("now()");
 
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -420,6 +633,10 @@ namespace SmartMaint.Api.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("now()");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
 
                     b.Property<string>("FloorNumber")
                         .IsRequired()
@@ -523,6 +740,10 @@ namespace SmartMaint.Api.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("now()");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
 
                     b.Property<long>("FloorId")
                         .HasColumnType("bigint")
@@ -847,6 +1068,10 @@ namespace SmartMaint.Api.Data.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("rating_stars");
 
+                    b.Property<DateTimeOffset?>("ReassignedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("reassigned_at");
+
                     b.Property<string>("ReplacementModel")
                         .HasMaxLength(150)
                         .HasColumnType("character varying(150)")
@@ -976,6 +1201,14 @@ namespace SmartMaint.Api.Data.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
 
+                    b.Property<DateTimeOffset?>("ArchivedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("archived_at");
+
+                    b.Property<long?>("AssetTypeId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("asset_type_id");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
@@ -1019,6 +1252,9 @@ namespace SmartMaint.Api.Data.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_case_categories");
+
+                    b.HasIndex("AssetTypeId")
+                        .HasDatabaseName("ix_case_categories_asset_type_id");
 
                     b.HasIndex("DefaultPriorityId")
                         .HasDatabaseName("ix_case_categories_default_priority_id");
@@ -1289,6 +1525,10 @@ namespace SmartMaint.Api.Data.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
 
+                    b.Property<long?>("AddedById")
+                        .HasColumnType("bigint")
+                        .HasColumnName("added_by_id");
+
                     b.Property<decimal>("Amount")
                         .HasPrecision(14, 2)
                         .HasColumnType("numeric(14,2)")
@@ -1333,6 +1573,9 @@ namespace SmartMaint.Api.Data.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_costs");
+
+                    b.HasIndex("AddedById")
+                        .HasDatabaseName("ix_costs_added_by_id");
 
                     b.HasIndex("CaseId")
                         .HasDatabaseName("ix_costs_case_id");
@@ -1902,6 +2145,11 @@ namespace SmartMaint.Api.Data.Migrations
                         {
                             Id = 4L,
                             Name = "not_applicable"
+                        },
+                        new
+                        {
+                            Id = 5L,
+                            Name = "moved"
                         });
                 });
 
@@ -1994,7 +2242,7 @@ namespace SmartMaint.Api.Data.Migrations
                         new
                         {
                             Id = 5L,
-                            Name = "ended"
+                            Name = "archived"
                         });
                 });
 
@@ -2176,11 +2424,20 @@ namespace SmartMaint.Api.Data.Migrations
                         .HasColumnType("bigint")
                         .HasColumnName("approving_manager_id");
 
+                    b.Property<DateTimeOffset?>("ArchivedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("archived_at");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("description");
 
                     b.Property<int>("Frequency")
                         .HasColumnType("integer")
@@ -2201,6 +2458,11 @@ namespace SmartMaint.Api.Data.Migrations
                     b.Property<int>("LeadDays")
                         .HasColumnType("integer")
                         .HasColumnName("lead_days");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("name");
 
                     b.Property<string>("RejectReason")
                         .HasMaxLength(500)
@@ -2301,14 +2563,42 @@ namespace SmartMaint.Api.Data.Migrations
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("now()");
 
+                    b.Property<DateOnly?>("EndDate")
+                        .HasColumnType("date")
+                        .HasColumnName("end_date");
+
                     b.Property<decimal?>("EstimatedHours")
                         .HasPrecision(6, 2)
                         .HasColumnType("numeric(6,2)")
                         .HasColumnName("estimated_hours");
 
+                    b.Property<int>("Frequency")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1)
+                        .HasColumnName("frequency");
+
+                    b.Property<long>("FrequencyType")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasDefaultValue(3L)
+                        .HasColumnName("frequency_type_id");
+
+                    b.Property<int>("LeadDays")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(3)
+                        .HasColumnName("lead_days");
+
                     b.Property<long>("PriorityLevelId")
                         .HasColumnType("bigint")
                         .HasColumnName("priority_level_id");
+
+                    b.Property<DateOnly>("StartDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("date")
+                        .HasColumnName("start_date")
+                        .HasDefaultValueSql("CURRENT_DATE");
 
                     b.Property<long>("TriggerId")
                         .HasColumnType("bigint")
@@ -2326,6 +2616,9 @@ namespace SmartMaint.Api.Data.Migrations
                     b.HasIndex("ChecklistId")
                         .HasDatabaseName("ix_maintenance_work_order_details_checklist_id");
 
+                    b.HasIndex("FrequencyType")
+                        .HasDatabaseName("ix_maintenance_work_order_details_frequency_type_id");
+
                     b.HasIndex("PriorityLevelId")
                         .HasDatabaseName("ix_maintenance_work_order_details_priority_level_id");
 
@@ -2334,7 +2627,13 @@ namespace SmartMaint.Api.Data.Migrations
 
                     b.ToTable("maintenance_work_order_details", null, t =>
                         {
+                            t.HasCheckConstraint("ck_maintenance_work_order_details_end_date", "end_date IS NULL OR end_date >= start_date");
+
                             t.HasCheckConstraint("ck_maintenance_work_order_details_estimated_hours", "estimated_hours IS NULL OR estimated_hours > 0");
+
+                            t.HasCheckConstraint("ck_maintenance_work_order_details_frequency", "frequency > 0");
+
+                            t.HasCheckConstraint("ck_maintenance_work_order_details_lead_days", "lead_days >= 0");
                         });
                 });
 
@@ -2439,7 +2738,7 @@ namespace SmartMaint.Api.Data.Migrations
                 {
                     b.HasBaseType("SmartMaint.Api.Entities.Accounts.Account");
 
-                    b.Property<long>("RoomId")
+                    b.Property<long?>("RoomId")
                         .HasColumnType("bigint")
                         .HasColumnName("room_id");
 
@@ -2563,6 +2862,94 @@ namespace SmartMaint.Api.Data.Migrations
                     b.Navigation("Room");
 
                     b.Navigation("Type");
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Buildings.AssetChangeItem", b =>
+                {
+                    b.HasOne("SmartMaint.Api.Entities.Buildings.Asset", "Asset")
+                        .WithMany()
+                        .HasForeignKey("AssetId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_asset_change_items_assets_asset_id");
+
+                    b.HasOne("SmartMaint.Api.Entities.Buildings.Building", "Building")
+                        .WithMany()
+                        .HasForeignKey("BuildingId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_asset_change_items_buildings_building_id");
+
+                    b.HasOne("SmartMaint.Api.Entities.Buildings.Floor", "Floor")
+                        .WithMany()
+                        .HasForeignKey("FloorId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_asset_change_items_floors_floor_id");
+
+                    b.HasOne("SmartMaint.Api.Entities.Buildings.AssetChangeList", "List")
+                        .WithMany("Items")
+                        .HasForeignKey("ListId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_asset_change_items_asset_change_lists_list_id");
+
+                    b.HasOne("SmartMaint.Api.Entities.Buildings.Manufacturer", "Manufacturer")
+                        .WithMany()
+                        .HasForeignKey("ManufacturerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_asset_change_items_manufacturers_manufacturer_id");
+
+                    b.HasOne("SmartMaint.Api.Entities.Buildings.Room", "Room")
+                        .WithMany()
+                        .HasForeignKey("RoomId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_asset_change_items_rooms_room_id");
+
+                    b.HasOne("SmartMaint.Api.Entities.Buildings.AssetType", "Type")
+                        .WithMany()
+                        .HasForeignKey("TypeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_asset_change_items_asset_types_type_id");
+
+                    b.Navigation("Asset");
+
+                    b.Navigation("Building");
+
+                    b.Navigation("Floor");
+
+                    b.Navigation("List");
+
+                    b.Navigation("Manufacturer");
+
+                    b.Navigation("Room");
+
+                    b.Navigation("Type");
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Buildings.AssetChangeList", b =>
+                {
+                    b.HasOne("SmartMaint.Api.Entities.Buildings.Building", "Building")
+                        .WithMany()
+                        .HasForeignKey("BuildingId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_asset_change_lists_buildings_building_id");
+
+                    b.HasOne("SmartMaint.Api.Entities.Accounts.Manager", "Reviewer")
+                        .WithMany()
+                        .HasForeignKey("ReviewerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_asset_change_lists_managers_reviewer_id");
+
+                    b.HasOne("SmartMaint.Api.Entities.Accounts.Staff", "Staff")
+                        .WithMany()
+                        .HasForeignKey("StaffId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_asset_change_lists_staff_staff_id");
+
+                    b.Navigation("Building");
+
+                    b.Navigation("Reviewer");
+
+                    b.Navigation("Staff");
                 });
 
             modelBuilder.Entity("SmartMaint.Api.Entities.Buildings.AssetType", b =>
@@ -2776,12 +3163,20 @@ namespace SmartMaint.Api.Data.Migrations
 
             modelBuilder.Entity("SmartMaint.Api.Entities.Cases.CaseCategory", b =>
                 {
+                    b.HasOne("SmartMaint.Api.Entities.Buildings.AssetType", "AssetType")
+                        .WithMany()
+                        .HasForeignKey("AssetTypeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_case_categories_asset_types_asset_type_id");
+
                     b.HasOne("SmartMaint.Api.Entities.Cases.PriorityLevel", "DefaultPriority")
                         .WithMany()
                         .HasForeignKey("DefaultPriorityId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_case_categories_priority_levels_default_priority_id");
+
+                    b.Navigation("AssetType");
 
                     b.Navigation("DefaultPriority");
                 });
@@ -2861,12 +3256,20 @@ namespace SmartMaint.Api.Data.Migrations
 
             modelBuilder.Entity("SmartMaint.Api.Entities.Cases.Cost", b =>
                 {
+                    b.HasOne("SmartMaint.Api.Entities.Accounts.Account", "AddedBy")
+                        .WithMany()
+                        .HasForeignKey("AddedById")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_costs_accounts_added_by_id");
+
                     b.HasOne("SmartMaint.Api.Entities.Cases.Case", "Case")
                         .WithMany("Costs")
                         .HasForeignKey("CaseId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_costs_cases_case_id");
+
+                    b.Navigation("AddedBy");
 
                     b.Navigation("Case");
                 });
@@ -3077,6 +3480,13 @@ namespace SmartMaint.Api.Data.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_maintenance_work_order_details_case_checklists_checklist_id");
 
+                    b.HasOne("SmartMaint.Api.Entities.Lookup<SmartMaint.Api.Entities.Maintenance.FrequencyUnit>", null)
+                        .WithMany()
+                        .HasForeignKey("FrequencyType")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_maintenance_work_order_details_frequency_types_frequency_ty");
+
                     b.HasOne("SmartMaint.Api.Entities.Cases.PriorityLevel", "PriorityLevel")
                         .WithMany()
                         .HasForeignKey("PriorityLevelId")
@@ -3145,7 +3555,6 @@ namespace SmartMaint.Api.Data.Migrations
                         .WithMany()
                         .HasForeignKey("RoomId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
                         .HasConstraintName("fk_customers_rooms_room_id");
 
                     b.Navigation("Room");
@@ -3179,6 +3588,11 @@ namespace SmartMaint.Api.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_technicians_accounts_id");
+                });
+
+            modelBuilder.Entity("SmartMaint.Api.Entities.Buildings.AssetChangeList", b =>
+                {
+                    b.Navigation("Items");
                 });
 
             modelBuilder.Entity("SmartMaint.Api.Entities.Buildings.Building", b =>

@@ -1,13 +1,18 @@
 import { useState, type ComponentProps, type ReactNode } from 'react'
-import { Link, useNavigate, useParams } from 'react-router'
-import { assetDetailPath, assetEditPath, caseDetailPath, paths, qrLandingPath } from '@/app/paths'
+import { Link, useParams } from 'react-router'
+import {
+  assetChangeDraftPath,
+  assetDetailPath,
+  caseDetailPath,
+  paths,
+  qrLandingPath,
+} from '@/app/paths'
 import { StatusBadge } from '@/features/cases'
 import {
   Badge,
   Button,
   Card,
   CardHeader,
-  ConfirmDialog,
   EmptyBlock,
   ErrorBlock,
   LinkButton,
@@ -16,15 +21,17 @@ import {
 } from '@/shared/ui'
 import { formatAssetCode } from '@/shared/utils/asset-code'
 import { formatDate, formatDateTime } from '@/shared/utils/format'
-import { assetsApi } from '../api'
 import { QrCode } from '../components/QrCode'
 import { qrUrl } from '../qr-url'
-import { useAsset, useAssetMutation } from '../hooks'
+import { useAsset } from '../hooks'
 import type { AssetDetail } from '../types'
 import { AssetStatus } from '../components/AssetStatus'
 import { SurveyDialog } from '../components/SurveyDialog'
 
-/** AST-03 Asset detail: what it is, where, its warranty and its repair history (G5). */
+/**
+ * AST-03 Asset detail: what it is, where, its warranty and its repair history (G5). Nobody edits it here (meeting note
+ * 18/11): the staff of its building propose a change in a change list, a manager approves it.
+ */
 export function AssetDetailPage() {
   const { id } = useParams()
   const asset = useAsset(Number(id))
@@ -41,10 +48,7 @@ export function AssetDetailPage() {
 }
 
 function AssetView({ a }: { a: AssetDetail }) {
-  const navigate = useNavigate()
-  const [confirm, setConfirm] = useState<'retire' | 'delete' | 'survey' | null>(null)
-  const retire = useAssetMutation(assetsApi.retire)
-  const remove = useAssetMutation(assetsApi.remove)
+  const [survey, setSurvey] = useState(false)
   const can = (x: AssetDetail['allowedActions'][number]) => a.allowedActions.includes(x)
 
   const repairs = a.caseCount
@@ -78,23 +82,19 @@ function AssetView({ a }: { a: AssetDetail }) {
         actions={
           <>
             {can('open_survey') && (
-              <Button variant="secondary" onClick={() => setConfirm('survey')}>
+              <Button variant="secondary" onClick={() => setSurvey(true)}>
                 Open survey
               </Button>
             )}
-            {can('delete') && (
-              <Button variant="danger" onClick={() => setConfirm('delete')}>
-                Delete
-              </Button>
-            )}
-            {can('retire') && (
-              <Button variant="secondary" onClick={() => setConfirm('retire')}>
-                Retire
-              </Button>
-            )}
-            {can('edit') && (
-              <LinkButton variant="primary" to={assetEditPath(a.id)}>
-                Edit
+            {can('propose_change') && (
+              <LinkButton
+                variant="primary"
+                to={assetChangeDraftPath({
+                  buildingId: a.location.buildingId,
+                  roomId: a.location.roomId,
+                })}
+              >
+                Propose a change
               </LinkButton>
             )}
           </>
@@ -202,36 +202,7 @@ function AssetView({ a }: { a: AssetDetail }) {
         )}
       </Card>
 
-      {confirm === 'survey' && <SurveyDialog asset={a} onClose={() => setConfirm(null)} />}
-      {confirm === 'retire' && (
-        <ConfirmDialog
-          open
-          onClose={() => setConfirm(null)}
-          title="Retire asset"
-          description="The asset leaves the report form and its QR label stops working. Its history stays."
-          confirmLabel="Retire"
-          onConfirm={() => retire.mutate({ id: a.id }, { onSuccess: () => setConfirm(null) })}
-          loading={retire.isPending}
-          error={retire.error?.message}
-        />
-      )}
-      {confirm === 'delete' && (
-        <ConfirmDialog
-          open
-          onClose={() => setConfirm(null)}
-          title="Delete asset"
-          description="Only an asset that never had a case can be deleted, e.g. one added by mistake."
-          confirmLabel="Delete"
-          onConfirm={() =>
-            remove.mutate(
-              { id: a.id },
-              { onSuccess: () => navigate(paths.assets, { replace: true }) },
-            )
-          }
-          loading={remove.isPending}
-          error={remove.error?.message}
-        />
-      )}
+      {survey && <SurveyDialog asset={a} onClose={() => setSurvey(false)} />}
     </div>
   )
 }

@@ -60,10 +60,16 @@ public class Case : AuditableEntity
 
     /// <summary>
     /// NOT IN ERD v5 (meeting 07/11): this case continues that one after a change of technician. The old case is closed
-    /// with the tasks its technician finished; the unfinished tasks moved here.
+    /// with its whole task list (the unfinished ones marked Moved); copies of the unfinished tasks go on here.
     /// </summary>
     public long? PreviousCaseId { get; set; }
     public Case? PreviousCase { get; set; }
+
+    /// <summary>
+    /// NOT IN ERD v5 (meeting note 18/11): when this case was closed because its work went on in a new case with another
+    /// technician. Such a case is never reopened: the new one is.
+    /// </summary>
+    public DateTimeOffset? ReassignedAt { get; set; }
 
     /// <summary>ERD: TimeSubmitted.</summary>
     public DateTimeOffset SubmittedAt { get; set; }
@@ -236,6 +242,10 @@ public class Cost : AuditableEntity
     /// </summary>
     public string? ReceiptCode { get; set; }
     public string? ReceiptImage { get; set; }
+
+    /// <summary>NOT IN ERD v5 (meeting note 18/11): who entered the line. A technician may edit only their own lines.</summary>
+    public long? AddedById { get; set; }
+    public Account? AddedBy { get; set; }
 }
 
 /// <summary>

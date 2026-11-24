@@ -1,6 +1,15 @@
+import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { caseDetailPath } from '@/app/paths'
-import { EmptyBlock, ErrorBlock, LoadingBlock, PageHeader, Tabs } from '@/shared/ui'
+import {
+  EmptyBlock,
+  ErrorBlock,
+  FilterSelect,
+  LoadingBlock,
+  PageHeader,
+  SearchInput,
+  Tabs,
+} from '@/shared/ui'
 import { formatDateTime, formatDuration } from '@/shared/utils/format'
 import { StatusBadge } from '../components/CaseBadges'
 import { SlaCell } from '../components/SlaTrack'
@@ -25,14 +34,26 @@ export function EmergencyPage() {
   const cases = useCases(30_000)
   const [params, setParams] = useSearchParams()
   const tab = TABS.find((t) => t.value === params.get('tab'))?.value ?? 'open'
+  const [search, setSearch] = useState('')
+  const [order, setOrder] = useState<'' | 'oldest' | 'newest'>('')
 
   const all = (cases.data ?? []).filter((c) => c.emergency && !c.emergency.mergedInto)
   const open = all.filter(isOpen)
-  const rows = (tab === 'open' ? open : all.filter((c) => !isOpen(c))).sort((a, b) =>
-    tab === 'open'
-      ? a.emergency!.startedAt.localeCompare(b.emergency!.startedAt)
-      : b.emergency!.startedAt.localeCompare(a.emergency!.startedAt),
-  )
+  const words = search.trim().toLowerCase()
+  // Open ones start with the one waiting longest, finished ones with the latest, until the staff picks an order.
+  const oldestFirst = order === '' ? tab === 'open' : order === 'oldest'
+  const rows = (tab === 'open' ? open : all.filter((c) => !isOpen(c)))
+    .filter(
+      (c) =>
+        !words ||
+        [c.code, c.title, c.location.buildingName, c.location.roomName].some((t) =>
+          t.toLowerCase().includes(words),
+        ),
+    )
+    .sort(
+      (a, b) =>
+        (oldestFirst ? 1 : -1) * a.emergency!.startedAt.localeCompare(b.emergency!.startedAt),
+    )
   const now = cases.dataUpdatedAt
   const waiting = open.filter((c) => !c.emergency!.acknowledgedAt).length
 
@@ -55,6 +76,24 @@ export function EmergencyPage() {
         value={tab}
         onChange={(v) => setParams({ tab: v }, { replace: true })}
       />
+      <div className="flex flex-wrap items-center gap-2">
+        <SearchInput
+          label="Search emergencies"
+          placeholder="Code, title or place"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <FilterSelect
+          label="Sort"
+          neutral
+          className="sm:ml-auto"
+          value={oldestFirst ? 'oldest' : 'newest'}
+          onChange={(e) => setOrder(e.target.value as 'oldest' | 'newest')}
+        >
+          <option value="oldest">Oldest first</option>
+          <option value="newest">Newest first</option>
+        </FilterSelect>
+      </div>
       {cases.isPending ? (
         <LoadingBlock rows={4} />
       ) : cases.error ? (
@@ -64,14 +103,19 @@ export function EmergencyPage() {
           onRetry={() => void cases.refetch()}
         />
       ) : rows.length === 0 ? (
-        <EmptyBlock>{tab === 'open' ? 'No open emergency.' : 'No finished emergency.'}</EmptyBlock>
+        <EmptyBlock>
+          {words
+            ? `No emergency matches “${search}”.`
+            : tab === 'open'
+              ? 'No open emergency.'
+              : 'No finished emergency.'}
+        </EmptyBlock>
       ) : (
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-border text-muted border-b text-xs">
               <th className="h-9 pr-4 font-normal">Emergency</th>
               <th className="hidden h-9 pr-4 font-normal md:table-cell">Acknowledged</th>
-              <th className="hidden h-9 pr-4 font-normal md:table-cell">Made safe</th>
               <th className="h-9 pr-4 font-normal">Status</th>
               <th className="h-9 text-right font-normal">Deadline</th>
             </tr>
@@ -98,9 +142,6 @@ export function EmergencyPage() {
                     now={now}
                     warnAfter={ACK_TARGET_MS}
                   />
-                </td>
-                <td className="hidden py-3 pr-4 md:table-cell">
-                  <Milestone c={c} at={c.emergency!.madeSafeAt} now={now} />
                 </td>
                 <td className="py-3 pr-4">
                   <div className="flex flex-col items-start gap-1">

@@ -32,7 +32,7 @@ public sealed class AccountsController(IAccountService accounts) : ControllerBas
     public Task<AccountDetailResponse> Get(long id, CancellationToken cancellationToken) =>
         accounts.GetAsync(id, cancellationToken);
 
-    /// <summary>ADM-03 create. The temporary password is in the response only.</summary>
+    /// <summary>ADM-03 create. The temporary password goes by e-mail; it is in the response only when that failed.</summary>
     [HttpPost]
     public async Task<CreatedAtActionResult> Create(CreateAccountRequest request, CancellationToken cancellationToken)
     {
@@ -44,11 +44,6 @@ public sealed class AccountsController(IAccountService accounts) : ControllerBas
     [HttpPut("{id:long}")]
     public Task<AccountDetailResponse> Update(long id, UpdateAccountRequest request, CancellationToken cancellationToken) =>
         accounts.UpdateAsync(id, request, cancellationToken);
-
-    /// <summary>DLG-16. The account gets a new id (see IAccountService).</summary>
-    [HttpPost("{id:long}/change-role")]
-    public Task<AccountDetailResponse> ChangeRole(long id, ChangeRoleRequest request, CancellationToken cancellationToken) =>
-        accounts.ChangeRoleAsync(id, request, cancellationToken);
 
     [HttpPost("{id:long}/deactivate")]
     public Task<AccountDetailResponse> Deactivate(long id, CancellationToken cancellationToken) =>
@@ -65,4 +60,8 @@ public sealed class AccountsController(IAccountService accounts) : ControllerBas
     [HttpPost("{id:long}/unlock")]
     public Task<AccountDetailResponse> Unlock(long id, CancellationToken cancellationToken) =>
         accounts.UnlockAsync(id, cancellationToken);
+
+    /// <summary>Meeting note 18/11: deletes an account that has no data (created by mistake).</summary>
+    [HttpDelete("{id:long}")]
+    public Task Delete(long id, CancellationToken cancellationToken) => accounts.DeleteAsync(id, cancellationToken);
 }

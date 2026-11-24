@@ -12,8 +12,8 @@ public enum RejectReason
 
 /// <summary>
 /// EMP-02. Photos are image data URLs; the API stores them in Supabase Storage and keeps the path.
-/// Urgency = what the customer chose (meeting 07/11); empty = the service type's default. Even "Emergency" waits
-/// for the staff to confirm it on approval (Leader 09/11); only an emergency service type goes to F4 at once.
+/// Every request names an asset (Outscope 23). Urgency = what the customer chose, Normal when empty. Even "Emergency"
+/// stays Pending until the staff approve it (meeting note 18/11).
 /// </summary>
 public sealed record CreateCaseRequest(
     string Title,
@@ -30,7 +30,8 @@ public sealed record TaskLineRequest(long? Id, string Name, string? Description)
 /// <summary>
 /// DLG-01 Approve = the work order form (meeting 07/11): the customer's request as the staff corrects it (title,
 /// description, category, urgency) + the technician, the planned window and the tasks. There is no "Assign" step any
-/// more. Title / Description empty = keep the customer's. No tasks = one task named after the case.
+/// more. Title / Description empty = keep the customer's. No tasks = one task named after the case. The planned start is
+/// required unless it is an emergency: the expected due time is counted from it (meeting note 18/11).
 /// </summary>
 public sealed record ApproveCaseRequest(
     CasePriority Urgency,
@@ -56,22 +57,28 @@ public enum EditStatusChange
 }
 
 /// <summary>
-/// The one "Edit" of the staff (meeting 07/11), replacing reassign, change urgency, let continue, close and reopen.
-/// A new technician while the old one has already accepted = a new case that continues this one (the old one closes
-/// with the tasks it finished). FollowerIds = every customer who follows the case besides the requester.
+/// The one "Edit" of the staff (meeting 07/11), replacing change urgency, let continue, close and reopen. The technician
+/// and the followers have their own buttons (meeting note 18/11).
 /// </summary>
 public sealed record EditCaseRequest(
     CasePriority Urgency,
-    long? TechnicianId,
     long ServiceTypeId,
     DateTimeOffset? PlannedStartAt,
     DateTimeOffset? PlannedEndAt,
     IReadOnlyList<TaskLineRequest> Tasks,
     string Title,
     string Description,
-    IReadOnlyList<long>? FollowerIds = null,
     EditStatusChange? StatusChange = null,
     string? Reason = null);
+
+/// <summary>
+/// Meeting note 18/11. Nobody has accepted yet: the case simply gets this technician. The job was already accepted: a new
+/// case continues it with the unfinished tasks; the finished ones stay on this case.
+/// </summary>
+public sealed record ReassignRequest(long TechnicianId);
+
+/// <summary>Every customer who follows the case besides the requester.</summary>
+public sealed record SetFollowersRequest(IReadOnlyList<long> CustomerIds);
 
 /// <summary>
 /// Meeting 07/11 (replaces merge): the request repeats <see cref="CaseId"/>. Its content may go there as a task, its
@@ -92,7 +99,7 @@ public sealed record ReasonRequest(string Reason);
 /// The technician sets the status to Completed (meeting 07/11): nothing else to fill in — the tasks, the hours and the
 /// costs were recorded on the way. Only an asset replaced by an outside party (old F5 flow) needs the new model.
 /// </summary>
-public sealed record CompleteWorkRequest(string? ReplacementModel = null, string? ReplacementSerial = null);
+public sealed record CompleteWorkRequest;
 
 /// <summary>DLG-14.</summary>
 public sealed record RateCaseRequest(int Stars, string? Comment);
@@ -107,6 +114,9 @@ public sealed record CostLineRequest(string Name, string? Description, decimal A
 /// a photo of it, or both).
 /// </summary>
 public sealed record AddCostRequest(string Name, string? Description, decimal Amount, string? ReceiptCode, string? ReceiptPhoto);
+
+/// <summary>Meeting note 18/11: the technician corrects their own cost line. ReceiptPhoto empty = keep the current photo.</summary>
+public sealed record EditCostRequest(string Name, string? Description, decimal Amount, string? ReceiptCode, string? ReceiptPhoto);
 
 /// <summary>Meeting 07/11: the technician types the total work hours (e.g. forgot to start the clock).</summary>
 public sealed record LogHoursRequest(decimal Hours);

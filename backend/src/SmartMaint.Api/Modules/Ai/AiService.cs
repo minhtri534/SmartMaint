@@ -43,8 +43,9 @@ internal sealed partial class AiService(
 
         // The AI sees the public catalogue and the caller's own words, nothing else (BR-15: no data outside the role).
         var catalogue = await db.CaseCategories.AsNoTracking()
+            .Where(c => c.ArchivedAt == null)
             .OrderBy(c => c.GroupName).ThenBy(c => c.Name)
-            .Select(c => new CatalogueRow(c.Id, c.GroupName, c.Name, c.DefaultPriority.Code, c.IsEmergency))
+            .Select(c => new CatalogueRow(c.Id, c.GroupName, c.Name))
             .ToListAsync(cancellationToken);
 
         var description = request.Description.Trim();
@@ -65,10 +66,10 @@ internal sealed partial class AiService(
 
     private static string RequestPrompt(IReadOnlyList<CatalogueRow> catalogue, string description)
     {
-        var text = new StringBuilder("Catalogue (id | category · problem | usual urgency):\n");
+        var text = new StringBuilder("Catalogue (id | category · problem):\n");
         foreach (var row in catalogue)
         {
-            text.Append(CultureInfo.InvariantCulture, $"{row.Id} | {row.Group} · {row.Name} | {UrgencyText(row.DefaultUrgency)}\n");
+            text.Append(CultureInfo.InvariantCulture, $"{row.Id} | {row.Group} · {row.Name}\n");
         }
 
         return text.Append("\nTenant's description:\n\"\"\"\n").Append(description).Append("\n\"\"\"").ToString();
@@ -76,7 +77,7 @@ internal sealed partial class AiService(
 
     /// <summary>
     /// The model's answer is never trusted as is: the id must be in the catalogue, the urgency one of the four levels,
-    /// "emergency" only for a type in the emergency list (an emergency case starts F4), tips short and few.
+    /// tips short and few. An emergency is only a suggestion too: the staff confirm it when they approve.
     /// An answer that is not JSON counts as "no suggestion", not as an error.
     /// </summary>
     internal static RequestSuggestionResponse ParseRequestReply(string reply, IReadOnlyList<CatalogueRow> catalogue)
@@ -106,10 +107,6 @@ internal sealed partial class AiService(
             var urgency = root.TryGetProperty("urgency", out var u) && u.ValueKind == JsonValueKind.String
                 ? ParseUrgency(u.GetString())
                 : null;
-            if (urgency == CasePriority.Emergency && type is not { IsEmergency: true })
-            {
-                urgency = CasePriority.High;
-            }
 
             var tips = root.TryGetProperty("tips", out var t) && t.ValueKind == JsonValueKind.Array
                 ? t.EnumerateArray()
@@ -139,7 +136,5 @@ internal sealed partial class AiService(
         _ => null,
     };
 
-    private static string UrgencyText(CasePriority priority) => priority.ToString().ToLowerInvariant();
-
-    internal sealed record CatalogueRow(long Id, string Group, string Name, CasePriority DefaultUrgency, bool IsEmergency);
+    internal sealed record CatalogueRow(long Id, string Group, string Name);
 }

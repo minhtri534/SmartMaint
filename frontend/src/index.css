@@ -76,6 +76,17 @@
   --color-chip-blue: #0369a1;
   --color-line: #0e97ad; /* the line drawn over the bars */
 
+  /*
+   * Parts of one whole (pie charts, meeting note 18/11): six hues in a fixed order, checked with the dataviz
+   * validator (colour-blind separation, both themes). Their names go next to them, never colour alone.
+   */
+  --color-chart-1: #2a78d6;
+  --color-chart-2: #eb6834;
+  --color-chart-3: #1baf7a;
+  --color-chart-4: #eda100;
+  --color-chart-5: #e87ba4;
+  --color-chart-6: #008300;
+
   /* radius: rounder, tactile */
   --radius-card: 18px;
   --radius-control: 10px;
@@ -147,6 +158,13 @@
   --color-chip-green: #38d3f2;
   --color-chip-blue: #7cc4ff;
   --color-line: #38d3f2;
+
+  --color-chart-1: #3987e5;
+  --color-chart-2: #d95926;
+  --color-chart-3: #199e70;
+  --color-chart-4: #c98500;
+  --color-chart-5: #d55181;
+  --color-chart-6: #0ca30c;
 }
 
 @layer base {

@@ -1,21 +1,50 @@
+import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { paths, planDetailPath } from '@/app/paths'
 import { useAuth } from '@/features/auth'
-import { EmptyBlock, ErrorBlock, LinkButton, LoadingBlock, PageHeader, Tabs } from '@/shared/ui'
+import {
+  EmptyBlock,
+  ErrorBlock,
+  LinkButton,
+  LoadingBlock,
+  PageHeader,
+  SearchInput,
+  SortHeader,
+  sortRows,
+  Tabs,
+  useTableSort,
+} from '@/shared/ui'
 import { formatDate } from '@/shared/utils/format'
 import { PlanStatusBadge } from '../components/PlanStatusBadge'
 import { usePlans } from '../hooks'
-import { everyText, type PlanStatus, type PlanSummary } from '../types'
+import { everyListText, type PlanStatus, type PlanSummary } from '../types'
 
+/** Meeting note 18/11: an expired plan (every end day passed) has its own tab, apart from the archived ones. */
 const TABS = [
-  { value: 'running', label: 'Running', statuses: ['active'] },
-  { value: 'waiting', label: 'Waiting for approval', statuses: ['pending_approval'] },
-  { value: 'stopped', label: 'Paused or rejected', statuses: ['paused', 'rejected'] },
-  { value: 'ended', label: 'Ended', statuses: ['ended'] },
-] as const satisfies readonly { value: string; label: string; statuses: readonly PlanStatus[] }[]
+  { value: 'running', label: 'Running', statuses: ['active'], expired: false },
+  {
+    value: 'waiting',
+    label: 'Waiting for approval',
+    statuses: ['pending_approval'],
+    expired: false,
+  },
+  {
+    value: 'stopped',
+    label: 'Paused or rejected',
+    statuses: ['paused', 'rejected'],
+    expired: false,
+  },
+  { value: 'expired', label: 'Expired', statuses: ['active', 'paused'], expired: true },
+  { value: 'archived', label: 'Archived', statuses: ['archived'], expired: false },
+] as const satisfies readonly {
+  value: string
+  label: string
+  statuses: readonly PlanStatus[]
+  expired: boolean
+}[]
 
 /**
- * PM-01 Preventive maintenance plans of the caller's buildings. Staff make and run them; the Manager of the building
+ * PM-01 Preventive maintenance plans of the caller's buildings, each with one or more triggers (like UpKeep). Staff make and run them; the Manager of the building
  * approves (E10). The list opens on what needs a look: the Manager on "Waiting for approval".
  */
 export function PlansPage() {
@@ -27,8 +56,21 @@ export function PlansPage() {
     TABS.find((t) => t.value === params.get('tab')) ?? TABS.find((t) => t.value === fallback)!
 
   const inTab = (t: (typeof TABS)[number], p: PlanSummary) =>
-    (t.statuses as readonly PlanStatus[]).includes(p.status)
-  const rows = plans.data?.filter((p) => inTab(tab, p)) ?? []
+    (t.statuses as readonly PlanStatus[]).includes(p.status) && p.expired === t.expired
+  const [search, setSearch] = useState('')
+  const { sort, toggle } = useTableSort<'name' | 'staff' | 'next'>()
+  const words = search.trim().toLowerCase()
+  const rows = sortRows(
+    plans.data?.filter(
+      (p) =>
+        inTab(tab, p) &&
+        (!words ||
+          p.name.toLowerCase().includes(words) ||
+          p.staff.fullName.toLowerCase().includes(words)),
+    ) ?? [],
+    sort,
+    { name: (p) => p.name, staff: (p) => p.staff.fullName, next: (p) => p.nextDueDate },
+  )
   const waiting = plans.data?.filter((p) => p.status === 'pending_approval').length ?? 0
 
   return (
@@ -37,7 +79,7 @@ export function PlansPage() {
         title="Maintenance plans"
         description={
           plans.data &&
-          `${plans.data.filter((p) => p.status === 'active').length} running, ${waiting} waiting for approval.`
+          `${plans.data.filter((p) => p.status === 'active' && !p.expired).length} running, ${waiting} waiting for approval.`
         }
         actions={
           user?.role === 'staff' && (
@@ -56,6 +98,12 @@ export function PlansPage() {
         value={tab.value}
         onChange={(v) => setParams({ tab: v }, { replace: true })}
       />
+      <SearchInput
+        label="Search plans"
+        placeholder="Plan or staff member"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+      />
       {plans.isPending ? (
         <LoadingBlock rows={5} />
       ) : plans.error ? (
@@ -70,10 +118,21 @@ export function PlansPage() {
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-border text-muted border-b text-xs">
-              <th className="h-9 pr-4 font-normal">Plan</th>
-              <th className="hidden h-9 pr-4 font-normal md:table-cell">Made by</th>
+              <SortHeader sortKey="name" sort={sort} onSort={toggle}>
+                Plan
+              </SortHeader>
+              <SortHeader
+                sortKey="staff"
+                sort={sort}
+                onSort={toggle}
+                className="hidden md:table-cell"
+              >
+                Made by
+              </SortHeader>
               <th className="h-9 pr-4 font-normal">Status</th>
-              <th className="h-9 text-right font-normal">Next due</th>
+              <SortHeader sortKey="next" sort={sort} onSort={toggle} align="right" className="pr-0">
+                Next due
+              </SortHeader>
             </tr>
           </thead>
           <tbody>
@@ -87,7 +146,7 @@ export function PlansPage() {
                     {p.name}
                   </Link>
                   <div className="text-muted mt-0.5 text-[13px]">
-                    {everyText(p.frequency, p.frequencyType)} · {p.assetCount}{' '}
+                    {everyListText(p.every)} · {p.assetCount}{' '}
                     {p.assetCount === 1 ? 'asset' : 'assets'}
                   </div>
                 </td>
@@ -100,7 +159,7 @@ export function PlansPage() {
                   )}
                 </td>
                 <td className="py-3 pr-4">
-                  <PlanStatusBadge status={p.status} />
+                  <PlanStatusBadge status={p.status} expired={p.expired} />
                 </td>
                 <td className="py-3 text-right whitespace-nowrap tabular-nums">
                   {p.nextDueDate ? (

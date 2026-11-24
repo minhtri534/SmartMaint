@@ -2,7 +2,9 @@ import { apiClient } from '@/lib/api-client'
 import type {
   AnalyticsFilters,
   AttentionItem,
-  ExportReport,
+  Chart,
+  ChartQuery,
+  ExportQuery,
   Failures,
   Overview,
   TechnicianRow,
@@ -23,15 +25,18 @@ export const analyticsApi = {
     apiClient.get<Failures>('/analytics/failures', { params: filters }).then((r) => r.data),
   /** GET /api/analytics/attention — F6 step ④ */
   attention: () => apiClient.get<AttentionItem[]>('/analytics/attention').then((r) => r.data),
-  /** GET /api/analytics/export/{report} — ANA-04, saved as a .csv file */
-  download: async (report: ExportReport, filters: AnalyticsFilters) => {
-    const response = await apiClient.get<Blob>(`/analytics/export/${report}`, {
-      params: filters,
+  /** GET /api/analytics/chart — the Charts tab, managers */
+  chart: (query: ChartQuery) =>
+    apiClient.get<Chart>('/analytics/chart', { params: query }).then((r) => r.data),
+  /** GET /api/analytics/export — the tab on screen as an .xlsx file */
+  download: async (query: ExportQuery) => {
+    const response = await apiClient.get<Blob>('/analytics/export', {
+      params: query,
       responseType: 'blob',
     })
     const name =
       /filename="?([^";]+)"?/.exec(String(response.headers['content-disposition'] ?? ''))?.[1] ??
-      `smartmaint-${report}.csv`
+      'smartmaint-analytics.xlsx'
     const url = URL.createObjectURL(response.data)
     const link = document.createElement('a')
     link.href = url
@@ -47,4 +52,5 @@ export const analyticsKeys = {
   technicians: (f: AnalyticsFilters) => ['analytics', 'technicians', f] as const,
   failures: (f: AnalyticsFilters) => ['analytics', 'failures', f] as const,
   attention: ['analytics', 'attention'] as const,
+  chart: (q: ChartQuery) => ['analytics', 'chart', q] as const,
 }

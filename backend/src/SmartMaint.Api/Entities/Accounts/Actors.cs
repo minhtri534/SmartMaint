@@ -11,15 +11,15 @@ public sealed class Customer : Account
     {
     }
 
-    public Customer(string username, string fullName, string passwordHash, bool mustChangePassword, long roomId)
+    public Customer(string username, string fullName, string passwordHash, bool mustChangePassword, long? roomId = null)
         : base(username, fullName, UserRole.Customer, passwordHash, mustChangePassword) => RoomId = roomId;
 
     /// <summary>
-    /// NOT IN ERD v5 (ERD review #11): the rented room. The customer can report problems in this room and in the
-    /// common areas of the same building.
+    /// NOT IN ERD v5. Meeting note 18/11: customers no longer have a rented room and may report in any room. Only accounts
+    /// made before that still hold a value, which nothing reads.
     /// </summary>
-    public long RoomId { get; set; }
-    public Room Room { get; set; } = null!;
+    public long? RoomId { get; set; }
+    public Room? Room { get; set; }
 }
 
 /// <summary>ERD: Staff(ID). Facility staff (old name "Facility Officer"), looks after the buildings of StaffBuildingAssignments.</summary>
@@ -80,9 +80,12 @@ public sealed class Admin : Account
 }
 
 /// <summary>ERD: Specialties(ID, Name) — electrical, plumbing, HVAC...</summary>
-public sealed class Specialty : AuditableEntity
+public sealed class Specialty : AuditableEntity, IArchivable
 {
     public string Name { get; set; } = string.Empty;
+
+    /// <summary>NOT IN ERD v5. Archived: not offered for new choices, kept on the technicians who have it.</summary>
+    public DateTimeOffset? ArchivedAt { get; set; }
 }
 
 /// <summary>ERD: TechnicianSpecialty(Technician, Specialty). Composite key.</summary>

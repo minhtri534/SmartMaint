@@ -4,7 +4,7 @@ import type { Role } from '@/shared/types/role'
 export interface CurrentUser {
   id: number
   username: string
-  /** Contact only, may be empty. NOT IN ERD v5. */
+  /** Signs in (meeting note 18/11). NOT IN ERD v5. */
   email: string | null
   fullName: string
   role: Role
@@ -12,8 +12,9 @@ export interface CurrentUser {
   lastLoginAt: string | null
 }
 
+/** Meeting note 18/11: login = the e-mail address or the phone number. */
 export interface LoginRequest {
-  username: string
+  login: string
   password: string
 }
 

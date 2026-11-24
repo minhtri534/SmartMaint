@@ -7,11 +7,13 @@ import {
   EmptyBlock,
   ErrorBlock,
   FilterSelect,
+  Icon,
   LinkButton,
   LoadingBlock,
   PageHeader,
   SearchInput,
 } from '@/shared/ui'
+import { cn } from '@/shared/utils/cn'
 import { formatRelative } from '@/shared/utils/format'
 import { AccountStatusBadge } from '../components/AccountBadges'
 import { useAccounts } from '../hooks'
@@ -49,7 +51,7 @@ export function AccountListPage() {
       <div className="flex flex-wrap items-center gap-2">
         <SearchInput
           label="Search accounts"
-          placeholder="Name, username or e-mail"
+          placeholder="Name, e-mail or phone"
           value={filters.search ?? ''}
           onChange={(e) => set({ search: e.target.value || undefined })}
         />
@@ -99,7 +101,34 @@ export function AccountListPage() {
                 <th className="h-9 pr-4 font-normal">Name</th>
                 <th className="h-9 pr-4 font-normal">Role</th>
                 <th className="h-9 pr-4 font-normal">Status</th>
-                <th className="h-9 text-right font-normal">Last sign-in</th>
+                <th
+                  className="h-9 text-right font-normal"
+                  aria-sort={
+                    filters.lastSignIn === 'asc'
+                      ? 'ascending'
+                      : filters.lastSignIn === 'desc'
+                        ? 'descending'
+                        : 'none'
+                  }
+                >
+                  <button
+                    type="button"
+                    onClick={() =>
+                      set({ lastSignIn: filters.lastSignIn === 'desc' ? 'asc' : 'desc' })
+                    }
+                    className="hover:text-ink inline-flex items-center gap-1 transition-colors duration-150"
+                  >
+                    Last sign-in
+                    <Icon
+                      name="back"
+                      className={cn(
+                        'size-3.5 transition-transform duration-150',
+                        filters.lastSignIn === 'asc' ? 'rotate-90' : '-rotate-90',
+                        !filters.lastSignIn && 'opacity-40',
+                      )}
+                    />
+                  </button>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -113,8 +142,8 @@ export function AccountListPage() {
                       {a.fullName}
                     </Link>
                     <div className="text-muted mt-0.5 text-[13px]">
-                      <span className="font-mono text-xs">{a.username}</span>
-                      {a.email && <> · {a.email}</>}
+                      {/* meeting note 18/11: the e-mail / phone signs in, not the username */}
+                      {[a.email, a.phoneNumber].filter(Boolean).join(' · ') || 'No e-mail'}
                     </div>
                   </td>
                   <td className="py-3 pr-4">{ROLE_LABELS[a.role]}</td>
@@ -139,7 +168,7 @@ export function AccountListPage() {
                   <AccountStatusBadge account={a} />
                 </div>
                 <div className="text-muted mt-1 text-[13px]">
-                  <span className="font-mono text-xs">{a.username}</span> · {ROLE_LABELS[a.role]} ·{' '}
+                  {a.email ?? a.phoneNumber ?? 'No e-mail'} · {ROLE_LABELS[a.role]} ·{' '}
                   {a.lastLoginAt ? formatRelative(a.lastLoginAt) : 'never signed in'}
                 </div>
               </li>

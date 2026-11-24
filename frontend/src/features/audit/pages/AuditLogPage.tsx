@@ -89,6 +89,16 @@ export function AuditLogPage() {
           onChange={(e) => set({ to: e.target.value || undefined })}
           className={controlClass() + ' h-8 max-w-36'}
         />
+        <FilterSelect
+          label="Sort"
+          neutral
+          className="sm:ml-auto"
+          value={filters.oldestFirst ? 'oldest' : 'newest'}
+          onChange={(e) => set({ oldestFirst: e.target.value === 'oldest' || undefined })}
+        >
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
+        </FilterSelect>
       </div>
 
       {rows.isPending ? (

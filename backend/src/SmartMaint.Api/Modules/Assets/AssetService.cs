@@ -1,4 +1,3 @@
-using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using SmartMaint.Api.Common.Models;
 using SmartMaint.Api.Common.Security;
@@ -13,6 +12,20 @@ using SmartMaint.Api.Modules.Cases;
 using SmartMaint.Api.Modules.Facilities;
 
 namespace SmartMaint.Api.Modules.Assets;
+
+internal static class AssetSort
+{
+    /// <summary>The list's order; assets without a warranty date come last.</summary>
+    public static IQueryable<Asset> SortedBy(this IQueryable<Asset> rows, string? sort) => sort switch
+    {
+        "name_asc" => rows.OrderBy(a => a.Name).ThenBy(a => a.Id),
+        "name_desc" => rows.OrderByDescending(a => a.Name).ThenBy(a => a.Id),
+        "warranty_asc" => rows.OrderBy(a => a.WarrantyEndDate == null).ThenBy(a => a.WarrantyEndDate).ThenBy(a => a.Name),
+        "warranty_desc" => rows.OrderBy(a => a.WarrantyEndDate == null).ThenByDescending(a => a.WarrantyEndDate).ThenBy(a => a.Name),
+        _ => rows.OrderBy(a => a.Room.Floor.Building.Name).ThenBy(a => a.Room.Floor.FloorNumber).ThenBy(a => a.Room.RoomNumber)
+            .ThenBy(a => a.Name),
+    };
+}
 
 internal sealed class AssetService(
     AppDbContext db,
@@ -29,7 +42,16 @@ internal sealed class AssetService(
     public async Task<PagedResult<AssetSummaryResponse>> ListAsync(AssetListQuery query, CancellationToken cancellationToken)
     {
         var rows = await VisibleAsync(cancellationToken);
-        if (!query.IncludeRetired) rows = rows.Where(a => a.RetiredAt == null);
+        if (!query.IncludeRetired && query.Status != AssetListStatus.Retired) rows = rows.Where(a => a.RetiredAt == null);
+        rows = query.Status switch
+        {
+            AssetListStatus.Retired => rows.Where(a => a.RetiredAt != null),
+            AssetListStatus.OpenCase => rows.Where(a => a.RetiredAt == null
+                && db.Cases.Any(c => c.AssetId == a.Id && !FinishedStatuses.Contains(c.Status))),
+            AssetListStatus.InService => rows.Where(a => a.RetiredAt == null
+                && !db.Cases.Any(c => c.AssetId == a.Id && !FinishedStatuses.Contains(c.Status))),
+            _ => rows,
+        };
         if (query.BuildingId is { } buildingId) rows = rows.Where(a => a.Room.Floor.BuildingId == buildingId);
         if (query.RoomId is { } roomId) rows = rows.Where(a => a.RoomId == roomId);
         if (query.CategoryId is { } categoryId) rows = rows.Where(a => a.Type.CategoryId == categoryId);
@@ -42,8 +64,7 @@ internal sealed class AssetService(
 
         var total = await rows.CountAsync(cancellationToken);
         var page = await rows
-            .OrderBy(a => a.Room.Floor.Building.Name).ThenBy(a => a.Room.Floor.FloorNumber).ThenBy(a => a.Room.RoomNumber)
-            .ThenBy(a => a.Name)
+            .SortedBy(query.Sort)
             .Skip(query.Skip).Take(query.PageSize)
             .ToListAsync(cancellationToken);
 
@@ -86,7 +107,7 @@ internal sealed class AssetService(
             c => c.IsSurvey && c.Status != CaseStatus.Closed && c.Status != CaseStatus.Cancelled, cancellationToken);
 
         var summary = ToSummary(asset, openCases);
-        var actions = AllowedActions(asset, caseCount, openCases).ToList();
+        var actions = AllowedActions().ToList();
         if (currentUser.Role == UserRole.Staff && frequent && !asset.IsRetired && !openSurvey)
         {
             actions.Add(AssetAction.OpenSurvey);
@@ -104,23 +125,14 @@ internal sealed class AssetService(
         var asset = await WithRefs(db.Assets.AsNoTracking()).SingleOrDefaultAsync(a => a.Id == id, cancellationToken)
             ?? throw AssetErrors.NotFound();
 
-        var canReport = false;
-        if (currentUser.Role == UserRole.Customer && !asset.IsRetired)
-        {
-            // Same rule as reporting: own room, or a common area of the own building.
-            var home = await db.Customers.AsNoTracking()
-                .Where(c => c.Id == currentUser.Id)
-                .Select(c => new { c.RoomId, c.Room.Floor.BuildingId })
-                .SingleAsync(cancellationToken);
-            canReport = asset.RoomId == home.RoomId
-                        || (asset.Room.IsCommonArea && asset.Room.Floor.BuildingId == home.BuildingId);
-        }
+        // Meeting note 18/11: a customer may report any asset in service, wherever it is.
+        var canReport = currentUser.Role == UserRole.Customer && !asset.IsRetired;
 
         var buildingIds = await scope.GetBuildingIdsAsync(cancellationToken);
         var canOpen = currentUser.Role is UserRole.Admin or UserRole.Staff or UserRole.Manager
                       && (buildingIds is null || buildingIds.Contains(asset.Room.Floor.BuildingId));
 
-        return new QrTargetResponse(asset.Id, asset.Name, ToLocation(asset.Room), asset.IsRetired, canReport, canOpen);
+        return new QrTargetResponse(asset.Id, asset.Name, asset.TypeId, ToLocation(asset.Room), asset.IsRetired, canReport, canOpen);
     }
 
     // ----- writes (Administrator) -------------------------------------------------------------------------------
@@ -184,96 +196,6 @@ internal sealed class AssetService(
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    public async Task<ImportAssetsResponse> ImportAsync(ImportAssetsRequest request, CancellationToken cancellationToken)
-    {
-        List<AssetCsv.Row> rows;
-        try
-        {
-            rows = AssetCsv.Parse(request.Csv);
-        }
-        catch (FormatException e)
-        {
-            return new ImportAssetsResponse(0, 1, false, [new ImportRowResult(1, string.Empty, [e.Message])]);
-        }
-
-        if (rows.Count > AssetCsv.MaxRows)
-        {
-            return new ImportAssetsResponse(rows.Count, 1, false,
-                [new ImportRowResult(1, string.Empty, [$"At most {AssetCsv.MaxRows} rows per file."])]);
-        }
-
-        // Look-ups loaded once: room by "building|floor|room", type by code, manufacturer by name (case-insensitive).
-        var rooms = (await db.Rooms.AsNoTracking()
-                .Select(r => new { r.Id, Building = r.Floor.Building.Name, r.Floor.FloorNumber, r.RoomNumber })
-                .ToListAsync(cancellationToken))
-            .ToDictionary(r => Key(r.Building, r.FloorNumber, r.RoomNumber), r => r.Id);
-        var types = await db.AssetTypes.AsNoTracking().ToDictionaryAsync(t => t.Code.ToLower(), t => t.Id, cancellationToken);
-        var makers = await db.Manufacturers.AsNoTracking().ToDictionaryAsync(m => m.Name.ToLower(), m => m.Id, cancellationToken);
-        var existing = (await db.Assets.AsNoTracking().Select(a => new { a.RoomId, a.Name }).ToListAsync(cancellationToken))
-            .Select(a => (a.RoomId, a.Name.ToLower())).ToHashSet();
-
-        var results = new List<ImportRowResult>();
-        var assets = new List<Asset>();
-        foreach (var row in rows)
-        {
-            var errors = new List<string>();
-            var name = row["name"];
-            if (name.Length is < 2 or > 150) errors.Add("Name must have 2 to 150 characters.");
-            if (!rooms.TryGetValue(Key(row["building"], row["floor"], row["room"]), out var roomId))
-                errors.Add($"No room \"{row["room"]}\" on floor \"{row["floor"]}\" of \"{row["building"]}\".");
-            if (!types.TryGetValue(row["type_code"].ToLowerInvariant(), out var typeId))
-                errors.Add($"Unknown asset type code \"{row["type_code"]}\".");
-
-            long? makerId = null;
-            if (row["manufacturer"].Length > 0)
-            {
-                if (makers.TryGetValue(row["manufacturer"].ToLowerInvariant(), out var m)) makerId = m;
-                else errors.Add($"Unknown manufacturer \"{row["manufacturer"]}\".");
-            }
-
-            var copyright = row["has_copyright"].ToLowerInvariant() switch
-            {
-                "" or "no" or "false" or "0" => false,
-                "yes" or "true" or "1" => true,
-                _ => (bool?)null,
-            };
-            if (copyright is null) errors.Add("has_copyright must be yes or no.");
-
-            DateOnly? warranty = null;
-            if (row["warranty_end_date"].Length > 0)
-            {
-                if (DateOnly.TryParseExact(row["warranty_end_date"], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d))
-                    warranty = d;
-                else errors.Add("warranty_end_date must look like 2027-06-30.");
-            }
-
-            // Same room + same name = duplicate, against the database and against earlier rows of the file.
-            if (errors.Count == 0 && !existing.Add((roomId, name.ToLowerInvariant())))
-                errors.Add("This room already has an asset with this name.");
-
-            results.Add(new ImportRowResult(row.Line, name, errors));
-            if (errors.Count == 0)
-            {
-                assets.Add(new Asset
-                {
-                    Name = name, RoomId = roomId, TypeId = typeId, ManufacturerId = makerId, HasCopyright = copyright!.Value,
-                    WarrantyEndDate = warranty,
-                });
-            }
-        }
-
-        var errorCount = results.Count(r => r.Errors.Count > 0);
-        var import = !request.DryRun && errorCount == 0 && assets.Count > 0;
-        if (import)
-        {
-            db.Assets.AddRange(assets);
-            audit.Record(AuditTarget.Asset, AuditOperation.Import, null, new { Count = assets.Count, Names = assets.Select(a => a.Name) });
-            await db.SaveChangesAsync(cancellationToken);
-        }
-
-        return new ImportAssetsResponse(rows.Count, errorCount, import, results);
-    }
-
     // ----- helpers ----------------------------------------------------------------------------------------------
 
     private async Task<IQueryable<Asset>> VisibleAsync(CancellationToken cancellationToken)
@@ -297,7 +219,7 @@ internal sealed class AssetService(
 
     private async Task EnsureReferencesAsync(AssetRequest request, long? exceptId, CancellationToken cancellationToken)
     {
-        if (!await db.Rooms.AnyAsync(r => r.Id == request.RoomId, cancellationToken)) throw AssetErrors.UnknownRoom();
+        if (!await db.Rooms.AnyAsync(r => r.Id == request.RoomId && r.DeletedAt == null, cancellationToken)) throw AssetErrors.UnknownRoom();
         if (!await db.AssetTypes.AnyAsync(t => t.Id == request.TypeId, cancellationToken)) throw AssetErrors.UnknownType();
         if (request.ManufacturerId is { } makerId && !await db.Manufacturers.AnyAsync(m => m.Id == makerId, cancellationToken))
             throw AssetErrors.UnknownManufacturer();
@@ -317,14 +239,12 @@ internal sealed class AssetService(
         asset.WarrantyEndDate = request.WarrantyEndDate;
     }
 
-    private IReadOnlyList<AssetAction> AllowedActions(Asset asset, int caseCount, int openCases)
-    {
-        if (currentUser.Role != UserRole.Admin) return [];
-        var actions = new List<AssetAction> { AssetAction.Edit };
-        if (!asset.IsRetired && openCases == 0) actions.Add(AssetAction.Retire);
-        if (caseCount == 0) actions.Add(AssetAction.Delete);
-        return actions;
-    }
+    /// <summary>
+    /// Meeting note 18/11: nobody changes an asset directly any more. The staff of its building put it in a change list,
+    /// a manager approves it (the change list service then calls Update / Retire / Delete above).
+    /// </summary>
+    private IReadOnlyList<AssetAction> AllowedActions() =>
+        currentUser.Role == UserRole.Staff ? [AssetAction.ProposeChange] : [];
 
     private AssetSummaryResponse ToSummary(Asset a, int openCases)
     {
@@ -336,9 +256,6 @@ internal sealed class AssetService(
 
     private static AssetLocationResponse ToLocation(Room r) =>
         new(r.Floor.BuildingId, r.Floor.Building.Name, r.Floor.DisplayName, r.Id, r.RoomNumber);
-
-    private static string Key(string building, string floor, string room) =>
-        $"{building.Trim().ToLowerInvariant()}|{floor.Trim().ToLowerInvariant()}|{room.Trim().ToLowerInvariant()}";
 
     private static object Snapshot(Asset a) =>
         new { a.Id, a.Name, a.RoomId, a.TypeId, a.ManufacturerId, a.HasCopyright, a.WarrantyEndDate, a.RetiredAt };

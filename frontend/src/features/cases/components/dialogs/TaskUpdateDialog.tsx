@@ -1,4 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useState } from 'react'
 import { Controller, useForm, useWatch } from 'react-hook-form'
 import { Alert, Button, Dialog, DialogActions, Select, TextArea, TextField } from '@/shared/ui'
 import { casesApi } from '../../api'
@@ -19,8 +20,8 @@ interface Props {
 const STATUSES: TaskStatus[] = ['pending', 'pass', 'fail', 'not_applicable']
 
 /**
- * TEC-05, meeting 07/11: the technician updates one task — its status, a note and photos, each with a caption if
- * needed. "Not done" is fine too, to write down progress along the way.
+ * TEC-05, meeting 07/11: the technician updates one task: its status, a note and photos. Meeting note 18/11: each new
+ * photo is confirmed first, with its caption. "Not done" is fine too, to write down progress along the way.
  */
 export function TaskUpdateDialog({ caseId, isPreventive, task, open, onClose }: Props) {
   return (
@@ -59,7 +60,7 @@ function TaskForm({
   } = useForm<TaskUpdateFormValues>({
     resolver: zodResolver(taskUpdateSchema),
     defaultValues: {
-      status: task.status === 'pending' ? 'pass' : task.status,
+      status: task.status === 'pending' || task.status === 'moved' ? 'pass' : task.status,
       note: '',
       photos: [],
       captions: [],
@@ -67,10 +68,12 @@ function TaskForm({
       dangerous: false,
     },
   })
-  const [status, photos, failAction] = useWatch({
+  const [status, captions, failAction] = useWatch({
     control,
-    name: ['status', 'photos', 'failAction'],
+    name: ['status', 'captions', 'failAction'],
   })
+  // Photos picked but not confirmed yet, one confirm screen at a time.
+  const [picked, setPicked] = useState<string[]>([])
 
   const onSubmit = handleSubmit((v) => {
     if (v.status === 'fail' && v.photos.length === 0 && task.photos.length === 0) {
@@ -159,20 +162,26 @@ function TaskForm({
               )
               field.onChange(next)
             }}
+            captions={captions}
+            onPicked={setPicked}
             error={errors.photos?.message}
-            hint="Up to 5. Add a caption under each if it helps."
+            hint="Up to 5. You can add a caption when you confirm each photo."
           />
         )}
       />
-      {photos.map((_, i) => (
-        <TextField
-          key={i}
-          label={`Caption of photo ${i + 1}`}
-          placeholder="Optional, e.g. Before cleaning"
-          error={errors.captions?.[i]?.message}
-          {...register(`captions.${i}`)}
+      {picked[0] && (
+        <PhotoConfirmDialog
+          key={picked[0].slice(-60) + picked.length}
+          photo={picked[0]}
+          remaining={picked.length - 1}
+          onDiscard={() => setPicked(picked.slice(1))}
+          onConfirm={(caption) => {
+            setValue('photos', [...getValues('photos'), picked[0]!], { shouldValidate: true })
+            setValue('captions', [...getValues('captions'), caption])
+            setPicked(picked.slice(1))
+          }}
         />
-      ))}
+      )}
       {update.error && <Alert>{update.error.message}</Alert>}
       <DialogActions>
         <Button variant="ghost" onClick={onDone}>
@@ -183,5 +192,51 @@ function TaskForm({
         </Button>
       </DialogActions>
     </form>
+  )
+}
+
+/** Meeting note 18/11: a new photo joins the task only after this screen, where its caption is written. */
+function PhotoConfirmDialog({
+  photo,
+  remaining,
+  onDiscard,
+  onConfirm,
+}: {
+  photo: string
+  /** How many more photos wait after this one. */
+  remaining: number
+  onDiscard: () => void
+  onConfirm: (caption: string) => void
+}) {
+  const [caption, setCaption] = useState('')
+  const tooLong = caption.trim().length > 200
+  return (
+    <Dialog
+      open
+      onClose={onDiscard}
+      title="Add this photo?"
+      description={remaining > 0 ? `${remaining} more after this one.` : undefined}
+    >
+      <img
+        src={photo}
+        alt="The photo you picked"
+        className="border-border max-h-[45vh] w-full rounded-lg border object-contain"
+      />
+      <TextField
+        label="Caption"
+        placeholder="Optional, e.g. Before cleaning"
+        value={caption}
+        error={tooLong ? 'At most 200 characters.' : undefined}
+        onChange={(e) => setCaption(e.target.value)}
+      />
+      <DialogActions>
+        <Button variant="ghost" onClick={onDiscard}>
+          Discard
+        </Button>
+        <Button variant="primary" disabled={tooLong} onClick={() => onConfirm(caption.trim())}>
+          Add photo
+        </Button>
+      </DialogActions>
+    </Dialog>
   )
 }

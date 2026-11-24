@@ -38,7 +38,7 @@ public sealed class AuthServiceTests : IDisposable
     {
         var user = await SeedUserAsync();
 
-        var result = await _sut.LoginAsync(new LoginRequest("  User.One ", Password), default);
+        var result = await _sut.LoginAsync(new LoginRequest("  User.One@Test.Local ", Password), default);
 
         Assert.Equal($"token-for-{user.Id}", result.AccessToken);
         Assert.Equal(UserRole.Staff, result.User.Role);
@@ -53,7 +53,7 @@ public sealed class AuthServiceTests : IDisposable
         var user = await SeedUserAsync();
 
         var error = await Assert.ThrowsAsync<AppException>(
-            () => _sut.LoginAsync(new LoginRequest(user.Username, "Wrong@123"), default));
+            () => _sut.LoginAsync(new LoginRequest(user.Email, "Wrong@123"), default));
 
         Assert.Equal("auth.invalid_credentials", error.Code);
         Assert.Equal(1, user.FailedLoginCount);
@@ -64,7 +64,7 @@ public sealed class AuthServiceTests : IDisposable
     public async Task Login_WithUnknownUsername_ThrowsSameErrorAsWrongPassword()
     {
         var error = await Assert.ThrowsAsync<AppException>(
-            () => _sut.LoginAsync(new LoginRequest("nobody", Password), default));
+            () => _sut.LoginAsync(new LoginRequest("nobody@test.local", Password), default));
 
         Assert.Equal("auth.invalid_credentials", error.Code);
     }
@@ -88,7 +88,7 @@ public sealed class AuthServiceTests : IDisposable
         await FailLoginAsync(user, times: Options.MaxFailedAttempts - 1);
 
         var error = await Assert.ThrowsAsync<AppException>(
-            () => _sut.LoginAsync(new LoginRequest(user.Username, "Wrong@123"), default));
+            () => _sut.LoginAsync(new LoginRequest(user.Email, "Wrong@123"), default));
 
         Assert.Equal("auth.account_locked", error.Code);
         Assert.Equal(_clock.Now.AddMinutes(Options.LockoutMinutes), user.LockedUntil);
@@ -102,7 +102,7 @@ public sealed class AuthServiceTests : IDisposable
         await FailLoginAsync(user, times: Options.MaxFailedAttempts);
         _clock.Now = user.LockedUntil!.Value;
 
-        var result = await _sut.LoginAsync(new LoginRequest(user.Username, Password), default);
+        var result = await _sut.LoginAsync(new LoginRequest(user.Email, Password), default);
 
         Assert.Equal(user.Id, result.User.Id);
         Assert.Null(user.LockedUntil);
@@ -138,11 +138,11 @@ public sealed class AuthServiceTests : IDisposable
     [Trait(TestType.Key, TestType.Normal)]
     public async Task Login_Administrator_WritesASignInAuditRow()
     {
-        var admin = new Admin("root", "Root Admin", _hasher.Hash(Password), false);
+        var admin = new Admin("root", "Root Admin", _hasher.Hash(Password), false) { Email = "root@test.local" };
         _db.Accounts.Add(admin);
         await _db.SaveChangesAsync();
 
-        await _sut.LoginAsync(new LoginRequest("root", Password), default);
+        await _sut.LoginAsync(new LoginRequest("root@test.local", Password), default);
 
         var row = Assert.Single(_db.AuditLogs);
         Assert.Equal(admin.Id, row.AdminId);
@@ -156,14 +156,52 @@ public sealed class AuthServiceTests : IDisposable
     {
         await SeedUserAsync();
 
-        await _sut.LoginAsync(new LoginRequest("user.one", Password), default);
+        await _sut.LoginAsync(new LoginRequest("user.one@test.local", Password), default);
 
         Assert.Empty(_db.AuditLogs); // the ERD's AuditLog only references Admins
     }
 
+    [Fact]
+    [Trait(TestType.Key, TestType.Normal)]
+    public async Task Login_WithThePhoneNumberWrittenWithSpaces_SignsIn()
+    {
+        var user = await SeedUserAsync();
+
+        var result = await _sut.LoginAsync(new LoginRequest("090 123 4567", Password), default);
+
+        Assert.Equal($"token-for-{user.Id}", result.AccessToken);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Abnormal)]
+    public async Task Login_WithTheUsername_IsRefused()
+    {
+        await SeedUserAsync();
+
+        // meeting note 18/11: the username no longer signs in (the old field name still carries the e-mail / phone)
+        var error = await Assert.ThrowsAsync<AppException>(() => _sut.LoginAsync(new LoginRequest(null, Password, "user.one"), default));
+
+        Assert.Equal("auth.invalid_credentials", error.Code);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Boundary)]
+    public async Task Login_OldFieldNameWithTheEmail_StillSignsIn()
+    {
+        var user = await SeedUserAsync();
+
+        var result = await _sut.LoginAsync(new LoginRequest(null, Password, "user.one@test.local"), default);
+
+        Assert.Equal($"token-for-{user.Id}", result.AccessToken);
+    }
+
     private async Task<Account> SeedUserAsync(bool mustChangePassword = false)
     {
-        var user = new Staff("user.one", "Test User", _hasher.Hash(Password), mustChangePassword);
+        var user = new Staff("user.one", "Test User", _hasher.Hash(Password), mustChangePassword)
+        {
+            Email = "user.one@test.local",
+            PhoneNumber = "0901234567",
+        };
         _db.Accounts.Add(user);
         await _db.SaveChangesAsync();
         return user;
@@ -174,7 +212,7 @@ public sealed class AuthServiceTests : IDisposable
         for (var i = 0; i < times; i++)
         {
             await Assert.ThrowsAsync<AppException>(
-                () => _sut.LoginAsync(new LoginRequest(user.Username, "Wrong@123"), default));
+                () => _sut.LoginAsync(new LoginRequest(user.Email, "Wrong@123"), default));
         }
     }
 }

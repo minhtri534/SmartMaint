@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using SmartMaint.Api.Common.Models;
 using SmartMaint.Api.Common.Security;
 using SmartMaint.Api.Data;
+using SmartMaint.Api.Entities.Accounts;
 using SmartMaint.Api.Entities.Core;
 using SmartMaint.Api.Modules.Audit.Dtos;
 
@@ -12,8 +13,18 @@ internal sealed class AuditService(AppDbContext db, ICurrentUser currentUser, Ti
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    public void Record(AuditTarget target, AuditOperation operation, object? oldValue, object? newValue) =>
+    public void Record(AuditTarget target, AuditOperation operation, object? oldValue, object? newValue)
+    {
+        // The ERD's audit log holds Administrator actions only (AdminID -> Admins). Since the meeting note of 18/11 a
+        // manager's approval of a staff change list also changes floors, rooms and assets: that list (who wrote it, who
+        // approved it, when, every line) is the record of those changes, so nothing is written here for them.
+        if (currentUser.Role != UserRole.Admin)
+        {
+            return;
+        }
+
         Record(currentUser.Id, target, operation, oldValue, newValue);
+    }
 
     public void Record(long adminId, AuditTarget target, AuditOperation operation, object? oldValue, object? newValue) =>
         db.AuditLogs.Add(new AuditLog
@@ -52,8 +63,10 @@ internal sealed class AuditService(AppDbContext db, ICurrentUser currentUser, Ti
         }
 
         var total = await rows.CountAsync(cancellationToken);
-        var items = await rows
-            .OrderByDescending(a => a.OccurredAt).ThenByDescending(a => a.Id)
+        var ordered = query.OldestFirst
+            ? rows.OrderBy(a => a.OccurredAt).ThenBy(a => a.Id)
+            : rows.OrderByDescending(a => a.OccurredAt).ThenByDescending(a => a.Id);
+        var items = await ordered
             .Skip(query.Skip).Take(query.PageSize)
             .Select(a => new AuditLogResponse(
                 a.Id, a.OccurredAt, a.AdminId, a.Admin.FullName, a.TargetType, a.Operation, a.OldValue, a.NewValue))

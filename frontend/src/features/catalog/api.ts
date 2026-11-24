@@ -14,6 +14,11 @@ export const catalogApi = {
     ).then((r) => r.data),
   remove: (list: CatalogList, id: number) =>
     apiClient.delete(`/catalog/${list}/${id}`).then(() => undefined),
+  /** Fault categories and specialties only. */
+  setArchived: (list: CatalogList, id: number, archived: boolean) =>
+    apiClient
+      .post(`/catalog/${list}/${id}/${archived ? 'archive' : 'restore'}`)
+      .then(() => undefined),
 }
 
 export const catalogKeys = {

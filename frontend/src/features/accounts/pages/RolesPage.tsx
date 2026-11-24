@@ -5,7 +5,7 @@ import { Card, PageHeader } from '@/shared/ui'
 const ROLE_SCOPE: Record<Role, { does: string; sees: string }> = {
   customer: {
     does: 'Reports problems, follows them, cancels before review, rates the repair.',
-    sees: 'Own requests only. Reports in the rented room or the common areas of that building.',
+    sees: 'Own requests and the cases they follow. Reports problems in any building.',
   },
   staff: {
     does: 'Reviews, approves or rejects requests, assigns technicians, verifies and closes work.',

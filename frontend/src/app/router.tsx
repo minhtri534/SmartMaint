@@ -1,14 +1,7 @@
 import { createBrowserRouter } from 'react-router'
 import { AccountDetailPage, AccountFormPage, AccountListPage, RolesPage } from '@/features/accounts'
-import {
-  AssetDetailPage,
-  AssetFormPage,
-  AssetImportPage,
-  AssetListPage,
-  QrLabelsPage,
-  QrLandingPage,
-  ReplacementsPage,
-} from '@/features/assets'
+import { ChangeEditorPage, ChangeListDetailPage, ChangeListsPage } from '@/features/asset-changes'
+import { AssetDetailPage, AssetListPage, QrLabelsPage, QrLandingPage } from '@/features/assets'
 import { AnalyticsPage } from '@/features/analytics'
 import { AuditLogPage } from '@/features/audit'
 import { ChangePasswordPage, LoginPage, RequireAuth } from '@/features/auth'
@@ -132,7 +125,7 @@ export const router = createBrowserRouter([
               </RequireAuth>
             ),
           },
-          // F1 — buildings and assets (FacilitiesController, AssetsController: read Staff/Manager/Admin, write Admin)
+          // F1 — buildings and assets (FacilitiesController, AssetsController: read Staff/Manager/Admin; buildings Admin)
           ...[
             { path: paths.facilities, element: <FacilityTreePage /> },
             { path: paths.assetDetail, element: <AssetDetailPage /> },
@@ -152,14 +145,29 @@ export const router = createBrowserRouter([
               </RequireAuth>
             ),
           },
+          {
+            path: paths.catalog,
+            element: (
+              <RequireAuth roles={['admin']}>
+                <CatalogPage />
+              </RequireAuth>
+            ),
+          },
+          // F1, meeting note 18/11 — change lists of floors, rooms and assets (AssetChangesController):
+          // the staff write them, a manager approves.
           ...[
-            { path: paths.assetNew, element: <AssetFormPage mode="create" /> },
-            { path: paths.assetEdit, element: <AssetFormPage mode="edit" /> },
-            { path: paths.assetImport, element: <AssetImportPage /> },
-            { path: paths.catalog, element: <CatalogPage /> },
+            { path: paths.assetChanges, element: <ChangeListsPage /> },
+            { path: paths.assetChangeDetail, element: <ChangeListDetailPage /> },
           ].map((route) => ({
             ...route,
-            element: <RequireAuth roles={['admin']}>{route.element}</RequireAuth>,
+            element: <RequireAuth roles={['staff', 'manager']}>{route.element}</RequireAuth>,
+          })),
+          ...[
+            { path: paths.assetChangeDraft, element: <ChangeEditorPage /> },
+            { path: paths.assetChangeEdit, element: <ChangeEditorPage /> },
+          ].map((route) => ({
+            ...route,
+            element: <RequireAuth roles={['staff']}>{route.element}</RequireAuth>,
           })),
           // F2 — preventive maintenance (MaintenanceController)
           {
@@ -192,11 +200,9 @@ export const router = createBrowserRouter([
             { path: paths.accountNew, element: <AccountFormPage mode="create" /> },
             { path: paths.accountDetail, element: <AccountDetailPage /> },
             { path: paths.accountEdit, element: <AccountFormPage mode="edit" /> },
-            { path: paths.accountChangeRole, element: <AccountFormPage mode="change-role" /> },
             { path: paths.roles, element: <RolesPage /> },
             { path: paths.auditLog, element: <AuditLogPage /> },
             { path: paths.slaSettings, element: <SlaSettingsPage /> },
-            { path: paths.replacements, element: <ReplacementsPage /> },
           ].map((route) => ({
             ...route,
             element: <RequireAuth roles={['admin']}>{route.element}</RequireAuth>,

@@ -1,4 +1,4 @@
-using System.Text;
+using ClosedXML.Excel;
 using SmartMaint.Api.Entities.Cases;
 using SmartMaint.Api.Modules.Analytics;
 using SmartMaint.Api.Modules.Analytics.Dtos;
@@ -209,16 +209,42 @@ public sealed class AnalyticsTests : CaseTestBase
 
     [Fact]
     [Trait(TestType.Key, TestType.Boundary)]
-    public async Task Attention_OverdueMoreThanADay_IsListedOnlyAfter24Hours()
+    public async Task Attention_OverdueCase_IsListedFromTheFirstMinutePastTheDeadline()
     {
         await CaseAtAsync(CaseStatus.InProgress); // due in 24 h
         As(Staff);
 
-        Clock.Now = Clock.Now.AddHours(48);
+        Clock.Now = Clock.Now.AddHours(24);
         Assert.DoesNotContain(await Analytics.AttentionAsync(default), i => i.Kind == AttentionKind.OverdueCase);
 
         Clock.Now = Clock.Now.AddMinutes(1);
         Assert.Contains(await Analytics.AttentionAsync(default), i => i.Kind == AttentionKind.OverdueCase);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Normal)]
+    public async Task Attention_DeclinedAndNobodyChosenAgain_IsListedNewestFirst()
+    {
+        var id = await CaseAtAsync(CaseStatus.Approved);
+        As(Technician);
+        await Sut.DeclineAsync(id, new ReasonRequest("Fully booked with another job"), default);
+        As(Manager);
+
+        var first = (await Analytics.AttentionAsync(default))[0];
+
+        Assert.Equal(AttentionKind.NoTechnician, first.Kind);
+        Assert.Equal(id, first.CaseId);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Abnormal)]
+    public async Task Attention_AcknowledgedEmergency_IsNotListedAsWaiting()
+    {
+        var id = (await NewCaseAsync()).Id;
+        As(Staff);
+        await Sut.ApproveAsync(id, Approval(CasePriority.Emergency), default); // the staff decided it: already acknowledged
+
+        Assert.DoesNotContain(await Analytics.AttentionAsync(default), i => i.Kind == AttentionKind.EmergencyNotAcknowledged);
     }
 
     [Fact]
@@ -236,19 +262,109 @@ public sealed class AnalyticsTests : CaseTestBase
 
     [Fact]
     [Trait(TestType.Key, TestType.Boundary)]
-    public async Task Export_Cases_IsCsvWithBomAndQuotedCommas()
+    public async Task Export_Overview_IsAWorkbookWithTheTabAndTheCases()
     {
         var id = (await NewCaseAsync()).Id;
         Db.Cases.Single(c => c.Id == id).Title = "AC, room 501";
         await Db.SaveChangesAsync();
         As(Staff);
 
-        var (name, content) = await Analytics.ExportAsync(ExportReport.Cases, All, default);
-        var text = Encoding.UTF8.GetString(content);
+        var (name, content) = await Analytics.ExportAsync(new ExportQuery { Tab = ExportTab.Overview }, default);
+        using var book = new XLWorkbook(new MemoryStream(content));
 
-        Assert.EndsWith(".csv", name);
-        Assert.Equal(Encoding.UTF8.GetPreamble(), content.Take(3).ToArray());
-        Assert.Contains("\"AC, room 501\"", text);
+        Assert.EndsWith(".xlsx", name);
+        Assert.Equal(["Overview", "By building", "Time on hold", "Cases"], book.Worksheets.Select(w => w.Name));
+        Assert.Equal("AC, room 501", book.Worksheet("Cases").Cell(2, 2).GetString());
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Normal)]
+    public void SortTechnicians_ByOnTimeDescending_PutsEmptyRatesLast()
+    {
+        TechnicianRow Row(string name, double? onTime) =>
+            new(new SmartMaint.Api.Modules.Maintenance.Dtos.PersonRef(name.Length, name), 1, null, onTime, null, null, 0, 0, 0, [], true);
+        var rows = new[] { Row("A", 0.5), Row("BB", null), Row("CCC", 0.9) };
+
+        var sorted = AnalyticsService.SortTechnicians(rows, "onTime", descending: true);
+
+        Assert.Equal(["CCC", "A", "BB"], sorted.Select(r => r.Technician.FullName));
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Boundary)]
+    public void SortTechnicians_UnknownColumn_KeepsTheServerOrder()
+    {
+        var rows = new[]
+        {
+            new TechnicianRow(new SmartMaint.Api.Modules.Maintenance.Dtos.PersonRef(1, "Z"), 3, null, null, null, null, 0, 0, 0, [], true),
+            new TechnicianRow(new SmartMaint.Api.Modules.Maintenance.Dtos.PersonRef(2, "A"), 1, null, null, null, null, 0, 0, 0, [], true),
+        };
+
+        Assert.Equal(["Z", "A"], AnalyticsService.SortTechnicians(rows, "nonsense", true).Select(r => r.Technician.FullName));
+    }
+
+    // ----- charts -----
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Normal)]
+    public async Task Chart_CasesReportedPerDay_CountsEachDayAndSplitsByBuilding()
+    {
+        await NewCaseAsync();
+        await NewCaseAsync();
+        As(Manager);
+        var today = DateOnly.FromDateTime(Clock.Now.ToOffset(TimeSpan.FromHours(7)).DateTime);
+
+        var chart = await Analytics.ChartAsync(new ChartQuery
+        {
+            From = today.AddDays(-2), To = today, Metric = ChartMetric.CasesReported, Step = ChartStep.Day,
+        }, default);
+
+        Assert.Equal([0d, 0d, 2d], chart.Points.Select(p => p.Value ?? -1));
+        Assert.Equal("Building", chart.BreakdownBy);
+        Assert.Equal(2, Assert.Single(chart.Breakdown).Value);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Boundary)]
+    public async Task Chart_ByMonth_FirstAndLastMonthAreCutToThePeriod()
+    {
+        As(Manager);
+
+        var chart = await Analytics.ChartAsync(new ChartQuery
+        {
+            From = new DateOnly(2026, 9, 20), To = new DateOnly(2026, 11, 3), Metric = ChartMetric.CasesCompleted, Step = ChartStep.Month,
+        }, default);
+
+        Assert.Equal([new DateOnly(2026, 9, 1), new DateOnly(2026, 10, 1), new DateOnly(2026, 11, 1)], chart.Points.Select(p => p.Start));
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Abnormal)]
+    public async Task Chart_BuildingOfSomeoneElse_Throws()
+    {
+        var buildingB = Db.Floors.Single(f => f.Id == Db.Rooms.Single(r => r.Id == RoomB.Id).FloorId).BuildingId;
+        As(Manager);
+
+        Assert.Equal("analytics.building_not_allowed", await ErrorCodeAsync(() =>
+            Analytics.ChartAsync(new ChartQuery { BuildingId = buildingB, Metric = ChartMetric.CostTotal }, default)));
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Normal)]
+    public async Task Resolution_CountsFromTheStartOfWorkNotFromTheReport()
+    {
+        var id = (await NewCaseAsync()).Id;
+        Clock.Now = Clock.Now.AddHours(10);              // waits 10 h for the staff
+        As(Staff);
+        await Sut.ApproveAsync(id, Approval(), default);
+        As(Technician);
+        await Sut.AcceptAsync(id, default);
+        await Sut.StartAsync(id, default);
+        Clock.Now = Clock.Now.AddHours(3);
+        await Sut.CompleteAsync(id, new CompleteWorkRequest(), default);
+        As(Manager);
+
+        Assert.Equal(3, (await Analytics.OverviewAsync(All, default)).Current.AvgResolutionHours);
     }
 
     [Fact]

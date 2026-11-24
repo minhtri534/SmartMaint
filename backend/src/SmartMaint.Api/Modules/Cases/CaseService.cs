@@ -79,7 +79,6 @@ internal sealed partial class CaseService(
         var extras = new CaseMapper.DetailExtras(
             mergedCaseIds,
             scope.Role is UserRole.Staff or UserRole.Manager ? await DecisionInfoAsync(c, cancellationToken) : null,
-            await db.AssetReplacementRequests.AsNoTracking().SingleOrDefaultAsync(r => r.CaseId == c.Id, cancellationToken),
             nextCaseId,
             allowed.Contains(CaseAction.Edit) ? StatusChangesOf(c, now) : []);
         // Meeting 07/11: how the work is done (tasks, costs, repair record) is for the building's people only.
@@ -90,92 +89,53 @@ internal sealed partial class CaseService(
 
     public async Task<CaseDetailResponse> CreateAsync(CreateCaseRequest request, CancellationToken cancellationToken)
     {
-        var category = await db.CaseCategories.Include(x => x.DefaultPriority)
-            .SingleOrDefaultAsync(x => x.Id == request.ServiceTypeId, cancellationToken)
+        var category = await db.CaseCategories
+            .SingleOrDefaultAsync(x => x.Id == request.ServiceTypeId && x.ArchivedAt == null, cancellationToken)
             ?? throw CaseErrors.UnknownServiceType();
 
         var room = await db.Rooms.Include(r => r.Floor)
-            .SingleOrDefaultAsync(r => r.Id == request.RoomId, cancellationToken)
+            .SingleOrDefaultAsync(r => r.Id == request.RoomId && r.DeletedAt == null, cancellationToken)
             ?? throw CaseErrors.UnknownRoom();
 
-        // The customer reports in their own room or in a common area of their building (ERD review #11).
-        var home = await db.Customers.AsNoTracking()
-            .Where(x => x.Id == currentUser.Id)
-            .Select(x => new { x.RoomId, x.Room.Floor.BuildingId })
-            .SingleAsync(cancellationToken);
-        if (room.Id != home.RoomId && !(room.IsCommonArea && room.Floor.BuildingId == home.BuildingId))
+        // Meeting note 18/11: any room of any building, but always about one asset in service there (Outscope 23).
+        var asset = await db.Assets.AsNoTracking()
+            .SingleOrDefaultAsync(a => a.Id == request.AssetId && a.RoomId == room.Id && a.RetiredAt == null, cancellationToken)
+            ?? throw CaseErrors.AssetNotInRoom();
+        if (category.AssetTypeId is { } typeId && typeId != asset.TypeId)
         {
-            throw CaseErrors.RoomNotAllowed();
+            throw CaseErrors.FaultNotForAsset();
         }
 
-        if (request.AssetId is { } assetId
-            && !await db.Assets.AnyAsync(
-                a => a.Id == assetId && a.RoomId == request.RoomId && a.RetiredAt == null, cancellationToken))
-        {
-            throw CaseErrors.AssetNotInRoom();
-        }
-
-        var photos = request.Photos ?? [];
-        if (category.PhotoRequired && photos.Count == 0)
-        {
-            throw CaseErrors.PhotoRequired(category.Name);
-        }
-
-        // N26: an emergency service type is saved as an emergency case; F4 handles it, F3 offers no actions on it.
-        // Otherwise the customer's own choice (meeting 07/11), kept Pending even when it is "Emergency": the staff
-        // confirms it on approval and only then does it go to F4 (Leader 09/11).
-        var priority = category.IsEmergency
-            ? await db.PriorityLevels.SingleAsync(p => p.Code == CasePriority.Emergency, cancellationToken)
-            : request.Urgency is { } chosen
-                ? await db.PriorityLevels.SingleAsync(p => p.Code == chosen, cancellationToken)
-                : category.DefaultPriority;
+        // The customer's choice. Even an emergency waits in Pending until the staff approve it (meeting note 18/11).
+        var urgency = request.Urgency ?? CasePriority.Normal;
+        var priority = await db.PriorityLevels.SingleAsync(p => p.Code == urgency, cancellationToken);
 
         var now = clock.GetUtcNow();
         var c = new Case
         {
             RequestingCustomerId = currentUser.Id,
             RoomId = room.Id,
-            AssetId = request.AssetId,
+            AssetId = asset.Id,
             CategoryId = category.Id,
             Title = request.Title.Trim(),
             Description = request.Description.Trim(),
-            // F4 page 1 ①: an emergency skips Pending, the system approves it and starts the 24/7 clock.
-            Status = category.IsEmergency ? CaseStatus.Approved : CaseStatus.Pending,
+            Status = CaseStatus.Pending,
             PriorityLevelId = priority.Id,
             SubmittedAt = now,
         };
-        if (category.IsEmergency)
-        {
-            EnterEmergency(c, priority, now, acknowledged: false);
-            // The staff names the technician (and the tasks) with Edit; until then there is one task.
-            c.Tasks.Add(new CaseTask { Name = c.Title, Status = CaseTaskStatus.Pending });
-        }
 
-        await AddPhotosAsync(c, CaseImageKind.Report, photos, cancellationToken);
-        c.History.Add(new CaseStatusHistory
-        {
-            NewStatus = c.Status,
-            ChangedById = currentUser.Id,
-            ChangedAt = now,
-            Reason = category.IsEmergency ? "Emergency service type: approved automatically, handled by F4." : null,
-        });
+        await AddPhotosAsync(c, CaseImageKind.Report, request.Photos ?? [], cancellationToken);
+        c.History.Add(new CaseStatusHistory { NewStatus = c.Status, ChangedById = currentUser.Id, ChangedAt = now });
 
         db.Cases.Add(c);
         await db.SaveChangesAsync(cancellationToken);
 
-        // The code exists only after the first save.
+        // The code exists only after the first save. 5.4.2: every staff member of the building (N11).
         var where = $"{room.Floor.DisplayName}, {room.RoomNumber}";
-        if (category.IsEmergency)
-        {
-            await NotifyNewEmergencyAsync(c, room.Floor.BuildingId, where, cancellationToken);
-        }
-        else
-        {
-            // 5.4.2: every staff member of the building (N11).
-            notifications.Send(
-                await StaffOfBuildingAsync(room.Floor.BuildingId, cancellationToken),
-                $"New request {Case.CodeOf(c.Id)} \"{c.Title}\" in {where}.");
-        }
+        var kind = urgency == CasePriority.Emergency ? "EMERGENCY request" : "New request";
+        notifications.Send(
+            await StaffOfBuildingAsync(room.Floor.BuildingId, cancellationToken),
+            $"{kind} {Case.CodeOf(c.Id)} \"{c.Title}\" in {where}.");
 
         await db.SaveChangesAsync(cancellationToken);
         return await GetAsync(c.Id, cancellationToken);
@@ -247,18 +207,6 @@ internal sealed partial class CaseService(
         {
             StopClock(c, now);
             c.CompletedAt = now;
-            // F5 step ⑨ (old flow): an outside party replaced the asset → the new model goes to the replacement request.
-            if (c.ThirdParties.Any(t => t.Status == OutsideWorkStatus.Done && t.Job == OutsideWorkJob.Replace))
-            {
-                if (string.IsNullOrWhiteSpace(request.ReplacementModel))
-                {
-                    throw CaseErrors.ReplacementModelRequired();
-                }
-
-                c.ReplacementModel = request.ReplacementModel.Trim();
-                c.ReplacementSerial = string.IsNullOrWhiteSpace(request.ReplacementSerial) ? null : request.ReplacementSerial.Trim();
-            }
-
             SetLabourCost(c);
             return Task.FromResult<string?>(null);
         }, cancellationToken);
@@ -291,10 +239,38 @@ internal sealed partial class CaseService(
                 Amount = request.Amount,
                 ReceiptCode = Clean(request.ReceiptCode),
                 ReceiptImage = receipt,
+                AddedById = currentUser.Id,
             });
             notifications.Send(
                 c.StaffId is { } s ? [s] : await StaffOfBuildingAsync(c.Room.Floor.BuildingId, cancellationToken),
                 $"{c.Technician?.FullName} added a cost to {Case.CodeOf(c.Id)}: {request.Name.Trim()}, {request.Amount:N0} VND.");
+            return null;
+        }, cancellationToken);
+
+    public Task<CaseDetailResponse> EditCostAsync(long id, long costId, EditCostRequest request, CancellationToken cancellationToken) =>
+        ActAsync(id, CaseAction.EditOwnCost, async (c, _) =>
+        {
+            var cost = c.Costs.SingleOrDefault(x => x.Id == costId) ?? throw CaseErrors.CostNotFound();
+            if (cost.AddedById != currentUser.Id)
+            {
+                throw CaseErrors.CostNotYours();
+            }
+
+            var code = Clean(request.ReceiptCode);
+            if (code is null && cost.ReceiptImage is null && string.IsNullOrWhiteSpace(request.ReceiptPhoto))
+            {
+                throw CaseErrors.ReceiptRequired();
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.ReceiptPhoto))
+            {
+                cost.ReceiptImage = await storage.SaveAsync(ReceiptFolder, DataUrl.ParseImage(request.ReceiptPhoto), cancellationToken);
+            }
+
+            cost.Name = request.Name.Trim();
+            cost.Description = Clean(request.Description);
+            cost.Amount = request.Amount;
+            cost.ReceiptCode = code;
             return null;
         }, cancellationToken);
 
@@ -473,6 +449,17 @@ internal sealed partial class CaseService(
             return Task.FromResult<string?>(reason);
         }, cancellationToken);
 
+    public Task<CaseDetailResponse> ReopenAsync(long id, ReasonRequest request, CancellationToken cancellationToken) =>
+        ActAsync(id, CaseAction.Reopen, (c, now) =>
+        {
+            var reason = request.Reason.Trim();
+            ClearForReopen(c, now);
+            notifications.Send(
+                [.. CustomersOf(c), .. (c.AssignedTechnicianId is { } t ? new[] { t } : [])],
+                $"{Case.CodeOf(c.Id)} \"{c.Title}\" was reopened: {reason}");
+            return Task.FromResult<string?>(reason);
+        }, cancellationToken);
+
     public Task<CaseDetailResponse> DeclineNotFixedAsync(long id, ReasonRequest request, CancellationToken cancellationToken) =>
         ActAsync(id, CaseAction.DeclineNotFixed, (c, _) =>
         {
@@ -496,7 +483,7 @@ internal sealed partial class CaseService(
             {
                 var cost = line.Id is { } costId
                     ? c.Costs.SingleOrDefault(x => x.Id == costId) ?? throw CaseErrors.CostNotFound()
-                    : new Cost();
+                    : new Cost { AddedById = currentUser.Id };
                 cost.Name = line.Name.Trim();
                 cost.Description = Clean(line.Description);
                 cost.Amount = line.Amount;
@@ -669,20 +656,20 @@ internal sealed partial class CaseService(
             // A work order is done when every checklist item has a result (F2); an incident whenever the technician says so.
             CaseAction.Complete => !c.IsPreventive || c.Tasks.All(t => t.Status != CaseTaskStatus.Pending),
             CaseAction.SetTaskThirdParty => c.Tasks.Count > 0,
-            // A closed case is only edited to reopen it, within 7 days.
-            CaseAction.Edit when c.Status == CaseStatus.Closed => reopenable,
-            CaseAction.UpdateCosts when c.Status == CaseStatus.Closed => reopenable,
+            // Meeting note 18/11: a closed case is reopened within 7 days, never one closed by a reassign (its work
+            // goes on in the new case).
+            CaseAction.Reopen => reopenable && c.ReassignedAt is null,
             // O09: only before the deadline passes.
             CaseAction.ExtendDue => c.DueAt is { } due && now < due,
-            CaseAction.ReportNotFixed => c.NotFixedAt is null && reopenable,
-            CaseAction.AcceptNotFixed or CaseAction.DeclineNotFixed => c.NotFixedAt is not null,
+            CaseAction.ReportNotFixed => c.NotFixedAt is null && reopenable && c.ReassignedAt is null,
+            CaseAction.AcceptNotFixed => c.NotFixedAt is not null && c.ReassignedAt is null,
+            CaseAction.DeclineNotFixed => c.NotFixedAt is not null,
             // F5: while the case waits for the staff's decision or an outside party, the technician does not resume it.
             CaseAction.Resume => c.HoldReason is not (HoldReason.WaitingStaffDecision or HoldReason.WaitingThirdParty),
             CaseAction.RequestDecision => !c.IsPreventive,
             CaseAction.Outsource => !(c.Status == CaseStatus.OnHold && c.HoldReason == HoldReason.WaitingThirdParty),
             CaseAction.Acknowledge => emergency && c.AcknowledgedAt is null,
             CaseAction.AddLog => emergency,
-            CaseAction.MarkSafe => emergency && c.MadeSafeAt is null,
             CaseAction.WriteIncidentReport => emergency && c.EmergencyAt is not null,
             _ => true,
         };
@@ -728,6 +715,7 @@ internal sealed partial class CaseService(
     private IQueryable<Case> WithRefs() => db.Cases
         .Include(c => c.Room).ThenInclude(r => r.Floor).ThenInclude(f => f.Building)
         .Include(c => c.Category)
+        .Include(c => c.Asset).ThenInclude(a => a!.Type).ThenInclude(t => t.Category)
         .Include(c => c.Priority)
         .Include(c => c.Customer)
         .Include(c => c.Staff)

@@ -17,13 +17,16 @@ export {
   type ChipHue,
   type KpiCardProps,
 } from './Dashboard'
-export { FilterSelect } from './FilterSelect'
+export { FilterDate, FilterSelect } from './FilterSelect'
 export { FormActions, FormSection } from './FormSection'
+export { HelpTip } from './HelpTip'
 export { Icon, ProductMark, type IconName } from './Icon'
 export { PageHeader } from './PageHeader'
 export { SearchInput } from './SearchInput'
 export { Segmented, type SegmentedOption } from './Segmented'
 export { Select } from './Select'
+export { SortHeader } from './SortHeader'
+export { sortRows, useTableSort, type SortDirection, type SortState } from './table-sort'
 export { FullPageSpinner, Spinner } from './Spinner'
 export { EmptyBlock, ErrorBlock, LoadingBlock } from './StateBlock'
 export { Tabs, type TabItem } from './Tabs'

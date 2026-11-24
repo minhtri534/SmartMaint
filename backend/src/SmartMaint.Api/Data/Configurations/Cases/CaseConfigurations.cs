@@ -34,6 +34,7 @@ internal sealed class CaseCategoryConfiguration : IEntityTypeConfiguration<CaseC
         builder.Property(x => x.Name).HasMaxLength(100);
         builder.Property(x => x.Description).HasMaxLength(300);
         builder.HasOne(x => x.DefaultPriority).WithMany().HasForeignKey(x => x.DefaultPriorityId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.AssetType).WithMany().HasForeignKey(x => x.AssetTypeId).OnDelete(DeleteBehavior.Restrict);
         builder.HasIndex(x => new { x.GroupName, x.Name }).IsUnique();
     }
 }
@@ -142,6 +143,7 @@ internal sealed class CostConfiguration : IEntityTypeConfiguration<Cost>
         builder.Property(x => x.ReceiptCode).HasMaxLength(100);
         builder.Property(x => x.ReceiptImage).HasMaxLength(300);
         builder.HasOne(x => x.Case).WithMany(x => x.Costs).HasForeignKey(x => x.CaseId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne(x => x.AddedBy).WithMany().HasForeignKey(x => x.AddedById).OnDelete(DeleteBehavior.SetNull);
         builder.HasIndex(x => x.CaseId);
     }
 }

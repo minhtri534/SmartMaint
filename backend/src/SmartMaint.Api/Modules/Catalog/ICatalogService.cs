@@ -3,8 +3,8 @@ using SmartMaint.Api.Modules.Catalog.Dtos;
 namespace SmartMaint.Api.Modules.Catalog;
 
 /// <summary>
-/// Read-only reference data for the F3 forms. F1 (Huy) owns the full catalogue and will replace this with real CRUD;
-/// a customer only gets their own room and the common areas of their building.
+/// Read-only reference data for the F3 forms. Archived catalog items are left out; every role sees every room
+/// (meeting note 18/11: customers may report anywhere).
 /// </summary>
 public interface ICatalogService
 {
@@ -14,11 +14,16 @@ public interface ICatalogService
 
     Task<IReadOnlyList<AssetOptionResponse>> GetAssetsAsync(long roomId, CancellationToken cancellationToken);
 
-    /// <summary>For the "assign technician" dialog (staff only), least busy first.</summary>
-    Task<IReadOnlyList<TechnicianOptionResponse>> GetTechniciansAsync(CancellationToken cancellationToken);
+    /// <summary>
+    /// For choosing a technician (staff only). With a case: the ones who fit it first, then the least busy, and that case
+    /// does not count as one of their open jobs.
+    /// </summary>
+    Task<IReadOnlyList<TechnicianOptionResponse>> GetTechniciansAsync(CancellationToken cancellationToken, long? caseId = null);
 
     Task<IReadOnlyList<SpecialtyOptionResponse>> GetSpecialtiesAsync(CancellationToken cancellationToken);
 
     /// <summary>For the asset filters and the asset form.</summary>
     Task<IReadOnlyList<AssetTypeOptionResponse>> GetAssetTypesAsync(CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<ManufacturerOptionResponse>> GetManufacturersAsync(CancellationToken cancellationToken);
 }

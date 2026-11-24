@@ -6,10 +6,16 @@ namespace SmartMaint.Api.Modules.Cases.Dtos;
 
 public sealed record PersonResponse(long Id, string FullName);
 
+/// <summary>A customer in the followers dialog, found by username or e-mail (meeting note 18/11).</summary>
+public sealed record FollowerOptionResponse(long Id, string FullName, string Username, string? Email);
+
+/// <summary>Current = who follows the case now; Matches = the customers found by the search.</summary>
+public sealed record FollowerOptionsResponse(IReadOnlyList<FollowerOptionResponse> Current, IReadOnlyList<FollowerOptionResponse> Matches);
+
 /// <summary>FloorName is "Floor 5" (from Floors.FloorNumber), RoomName is Rooms.RoomNumber.</summary>
 public sealed record LocationResponse(long BuildingId, string BuildingName, string FloorName, long RoomId, string RoomName);
 
-public sealed record AssetResponse(long Id, string Name, long RoomId);
+public sealed record AssetResponse(long Id, string Name, long RoomId, long TypeId, string TypeName, string CategoryName);
 
 /// <summary>Url is short-lived (signed for 1 hour): never store it on the web side.</summary>
 public sealed record PhotoResponse(long Id, string Url, CaseImageKind Kind);
@@ -28,7 +34,8 @@ public sealed record RatingResponse(int Stars, string? Comment, DateTimeOffset R
 public sealed record HoldResponse(HoldReason Reason, DateOnly? ExpectedResumeOn);
 
 /// <summary>ERD: Costs. Shown to staff, managers and the technician, never to the customer (meeting 07/11).</summary>
-public sealed record CostResponse(long Id, string Name, string? Description, decimal Amount, string? ReceiptCode, string? ReceiptUrl);
+public sealed record CostResponse(
+    long Id, string Name, string? Description, decimal Amount, string? ReceiptCode, string? ReceiptUrl, long? AddedById);
 
 /// <summary>The customer's "not fixed" report waiting for the staff member.</summary>
 public sealed record NotFixedResponse(string Reason, DateTimeOffset ReportedAt);
@@ -74,7 +81,11 @@ public record CaseSummaryResponse(
     bool IsSurvey,
     OutsideWorkBriefResponse? OutsideWork,
     DateTimeOffset? PlannedStartAt,
-    DateTimeOffset? PlannedEndAt);
+    DateTimeOffset? PlannedEndAt,
+    DateTimeOffset? ExpectedDueAt,
+    long ServiceTypeId,
+    AssetResponse? Asset,
+    CaseRefResponse? DuplicateOf);
 
 /// <summary>
 /// A whole case. <see cref="AllowedActions"/> is computed by the server for the caller (state machine + their role
@@ -103,6 +114,8 @@ public sealed record CaseDetailResponse(
     OutsideWorkBriefResponse? OutsideWork,
     DateTimeOffset? PlannedStartAt,
     DateTimeOffset? PlannedEndAt,
+    DateTimeOffset? ExpectedDueAt,
+    CaseRefResponse? DuplicateOf,
     string Description,
     long ServiceTypeId,
     AssetResponse? Asset,
@@ -127,14 +140,13 @@ public sealed record CaseDetailResponse(
     AssessmentResponse? Assessment,
     IReadOnlyList<ThirdPartyResponse> ThirdParties,
     DecisionInfoResponse? DecisionInfo,
-    ReplacementResponse? Replacement,
     CaseRefResponse? NextCase,
     IReadOnlyList<EditStatusChange> StatusChanges,
     IReadOnlyList<CaseAction> AllowedActions)
     : CaseSummaryResponse(
         Id, Code, Title, Status, Urgency, ServiceTypeName, Location, Requester, Staff, Technician,
         SubmittedAt, DueAt, SlaStartedAt, CompletedAt, IsEmergencyFlow, IsPreventive, Emergency,
-        HoldReason, IsSurvey, OutsideWork, PlannedStartAt, PlannedEndAt);
+        HoldReason, IsSurvey, OutsideWork, PlannedStartAt, PlannedEndAt, ExpectedDueAt, ServiceTypeId, Asset, DuplicateOf);
 
 /// <summary>A link to another case.</summary>
 public sealed record CaseRefResponse(long Id, string Code);
@@ -144,7 +156,7 @@ public sealed record CaseRefResponse(long Id, string Code);
 /// milestones before "fixed" (Completed). <see cref="MergedInto"/>: this report was merged into that case (N5).
 /// </summary>
 public sealed record EmergencyResponse(
-    DateTimeOffset StartedAt, DateTimeOffset? AcknowledgedAt, DateTimeOffset? MadeSafeAt, CaseRefResponse? MergedInto);
+    DateTimeOffset StartedAt, DateTimeOffset? AcknowledgedAt, CaseRefResponse? MergedInto);
 
 /// <summary>F4 step ⑫ post-incident report.</summary>
 public sealed record IncidentReportResponse(string Damage, string Lessons, IncidentFollowUp FollowUp, DateTimeOffset ReportedAt);

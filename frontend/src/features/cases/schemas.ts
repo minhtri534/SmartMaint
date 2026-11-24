@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { isAmount, amountOf } from './amount'
 import { EXTEND_REASONS, REJECT_REASONS, URGENCIES } from './types'
 
 /*
@@ -11,17 +12,16 @@ const requiredId = (message: string) => z.string().min(1, message)
 const isUrgency = (v: string) => (URGENCIES as readonly string[]).includes(v)
 
 /**
- * EMP-02 New request. Category = the service group (Electrical, Water...), problem = the service type (meeting 07/11:
- * kept 2 levels, renamed). The customer chooses the urgency; the staff confirms it on approval.
+ * EMP-02 New request. Every request is about one asset (Outscope 23); the fault categories offered depend on its type.
+ * The customer chooses the urgency; the staff confirms it on approval.
  */
 export const newRequestSchema = z.object({
-  serviceGroup: requiredId('Choose a category.'),
-  serviceTypeId: requiredId('Choose the problem.'),
+  serviceTypeId: requiredId('Choose the fault category.'),
   urgency: z.string().refine(isUrgency, 'Choose how urgent it is.'),
   buildingId: requiredId('Choose a building.'),
   floorId: requiredId('Choose a floor.'),
-  roomId: requiredId('Choose a room or area.'),
-  assetId: z.string(),
+  roomId: requiredId('Choose a room.'),
+  assetId: requiredId('Choose the asset that has the problem.'),
   title: z.string().trim().min(5, 'At least 5 characters.').max(120, 'At most 120 characters.'),
   description: z
     .string()
@@ -42,7 +42,7 @@ export type TaskLineValues = z.infer<typeof taskLineSchema>
 
 /**
  * DLG-01 Approve and the staff's Edit = one work order form (meeting 07/11): the customer's request as the staff
- * corrects it, plus the technician, the planned window and the tasks. The Edit form adds the status change.
+ * corrects it, plus the planned window and the tasks. Approve names the technician; Edit adds the status change.
  * Date-times are the values of datetime-local inputs ('' = none).
  */
 export const workOrderSchema = z
@@ -53,14 +53,12 @@ export const workOrderSchema = z
       .trim()
       .min(15, 'At least 15 characters.')
       .max(2000, 'At most 2000 characters.'),
-    serviceGroup: requiredId('Choose a category.'),
-    serviceTypeId: requiredId('Choose the problem.'),
+    serviceTypeId: requiredId('Choose the fault category.'),
     urgency: z.enum(URGENCIES),
     technicianId: z.string(),
     plannedStartAt: z.string(),
     plannedEndAt: z.string(),
     tasks: z.array(taskLineSchema).max(30, 'At most 30 tasks.'),
-    followerIds: z.array(z.string()),
     statusChange: z.enum(['', 'continue', 'close', 'reopen']),
     reason: z.string().trim().max(500),
   })
@@ -108,10 +106,8 @@ export const costLineSchema = z.object({
   name: z.string().trim().min(2, 'At least 2 characters.').max(150),
   /** Meeting 07/11: each cost has a title, a description (e.g. the receipt number) and an amount. */
   description: z.string().trim().max(300, 'At most 300 characters.'),
-  amount: z
-    .string()
-    .trim()
-    .regex(/^\d{1,10}$/, 'A whole number of VND, e.g. 150000.'),
+  // typed with a space every three digits (meeting note 18/11)
+  amount: z.string().trim().refine(isAmount, 'A whole number of VND, e.g. 150 000.'),
 })
 export type CostLineValues = z.infer<typeof costLineSchema>
 
@@ -121,7 +117,7 @@ export const toCostLines = (rows: CostLineValues[]) =>
     id: r.id ? Number(r.id) : null,
     name: r.name,
     description: r.description || null,
-    amount: Number(r.amount),
+    amount: amountOf(r.amount),
   }))
 
 /** O09 extend the deadline: a later time, a reason from the list, a note when "other". */
@@ -163,22 +159,15 @@ export const logHoursSchema = z.object({
 export type LogHoursFormValues = z.infer<typeof logHoursSchema>
 
 /** Meeting 07/11: a cost the technician paid, with the receipt number and / or a photo of it. */
-export const addCostSchema = z
-  .object({
-    name: z.string().trim().min(2, 'At least 2 characters.').max(150),
-    description: z.string().trim().max(300, 'At most 300 characters.'),
-    amount: z
-      .string()
-      .trim()
-      .regex(/^\d{1,10}$/, 'A whole number of VND, e.g. 150000.'),
-    receiptCode: z.string().trim().max(100, 'At most 100 characters.'),
-    receiptPhoto: z.array(z.string()).max(1),
-  })
-  .refine((v) => v.receiptCode.length > 0 || v.receiptPhoto.length > 0, {
-    path: ['receiptCode'],
-    message: 'Add the receipt number or a photo of the receipt.',
-  })
-export type AddCostFormValues = z.infer<typeof addCostSchema>
+export const costSchema = z.object({
+  name: z.string().trim().min(2, 'At least 2 characters.').max(150),
+  description: z.string().trim().max(300, 'At most 300 characters.'),
+  // typed with a space every three digits (meeting note 18/11)
+  amount: z.string().trim().refine(isAmount, 'A whole number of VND, e.g. 150 000.'),
+  receiptCode: z.string().trim().max(100, 'At most 100 characters.'),
+  receiptPhoto: z.array(z.string()).max(1),
+})
+export type AddCostFormValues = z.infer<typeof costSchema>
 
 /** Meeting 07/11: ask the staff for an outside party — what is wrong, why, photos. */
 export const requestDecisionSchema = z.object({

@@ -14,6 +14,9 @@ internal static class CatalogAdminErrors
     public static AppException InUse(int count) =>
         new(ErrorKind.Conflict, "catalog.in_use", $"{count} record(s) still use this item: it cannot be deleted.");
 
+    public static AppException UnknownAssetType() =>
+        new(ErrorKind.BadRequest, "catalog.unknown_asset_type", "Choose an asset type from the list.");
+
     public static AppException UnknownCategory() =>
         new(ErrorKind.BadRequest, "catalog.unknown_category", "Choose an asset category.");
 }

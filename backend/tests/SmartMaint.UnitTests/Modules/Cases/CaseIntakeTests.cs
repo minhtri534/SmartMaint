@@ -30,13 +30,13 @@ public sealed class CaseIntakeTests : CaseTestBase
 
     [Fact]
     [Trait(TestType.Key, TestType.Abnormal)]
-    public async Task Create_ServiceTypeNeedsPhotoButHasNone_Throws()
+    public async Task Create_OldPhotoRuleOnTheFault_NoLongerNeedsAPhoto()
     {
         As(Customer);
 
-        var code = await ErrorCodeAsync(() => Sut.CreateAsync(NewRequest(Leak, RoomA), default));
+        var result = await Sut.CreateAsync(NewRequest(Leak, RoomA), default);
 
-        Assert.Equal("case.photo_required", code);
+        Assert.Equal(CaseStatus.Pending, result.Status);
     }
 
     [Fact]
@@ -74,28 +74,71 @@ public sealed class CaseIntakeTests : CaseTestBase
             await ErrorCodeAsync(() => Sut.CreateAsync(NewRequest(NotCooling, RoomA) with { RoomId = 9999 }, default)));
     }
 
-    // ----- Create: where a customer may report (own room + common areas of their building) -----
+    // ----- Create: any room, always about one asset (meeting note 18/11) -----
 
     [Fact]
-    [Trait(TestType.Key, TestType.Abnormal)]
-    public async Task Create_RoomOfAnotherTenant_Throws()
+    [Trait(TestType.Key, TestType.Normal)]
+    public async Task Create_RoomInAnotherBuilding_Succeeds()
     {
         As(Customer);
 
-        var code = await ErrorCodeAsync(() => Sut.CreateAsync(NewRequest(NotCooling, RoomA2), default));
+        var result = await Sut.CreateAsync(NewRequest(NotCooling, RoomB), default);
 
-        Assert.Equal("case.room_not_allowed", code);
+        Assert.Equal(RoomB.Id, result.Location.RoomId);
+        Assert.Equal(AssetInRoomB.Id, result.Asset!.Id);
     }
 
     [Fact]
     [Trait(TestType.Key, TestType.Abnormal)]
-    public async Task Create_RoomInAnotherBuilding_Throws()
+    public async Task Create_AssetOfAnotherRoom_Throws()
     {
         As(Customer);
 
-        var code = await ErrorCodeAsync(() => Sut.CreateAsync(NewRequest(NotCooling, RoomB), default));
+        var code = await ErrorCodeAsync(() => Sut.CreateAsync(NewRequest(NotCooling, RoomA, AssetInRoomB.Id), default));
 
-        Assert.Equal("case.room_not_allowed", code);
+        Assert.Equal("case.asset_not_in_room", code);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Abnormal)]
+    public async Task Create_FaultOfAnotherAssetType_Throws()
+    {
+        var heater = new SmartMaint.Api.Entities.Buildings.AssetType { CategoryId = AcInRoomA.Type.CategoryId, Code = "HEATER", Name = "Water heater" };
+        Db.AssetTypes.Add(heater);
+        await Db.SaveChangesAsync();
+        Leak.AssetType = heater;
+        await Db.SaveChangesAsync();
+        As(Customer);
+
+        var code = await ErrorCodeAsync(() => Sut.CreateAsync(NewRequest(Leak, RoomA), default));
+
+        Assert.Equal("case.fault_not_for_asset", code);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Boundary)]
+    public async Task Create_FaultOfTheSameAssetType_Succeeds()
+    {
+        NotCooling.AssetTypeId = AcInRoomA.TypeId;
+        await Db.SaveChangesAsync();
+        As(Customer);
+
+        var result = await Sut.CreateAsync(NewRequest(NotCooling, RoomA), default);
+
+        Assert.Equal(NotCooling.Id, result.ServiceTypeId);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Abnormal)]
+    public async Task Create_ArchivedFault_Throws()
+    {
+        NotCooling.ArchivedAt = Clock.GetUtcNow();
+        await Db.SaveChangesAsync();
+        As(Customer);
+
+        var code = await ErrorCodeAsync(() => Sut.CreateAsync(NewRequest(NotCooling, RoomA), default));
+
+        Assert.Equal("case.unknown_service_type", code);
     }
 
     [Fact]
@@ -112,24 +155,32 @@ public sealed class CaseIntakeTests : CaseTestBase
 
     [Fact]
     [Trait(TestType.Key, TestType.Boundary)]
-    public async Task Create_EmergencyServiceType_SkipsPendingAndStartsTheClock()
+    public async Task Create_OldEmergencyFlagOnTheFault_StaysPendingWithNormalUrgency()
     {
         var created = await NewCaseAsync(BurstPipe);
 
-        Assert.True(created.IsEmergencyFlow);
-        Assert.Equal(CaseStatus.Approved, created.Status);
-        Assert.Equal(Clock.Now.AddHours(2), created.DueAt);
-        Assert.Empty(created.AllowedActions); // the customer cannot cancel an emergency
-        As(Staff);
-        Assert.Equal("case.invalid_transition",
-            await ErrorCodeAsync(() => Sut.ApproveAsync(created.Id, Approval(CasePriority.Normal), default)));
+        Assert.False(created.IsEmergencyFlow);
+        Assert.Equal(CaseStatus.Pending, created.Status);
+        Assert.Equal(CasePriority.Normal, created.Urgency);
+        Assert.Null(created.DueAt);
     }
 
     // ----- Create: the urgency the customer chose (meeting 07/11) -----
 
     [Fact]
     [Trait(TestType.Key, TestType.Normal)]
-    public async Task Create_WithChosenUrgency_KeepsItInsteadOfTheTypeDefault()
+    public async Task Create_NoUrgencyChosen_IsNormal()
+    {
+        As(Customer);
+
+        var result = await Sut.CreateAsync(NewRequest(NotCooling, RoomA), default);
+
+        Assert.Equal(CasePriority.Normal, result.Urgency);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Normal)]
+    public async Task Create_WithChosenUrgency_KeepsIt()
     {
         As(Customer);
 
@@ -160,14 +211,87 @@ public sealed class CaseIntakeTests : CaseTestBase
 
     [Fact]
     [Trait(TestType.Key, TestType.Abnormal)]
-    public async Task Create_EmergencyServiceTypeWithLowUrgency_IsStillAnEmergency()
+    public async Task Create_OldEmergencyFlagWithLowUrgency_KeepsTheCustomersChoice()
     {
         As(Customer);
 
         var result = await Sut.CreateAsync(NewRequest(BurstPipe, RoomA) with { Urgency = CasePriority.Low }, default);
 
-        Assert.True(result.IsEmergencyFlow);
-        Assert.Equal(CasePriority.Emergency, result.Urgency);
+        Assert.False(result.IsEmergencyFlow);
+        Assert.Equal(CasePriority.Low, result.Urgency);
+    }
+
+    // ----- Expected due: planned start + SLA hours until the work starts (meeting note 18/11) -----
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Normal)]
+    public async Task Approve_WithPlannedStart_ShowsTheExpectedDueButNoDeadlineYet()
+    {
+        var id = (await NewCaseAsync()).Id;
+        As(Staff);
+
+        var result = await Sut.ApproveAsync(id, Approval(), default);
+
+        Assert.Equal(Clock.GetUtcNow().AddHours(1 + 24), result.ExpectedDueAt);
+        Assert.Null(result.DueAt);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Boundary)]
+    public async Task Start_ReplacesTheExpectedDueWithTheRealDeadline()
+    {
+        var id = await CaseAtAsync(CaseStatus.InProgress);
+
+        var result = await Sut.GetAsync(id, default);
+
+        Assert.Null(result.ExpectedDueAt);
+        Assert.Equal(Clock.GetUtcNow().AddHours(24), result.DueAt);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Boundary)]
+    public async Task Create_PendingCase_HasNoExpectedDueYet() =>
+        Assert.Null((await NewCaseAsync()).ExpectedDueAt);
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Abnormal)]
+    public async Task Edit_RemovesThePlannedStartBeforeTheWorkStarts_Throws()
+    {
+        var id = await CaseAtAsync(CaseStatus.Approved);
+        var edit = await EditOfAsync(id);
+
+        var code = await ErrorCodeAsync(() => Sut.EditAsync(id, edit with { PlannedStartAt = null }, default));
+
+        Assert.Equal("case.planned_start_required", code);
+    }
+
+    // ----- A request rejected as a duplicate can be opened but counts as one problem (meeting note 18/11) -----
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Normal)]
+    public async Task Reject_Duplicate_LinksTheRepeatToTheCaseItRepeats()
+    {
+        var main = await CaseAtAsync(CaseStatus.Approved);
+        var repeat = (await NewCaseAsync()).Id;
+        As(Staff);
+
+        var result = await Sut.RejectAsync(repeat, new RejectCaseRequest(
+            RejectReason.Duplicate, "The same air conditioner is already being repaired.",
+            new DuplicateOfRequest(main, false, false, false)), default);
+
+        Assert.Equal(main, result.DuplicateOf?.Id);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Boundary)]
+    public async Task Reject_MissingInformation_IsNotADuplicate()
+    {
+        var id = (await NewCaseAsync()).Id;
+        As(Staff);
+
+        var result = await Sut.RejectAsync(id, new RejectCaseRequest(RejectReason.MissingInfo, "Please say which unit is broken."), default);
+
+        Assert.Null(result.DuplicateOf);
     }
 
     // ----- List / Get: data scope -----

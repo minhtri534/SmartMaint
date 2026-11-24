@@ -7,11 +7,13 @@ namespace SmartMaint.Api.Modules.Accounts.Dtos;
 public enum AccountAction
 {
     Edit,
-    ChangeRole,
     Deactivate,
     Reactivate,
     ResetPassword,
     Unlock,
+
+    /// <summary>Meeting note 18/11: only an account that left no trace (no case, history, cost, plan, list, chat...).</summary>
+    Delete,
 }
 
 /// <summary>One row of ADM-02.</summary>
@@ -26,8 +28,6 @@ public record AccountSummaryResponse(
     bool IsLocked,
     DateTimeOffset? LastLoginAt,
     DateTimeOffset CreatedAt);
-
-public sealed record RoomRefResponse(long Id, string BuildingName, string FloorName, string RoomName);
 
 public sealed record SpecialtyResponse(long Id, string Name);
 
@@ -50,7 +50,6 @@ public sealed record AccountDetailResponse(
     DateTimeOffset CreatedAt,
     bool MustChangePassword,
     DateTimeOffset? LockedUntil,
-    RoomRefResponse? Room,
     decimal? HourlyRate,
     IReadOnlyList<SpecialtyResponse> Specialties,
     IReadOnlyList<AssignedBuildingResponse> Buildings,
@@ -58,10 +57,14 @@ public sealed record AccountDetailResponse(
     IReadOnlyList<AccountAction> AllowedActions)
     : AccountSummaryResponse(Id, Username, FullName, Email, PhoneNumber, Role, Status, IsLocked, LastLoginAt, CreatedAt);
 
-/// <summary>Create / change role: the account plus its temporary password, shown once and never stored readable.</summary>
-public sealed record AccountWithPasswordResponse(AccountDetailResponse Account, string TemporaryPassword);
+/// <summary>
+/// Create: the account, and whether its temporary password went out by e-mail (meeting note 18/11). Only when it did
+/// not (e-mail not set up, or refused) is the password in the reply, shown once to the Administrator.
+/// </summary>
+public sealed record AccountWithPasswordResponse(AccountDetailResponse Account, bool EmailSent, string? TemporaryPassword);
 
-public sealed record TemporaryPasswordResponse(string TemporaryPassword);
+/// <summary>Reset password: the same rule as <see cref="AccountWithPasswordResponse"/>.</summary>
+public sealed record TemporaryPasswordResponse(bool EmailSent, string? TemporaryPassword);
 
 public sealed record RoleCountResponse(UserRole Role, int Active, int Deactivated);
 

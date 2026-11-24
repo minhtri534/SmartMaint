@@ -6,7 +6,7 @@ import { formatDateTime, formatDuration } from '@/shared/utils/format'
 import { FOLLOW_UP_LABELS, type CaseDetail, type IncidentReport } from '../types'
 
 /**
- * F4 milestones on one card: reported → acknowledged (first response) → made safe → fixed. Each shows how long it
+ * F4 milestones on one card: reported → acknowledged (first response) → fixed. Each shows how long it
  * took from the report; the step still waiting shows how long it has been waiting.
  */
 export function EmergencyCard({ c, now }: { c: CaseDetail; now: number }) {
@@ -16,7 +16,6 @@ export function EmergencyCard({ c, now }: { c: CaseDetail; now: number }) {
   const since = (at: string | null) => (at ? formatDuration(new Date(at).getTime() - start) : null)
   const steps: { label: string; at: string | null }[] = [
     { label: 'Acknowledged', at: e.acknowledgedAt },
-    { label: 'Made safe', at: e.madeSafeAt },
     { label: 'Fixed', at: c.completedAt },
   ]
   const firstOpen = steps.findIndex((s) => !s.at)

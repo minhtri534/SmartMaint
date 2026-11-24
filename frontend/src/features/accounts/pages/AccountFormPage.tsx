@@ -1,6 +1,12 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useState } from 'react'
-import { useForm, useWatch, type UseFormRegister } from 'react-hook-form'
+import {
+  useController,
+  useForm,
+  useWatch,
+  type Control,
+  type UseFormRegister,
+} from 'react-hook-form'
 import { useNavigate, useParams } from 'react-router'
 import { accountDetailPath, paths } from '@/app/paths'
 import { ROLE_LABELS, ROLES } from '@/shared/types/role'
@@ -29,12 +35,12 @@ import {
 } from '../schemas'
 import type { AccountDetail, BuildingOption, SpecialtyRef } from '../types'
 
-type Mode = 'create' | 'edit' | 'change-role'
+type Mode = 'create' | 'edit'
 
 /**
- * ADM-03 Create / Edit user, and DLG-16 "Change role" (same form, only the role part editable).
- * The role decides the extra fields: customer -> rented room, technician -> rate + specialties,
- * staff -> buildings (+ primary), manager -> buildings.
+ * ADM-03 Create / Edit user.
+ * The role decides the extra fields: technician -> rate + specialties, staff -> buildings (+ primary),
+ * manager -> buildings.
  */
 export function AccountFormPage({ mode }: { mode: Mode }) {
   const { id } = useParams()
@@ -68,24 +74,13 @@ export function AccountFormPage({ mode }: { mode: Mode }) {
   )
 }
 
-function toFormValues(
-  mode: Mode,
-  a: AccountDetail | null,
-  buildings: BuildingOption[],
-): AccountFormValues {
+function toFormValues(a: AccountDetail | null): AccountFormValues {
   if (!a) return emptyAccountForm
-  const roomBuilding = a.room
-    ? buildings.find((b) => b.floors.some((f) => f.rooms.some((r) => r.id === a.room!.id)))
-    : undefined
   return {
-    username: a.username,
     fullName: a.fullName,
     email: a.email ?? '',
     phoneNumber: a.phoneNumber ?? '',
-    // Change role starts on another role than the current one.
-    role: mode === 'change-role' ? ROLES.find((r) => r !== a.role)! : a.role,
-    buildingId: roomBuilding ? String(roomBuilding.id) : '',
-    roomId: a.room ? String(a.room.id) : '',
+    role: a.role,
     hourlyRate: a.hourlyRate !== null ? String(a.hourlyRate) : '',
     specialtyIds: a.specialties.map((s) => String(s.id)),
     buildingIds: a.buildings.map((b) => String(b.buildingId)),
@@ -96,7 +91,6 @@ function toFormValues(
 const TITLES: Record<Mode, string> = {
   create: 'New account',
   edit: 'Edit account',
-  'change-role': 'Change role',
 }
 
 function AccountForm({
@@ -111,13 +105,15 @@ function AccountForm({
   specialties: SpecialtyRef[]
 }) {
   const navigate = useNavigate()
-  const [created, setCreated] = useState<{ id: number; username: string; password: string } | null>(
-    null,
-  )
+  const [created, setCreated] = useState<{
+    id: number
+    name: string
+    email: string | null
+    password: string | null
+  } | null>(null)
   const create = useAccountMutation(accountsApi.create)
   const update = useAccountMutation(accountsApi.update)
-  const changeRole = useAccountMutation(accountsApi.changeRole)
-  const mutation = mode === 'create' ? create : mode === 'edit' ? update : changeRole
+  const mutation = mode === 'create' ? create : update
 
   const {
     register,
@@ -127,7 +123,7 @@ function AccountForm({
     formState: { errors },
   } = useForm<AccountFormValues>({
     resolver: zodResolver(accountSchema),
-    defaultValues: toFormValues(mode, account, buildings),
+    defaultValues: toFormValues(account),
   })
   const role = useWatch({ control, name: 'role' })
 
@@ -138,7 +134,6 @@ function AccountForm({
       create.mutate(
         {
           ...details,
-          username: v.username,
           fullName: v.fullName,
           email: blank(v.email),
           phoneNumber: blank(v.phoneNumber),
@@ -148,13 +143,14 @@ function AccountForm({
           onSuccess: (r) =>
             setCreated({
               id: r.account.id,
-              username: r.account.username,
+              name: r.account.fullName,
+              email: r.account.email,
               password: r.temporaryPassword,
             }),
           onError,
         },
       )
-    } else if (mode === 'edit') {
+    } else {
       update.mutate(
         {
           ...details,
@@ -165,15 +161,9 @@ function AccountForm({
         },
         { onSuccess: (r) => navigate(accountDetailPath(r.id)), onError },
       )
-    } else {
-      changeRole.mutate(
-        { ...details, id: account!.id, role: v.role },
-        { onSuccess: (r) => navigate(accountDetailPath(r.id), { replace: true }), onError },
-      )
     }
   })
 
-  const contactLocked = mode === 'change-role'
   const showError = mutation.error && Object.keys(mutation.error.fieldErrors).length === 0
 
   return (
@@ -181,56 +171,45 @@ function AccountForm({
       <PageHeader
         title={TITLES[mode]}
         description={
-          mode === 'change-role'
-            ? `${account!.fullName} has no history yet, so the account can move to another role. Its id changes; the username and password stay.`
-            : mode === 'edit'
-              ? `${account!.fullName} · ${ROLE_LABELS[account!.role]}`
-              : 'There is no self-registration: the system makes a temporary password the user changes at first sign-in.'
+          mode === 'edit'
+            ? `${account!.fullName} · ${ROLE_LABELS[account!.role]}`
+            : 'There is no self-registration: the system makes a temporary password the user changes at first sign-in.'
         }
       />
 
       <form onSubmit={onSubmit} noValidate className="flex flex-col gap-6">
         <FormSection
           title="Account"
-          description="Who the person is and how to reach them. The username is what they sign in with."
+          description="Who the person is and how they sign in: with the e-mail or the phone number."
         >
           <div className="grid gap-4 sm:grid-cols-2">
             <TextField
-              label="Username"
-              autoComplete="off"
-              readOnly={mode !== 'create'}
-              hint={mode === 'create' ? 'Used to sign in. Cannot change later.' : undefined}
-              error={errors.username?.message}
-              {...register('username')}
-            />
-            <TextField
               label="Full name"
-              readOnly={contactLocked}
               error={errors.fullName?.message}
               {...register('fullName')}
             />
             <TextField
               label="E-mail"
               type="email"
-              hint="Optional, for contact"
-              readOnly={contactLocked}
+              hint={
+                mode === 'create' ? 'Signs in; the temporary password is sent here' : 'Signs in'
+              }
               error={errors.email?.message}
               {...register('email')}
             />
             <TextField
               label="Phone"
               type="tel"
-              hint="Optional"
-              readOnly={contactLocked}
+              hint="Optional; also signs in"
               error={errors.phoneNumber?.message}
               {...register('phoneNumber')}
             />
             {mode === 'edit' ? (
-              // Not registered: the role keeps its default value; it changes only through "Change role".
+              // Not registered: the role of an account never changes.
               <TextField label="Role" readOnly value={ROLE_LABELS[account!.role]} />
             ) : (
               <Select label="Role" error={errors.role?.message} {...register('role')}>
-                {ROLES.filter((r) => mode !== 'change-role' || r !== account!.role).map((r) => (
+                {ROLES.map((r) => (
                   <option key={r} value={r}>
                     {ROLE_LABELS[r]}
                   </option>
@@ -246,7 +225,10 @@ function AccountForm({
           control={control}
           errors={errors}
           buildings={buildings}
-          specialties={specialties}
+          specialties={[
+            ...specialties,
+            ...(account?.specialties.filter((s) => !specialties.some((o) => o.id === s.id)) ?? []),
+          ]}
         />
 
         <FormActions error={showError && <Alert>{mutation.error.message}</Alert>}>
@@ -254,19 +236,15 @@ function AccountForm({
             Cancel
           </LinkButton>
           <Button type="submit" variant="primary" loading={mutation.isPending}>
-            {mode === 'create'
-              ? 'Create account'
-              : mode === 'edit'
-                ? 'Save changes'
-                : 'Change role'}
+            {mode === 'create' ? 'Create account' : 'Save changes'}
           </Button>
         </FormActions>
       </form>
 
       {created && (
         <TemporaryPasswordDialog
-          open
-          username={created.username}
+          name={created.name}
+          email={created.email}
           password={created.password}
           onClose={() => navigate(accountDetailPath(created.id), { replace: true })}
         />
@@ -293,47 +271,9 @@ function RoleDetailsCard({
   buildings,
   specialties,
 }: RoleDetailsProps) {
-  const buildingId = useWatch({ control, name: 'buildingId' })
   const chosenBuildings = useWatch({ control, name: 'buildingIds' })
 
-  if (role === 'admin') return null
-
-  if (role === 'customer') {
-    const rooms =
-      buildings
-        .find((b) => String(b.id) === buildingId)
-        ?.floors.flatMap((f) =>
-          f.rooms.filter((r) => !r.isCommonArea).map((r) => ({ ...r, floor: f.name })),
-        ) ?? []
-    return (
-      <FormSection
-        title="Rented room"
-        description="The customer reports problems in this room and in the common areas of the same building."
-      >
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Select label="Building" placeholder="Choose a building" {...register('buildingId')}>
-            {buildings.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </Select>
-          <Select
-            label="Room"
-            placeholder={buildingId ? 'Choose a room' : 'Choose a building first'}
-            error={errors.roomId?.message}
-            {...register('roomId')}
-          >
-            {rooms.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.floor} · {r.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-      </FormSection>
-    )
-  }
+  if (role === 'admin' || role === 'customer') return null
 
   if (role === 'technician') {
     return (
@@ -350,22 +290,7 @@ function RoleDetailsCard({
             error={errors.hourlyRate?.message}
             {...register('hourlyRate')}
           />
-          <fieldset>
-            <legend className="mb-2 text-sm font-medium">Specialties</legend>
-            <div className="grid gap-2 sm:grid-cols-3">
-              {specialties.map((s) => (
-                <label key={s.id} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    value={s.id}
-                    className="accent-primary size-4"
-                    {...register('specialtyIds')}
-                  />
-                  {s.name}
-                </label>
-              ))}
-            </div>
-          </fieldset>
+          <SpecialtyPicker control={control} specialties={specialties} />
         </div>
       </FormSection>
     )
@@ -415,5 +340,62 @@ function RoleDetailsCard({
         })}
       </ul>
     </FormSection>
+  )
+}
+
+/**
+ * Meeting note 18/11: the technician's specialties as a list (each with Remove) and a dropdown of the others; choosing
+ * one adds it to the list.
+ */
+function SpecialtyPicker({
+  control,
+  specialties,
+}: {
+  control: Control<AccountFormValues>
+  specialties: SpecialtyRef[]
+}) {
+  const { field } = useController({ control, name: 'specialtyIds' })
+  const chosen = field.value
+  const others = specialties.filter((s) => !chosen.includes(String(s.id)))
+  return (
+    <div className="flex flex-col gap-3">
+      <span className="text-sm font-medium">Specialties</span>
+      {chosen.length === 0 ? (
+        <p className="text-muted text-sm">None yet.</p>
+      ) : (
+        <ul className="border-border rounded-card flex flex-col border">
+          {chosen.map((id) => (
+            <li
+              key={id}
+              className="border-rule flex items-center justify-between gap-3 border-b px-3 py-2 text-sm last:border-0"
+            >
+              {specialties.find((s) => String(s.id) === id)?.name ?? `#${id}`}
+              <Button
+                variant="ghost"
+                className="text-muted! hover:text-negative!"
+                onClick={() => field.onChange(chosen.filter((c) => c !== id))}
+              >
+                Remove
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {others.length > 0 && (
+        <Select
+          label="Add a specialty"
+          className="max-w-72"
+          value=""
+          onChange={(e) => e.target.value && field.onChange([...chosen, e.target.value])}
+        >
+          <option value="">Choose…</option>
+          {others.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
+            </option>
+          ))}
+        </Select>
+      )}
+    </div>
   )
 }

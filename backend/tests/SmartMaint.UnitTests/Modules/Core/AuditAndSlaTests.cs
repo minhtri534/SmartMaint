@@ -73,6 +73,21 @@ public sealed class AuditAndSlaTests : IDisposable
     }
 
     [Fact]
+    [Trait(TestType.Key, TestType.Normal)]
+    public async Task ListAudit_OldestFirst_ReversesTheOrder()
+    {
+        _audit.Record(AuditTarget.Account, AuditOperation.Create, null, null);
+        await _db.SaveChangesAsync();
+        _clock.Now = _clock.Now.AddMinutes(5);
+        _audit.Record(AuditTarget.Account, AuditOperation.Deactivate, null, null);
+        await _db.SaveChangesAsync();
+
+        var page = await _audit.ListAsync(new AuditLogQuery { OldestFirst = true }, default);
+
+        Assert.Equal([AuditOperation.Create, AuditOperation.Deactivate], page.Items.Select(i => i.Operation));
+    }
+
+    [Fact]
     [Trait(TestType.Key, TestType.Boundary)]
     public async Task ListAudit_ToDate_IncludesTheWholeLastDay()
     {

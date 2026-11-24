@@ -14,6 +14,9 @@ public sealed record AuditLogQuery : PageRequest
 
     /// <summary>Last day included (UTC date).</summary>
     public DateOnly? To { get; init; }
+
+    /// <summary>Oldest first instead of newest first.</summary>
+    public bool OldestFirst { get; init; }
 }
 
 public sealed record AuditLogResponse(

@@ -46,6 +46,8 @@ internal sealed class MaintenanceTriggerConfiguration : IEntityTypeConfiguration
         builder.HasLookup(x => x.FrequencyType, "frequency_type_id");
         builder.HasLookup(x => x.Status, "status_id");
         builder.Property(x => x.RejectReason).HasMaxLength(500);
+        builder.Property(x => x.Name).HasMaxLength(120);
+        builder.Property(x => x.Description).HasMaxLength(500);
         builder.HasOne(x => x.Staff).WithMany().HasForeignKey(x => x.StaffId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.ApprovingManager).WithMany().HasForeignKey(x => x.ApprovingManagerId).OnDelete(DeleteBehavior.Restrict);
     }
@@ -56,10 +58,22 @@ internal sealed class MaintenanceWorkOrderDetailConfiguration : IEntityTypeConfi
     public void Configure(EntityTypeBuilder<MaintenanceWorkOrderDetail> builder)
     {
         builder.ToTable("maintenance_work_order_details", t =>
-            t.HasCheckConstraint("ck_maintenance_work_order_details_estimated_hours", "estimated_hours IS NULL OR estimated_hours > 0"));
+        {
+            t.HasCheckConstraint("ck_maintenance_work_order_details_estimated_hours", "estimated_hours IS NULL OR estimated_hours > 0");
+            t.HasCheckConstraint("ck_maintenance_work_order_details_frequency", "frequency > 0");
+            t.HasCheckConstraint("ck_maintenance_work_order_details_lead_days", "lead_days >= 0");
+            t.HasCheckConstraint("ck_maintenance_work_order_details_end_date", "end_date IS NULL OR end_date >= start_date");
+        });
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).UseIdentityAlwaysColumn();
         builder.Property(x => x.EstimatedHours).HasPrecision(6, 2);
+        // Defaults so rows written by the code deployed before 19/11 still save; the migration fills the old rows.
+        builder.Property(x => x.Frequency).HasDefaultValue(1);
+        builder.HasLookup(x => x.FrequencyType, "frequency_type_id");
+        builder.Property(x => x.FrequencyType).HasDefaultValue(FrequencyUnit.Month);
+        // 0 days ahead is a real value: only -1 (never set by the code) falls back to the default
+        builder.Property(x => x.LeadDays).HasDefaultValue(3).HasSentinel(-1);
+        builder.Property(x => x.StartDate).HasDefaultValueSql("CURRENT_DATE");
         builder.HasOne(x => x.Trigger).WithMany(x => x.Details).HasForeignKey(x => x.TriggerId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne(x => x.Checklist).WithMany().HasForeignKey(x => x.ChecklistId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.PriorityLevel).WithMany().HasForeignKey(x => x.PriorityLevelId).OnDelete(DeleteBehavior.Restrict);

@@ -13,6 +13,9 @@ public interface IAiService
     /// <summary>Customer writing a request: service type, urgency and what to add (F3 section 4, point 1).</summary>
     Task<RequestSuggestionResponse> SuggestRequestAsync(RequestSuggestionRequest request, CancellationToken cancellationToken);
 
+    /// <summary>Staff choosing a technician: who fits this case best, and why.</summary>
+    Task<TechnicianSuggestionResponse> SuggestTechnicianAsync(TechnicianSuggestionRequest request, CancellationToken cancellationToken);
+
     /// <summary>The caller's latest chat, to show again when the assistant opens.</summary>
     Task<ChatThreadResponse> GetLatestChatAsync(CancellationToken cancellationToken);
 

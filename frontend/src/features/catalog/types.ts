@@ -1,16 +1,14 @@
 /** Mirrors backend Modules/CatalogAdmin/Dtos. "usedBy" = rows that point at the item (0 = can delete). */
 
-export type Urgency = 'emergency' | 'high' | 'normal' | 'low'
-
-/** ERD: CaseCategories (+ NOT IN ERD v5 group, emergency, defaults, photo rule). */
+/** ERD: CaseCategories (+ NOT IN ERD v5 asset type, archive). assetTypeId empty = every asset type. */
 export interface CaseCategory {
   id: number
   groupName: string
   name: string
   description: string | null
-  isEmergency: boolean
-  defaultPriority: Urgency
-  photoRequired: boolean
+  assetTypeId: number | null
+  assetTypeName: string | null
+  archivedAt: string | null
   usedBy: number
 }
 
@@ -21,6 +19,8 @@ export interface AssetCategory {
   categoryName: string
   description: string | null
   usedBy: number
+  /** Assets of every type in this category (usedBy counts the types, which block a delete). */
+  assetCount: number
 }
 
 /** ERD: AssetType */
@@ -33,7 +33,9 @@ export interface AssetType {
   description: string | null
   /** NOT IN ERD v5 (F5 R03): normal life in years. */
   expectedLifeYears: number | null
+  /** Its assets + the faults linked to it (either blocks a delete). */
   usedBy: number
+  assetCount: number
 }
 
 /** ERD: Manufacturers */
@@ -49,6 +51,7 @@ export interface Manufacturer {
 export interface Specialty {
   id: number
   name: string
+  archivedAt: string | null
   usedBy: number
 }
 

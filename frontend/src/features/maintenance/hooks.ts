@@ -17,20 +17,19 @@ export function usePlan(id: number, enabled = true) {
   })
 }
 
+export function usePlanWorkOrders(id: number) {
+  return useQuery({
+    queryKey: maintenanceKeys.workOrders(id),
+    queryFn: () => maintenanceApi.workOrders(id),
+  })
+}
+
 export function usePlanAssets() {
   return useQuery({ queryKey: maintenanceKeys.assets, queryFn: maintenanceApi.assets })
 }
 
 export function useTechnicianOptions() {
   return useQuery({ queryKey: maintenanceKeys.technicians, queryFn: maintenanceApi.technicians })
-}
-
-export function useServiceTypeOptions() {
-  return useQuery({
-    queryKey: maintenanceKeys.serviceTypes,
-    queryFn: maintenanceApi.serviceTypes,
-    staleTime: Infinity,
-  })
 }
 
 /** Every F2 change refreshes plans, checklists, notifications and the cases (work orders) lists. */

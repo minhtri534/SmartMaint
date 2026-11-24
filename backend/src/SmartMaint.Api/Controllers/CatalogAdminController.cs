@@ -31,6 +31,14 @@ public sealed class CatalogAdminController(ICatalogAdminService catalog) : Contr
     [HttpDelete("case-categories/{id:long}")]
     public Task DeleteCaseCategory(long id, CancellationToken ct) => catalog.DeleteCaseCategoryAsync(id, ct);
 
+    [HttpPost("case-categories/{id:long}/archive")]
+    public Task<CaseCategoryAdminResponse> ArchiveCaseCategory(long id, CancellationToken ct) =>
+        catalog.SetCaseCategoryArchivedAsync(id, true, ct);
+
+    [HttpPost("case-categories/{id:long}/restore")]
+    public Task<CaseCategoryAdminResponse> RestoreCaseCategory(long id, CancellationToken ct) =>
+        catalog.SetCaseCategoryArchivedAsync(id, false, ct);
+
     // Asset categories (ERD: AssetCategory)
     [HttpGet("asset-categories")]
     public Task<IReadOnlyList<AssetCategoryResponse>> AssetCategories(CancellationToken ct) => catalog.ListAssetCategoriesAsync(ct);
@@ -90,4 +98,10 @@ public sealed class CatalogAdminController(ICatalogAdminService catalog) : Contr
 
     [HttpDelete("specialties/{id:long}")]
     public Task DeleteSpecialty(long id, CancellationToken ct) => catalog.DeleteSpecialtyAsync(id, ct);
+
+    [HttpPost("specialties/{id:long}/archive")]
+    public Task<SpecialtyResponse> ArchiveSpecialty(long id, CancellationToken ct) => catalog.SetSpecialtyArchivedAsync(id, true, ct);
+
+    [HttpPost("specialties/{id:long}/restore")]
+    public Task<SpecialtyResponse> RestoreSpecialty(long id, CancellationToken ct) => catalog.SetSpecialtyArchivedAsync(id, false, ct);
 }

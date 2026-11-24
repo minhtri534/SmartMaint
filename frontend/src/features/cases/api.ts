@@ -7,15 +7,14 @@ import type {
   CaseDetail,
   CasePage,
   AddCostRequest,
-  CompleteWorkRequest,
   CreateCaseRequest,
   EditCaseRequest,
   EmergencyLogRequest,
+  FollowerOptions,
   ExtendDueRequest,
   LogHoursRequest,
   IncidentReportRequest,
   OpenSurveyRequest,
-  PersonRef,
   RateCaseRequest,
   ReasonRequest,
   RejectCaseRequest,
@@ -23,6 +22,7 @@ import type {
   RequestSuggestionResponse,
   ServiceType,
   TechnicianOption,
+  TechnicianSuggestion,
   UpdateCostsRequest,
   UpdateTaskRequest,
 } from './types'
@@ -42,18 +42,31 @@ export const casesApi = {
   /** The asset behind a typed code AS-000012 (same endpoint as the QR label, AST-07). */
   assetByCode: (id: number) =>
     apiClient.get<AssetLookup>(`/asset-register/${id}/qr-target`).then((r) => r.data),
-  /** Staff only: every active technician with specialties and open jobs (meeting 07/11). */
-  technicians: () => apiClient.get<TechnicianOption[]>('/technicians').then((r) => r.data),
-  /** Staff only: the customers of the case's building who may follow it. */
-  followerOptions: (id: number) =>
-    apiClient.get<PersonRef[]>(`/cases/${id}/follower-options`).then((r) => r.data),
+  /** Staff only: the active technicians; for a case, the ones who fit it come first. */
+  technicians: (caseId?: number) =>
+    apiClient.get<TechnicianOption[]>('/technicians', { params: { caseId } }).then((r) => r.data),
+  /** Staff only: who should take this case. A suggestion: nothing changes. */
+  technicianSuggestion: (caseId: number) =>
+    apiClient
+      .post<TechnicianSuggestion>('/ai/technician-suggestion', { caseId })
+      .then((r) => r.data),
+  /** Staff only: who follows the case and the customers found by username or e-mail. */
+  followerOptions: (id: number, search: string) =>
+    apiClient
+      .get<FollowerOptions>(`/cases/${id}/follower-options`, { params: { search } })
+      .then((r) => r.data),
 
   // Cases: the server filters by role (own + followed cases / own buildings / own work orders, B3).
-  // The first 100 are enough for the demo; the screens count and filter them.
-  list: () =>
-    apiClient
-      .get<CasePage>('/cases', { params: { page: 1, pageSize: 100 } })
-      .then((r) => r.data.items),
+  // Every page: the screens count and filter the whole list themselves.
+  list: async () => {
+    const pageSize = 100
+    const items: CasePage['items'] = []
+    for (let page = 1; ; page++) {
+      const { data } = await apiClient.get<CasePage>('/cases', { params: { page, pageSize } })
+      items.push(...data.items)
+      if (data.items.length < pageSize || items.length >= data.totalCount) return items
+    }
+  },
   get: (id: number) => apiClient.get<CaseDetail>(`/cases/${id}`).then((r) => r.data),
   /** EMP-02 */
   create: (body: CreateCaseRequest) => post<CaseDetail>('/cases', body),
@@ -75,6 +88,12 @@ export const casesApi = {
   /** PUT /api/cases/{id} — the staff's one Edit (meeting 07/11) */
   edit: ({ id, ...body }: Id & EditCaseRequest) =>
     apiClient.put<CaseDetail>(`/cases/${id}`, body).then((r) => r.data),
+  /** PUT /api/cases/{id}/followers — the followers become exactly this list */
+  setFollowers: ({ id, customerIds }: Id & { customerIds: number[] }) =>
+    apiClient.put<CaseDetail>(`/cases/${id}/followers`, { customerIds }).then((r) => r.data),
+  /** POST /api/cases/{id}/reassign — taken work continues in a new case (see nextCase) */
+  reassign: ({ id, technicianId }: Id & { technicianId: number }) =>
+    post<CaseDetail>(`/cases/${id}/reassign`, { technicianId }),
   accept: ({ id }: Id) => post<CaseDetail>(`/cases/${id}/accept`),
   /** DLG-09 */
   decline: ({ id, ...body }: Id & ReasonRequest) => post<CaseDetail>(`/cases/${id}/decline`, body),
@@ -86,8 +105,7 @@ export const casesApi = {
   /** The technician continues after a hold. */
   resume: ({ id }: Id) => post<CaseDetail>(`/cases/${id}/resume`),
   /** DLG-11 */
-  complete: ({ id, ...body }: Id & CompleteWorkRequest) =>
-    post<CaseDetail>(`/cases/${id}/complete`, body),
+  complete: ({ id }: Id) => post<CaseDetail>(`/cases/${id}/complete`, {}),
   /** DLG-14 */
   rate: ({ id, ...body }: Id & RateCaseRequest) => post<CaseDetail>(`/cases/${id}/rating`, body),
 
@@ -99,6 +117,8 @@ export const casesApi = {
     post<CaseDetail>(`/cases/${id}/not-fixed`, body),
   /** POST /api/cases/{id}/not-fixed/accept — staff: reopen */
   acceptNotFixed: ({ id }: Id) => post<CaseDetail>(`/cases/${id}/not-fixed/accept`),
+  /** POST /api/cases/{id}/reopen — staff: a closed case (meeting note 18/11), with the reason */
+  reopen: ({ id, ...body }: Id & ReasonRequest) => post<CaseDetail>(`/cases/${id}/reopen`, body),
   /** POST /api/cases/{id}/not-fixed/decline — staff, with a reason for the customer */
   declineNotFixed: ({ id, ...body }: Id & ReasonRequest) =>
     post<CaseDetail>(`/cases/${id}/not-fixed/decline`, body),
@@ -108,6 +128,9 @@ export const casesApi = {
     apiClient.put<CaseDetail>(`/cases/${id}/hours`, body).then((r) => r.data),
   /** POST /api/cases/{id}/costs — technician records a cost they paid, with the receipt */
   addCost: ({ id, ...body }: Id & AddCostRequest) => post<CaseDetail>(`/cases/${id}/costs`, body),
+  /** PUT /api/cases/{id}/costs/{costId} — technician corrects a line they added */
+  editCost: ({ id, costId, ...body }: Id & { costId: number } & AddCostRequest) =>
+    apiClient.put<CaseDetail>(`/cases/${id}/costs/${costId}`, body).then((r) => r.data),
   updateCosts: ({ id, ...body }: Id & UpdateCostsRequest) =>
     apiClient.put<CaseDetail>(`/cases/${id}/costs`, body).then((r) => r.data),
 
@@ -124,8 +147,6 @@ export const casesApi = {
   acknowledge: ({ id }: Id) => post<CaseDetail>(`/cases/${id}/acknowledge`),
   /** POST /api/cases/{id}/log — staff, emergency log line */
   addLog: ({ id, ...body }: Id & EmergencyLogRequest) => post<CaseDetail>(`/cases/${id}/log`, body),
-  /** POST /api/cases/{id}/made-safe — technician (K06) */
-  markSafe: ({ id }: Id) => post<CaseDetail>(`/cases/${id}/made-safe`),
   /** PUT /api/cases/{id}/incident-report — staff (K08) */
   writeIncidentReport: ({ id, ...body }: Id & IncidentReportRequest) =>
     apiClient.put<CaseDetail>(`/cases/${id}/incident-report`, body).then((r) => r.data),
@@ -145,9 +166,10 @@ export const caseKeys = {
   all: ['cases'] as const,
   list: () => [...caseKeys.all, 'list'] as const,
   detail: (id: number) => [...caseKeys.all, 'detail', id] as const,
-  followerOptions: (id: number) => [...caseKeys.all, 'follower-options', id] as const,
+  followerOptions: (id: number, search: string) =>
+    [...caseKeys.all, 'follower-options', id, search] as const,
   serviceTypes: ['service-types'] as const,
   buildings: ['buildings'] as const,
   assets: (roomId: number) => ['assets', roomId] as const,
-  technicians: ['technicians'] as const,
+  technicians: (caseId?: number) => [...caseKeys.all, 'technicians', caseId ?? 0] as const,
 }

@@ -9,7 +9,13 @@ import type { CaseDetail, CaseSummary } from '../types'
  * Teal while it runs, red only when overdue (the one red mark on a case), a quiet word once it is done.
  */
 
-function headline(sla: Sla): { text: string; tone: string } {
+/** Before the work starts there is no deadline yet: the time it is expected, or when that will be known. */
+function waitingText(c: CaseSummary) {
+  if (c.expectedDueAt) return 'Expected due'
+  return c.status === 'pending' ? 'Set when approved' : 'Set when scheduled'
+}
+
+function headline(sla: Sla, c: CaseSummary): { text: string; tone: string } {
   switch (sla.state) {
     case 'running':
       return { text: `${formatDuration(sla.remaining)} left`, tone: 'text-ink' }
@@ -20,7 +26,7 @@ function headline(sla: Sla): { text: string; tone: string } {
     case 'late':
       return { text: `Late by ${formatDuration(sla.remaining)}`, tone: 'text-negative' }
     case 'waiting':
-      return { text: 'Starts with the work', tone: 'text-muted' }
+      return { text: waitingText(c), tone: 'text-muted' }
     default:
       return { text: '—', tone: 'text-muted' }
   }
@@ -55,7 +61,7 @@ function Track({ sla, className }: { sla: Sla; className?: string }) {
  */
 export function SlaCell({ c }: { c: CaseSummary }) {
   const sla = slaOf(c)
-  const head = headline(sla)
+  const head = headline(sla, c)
   const pastDeadline = sla.state === 'overdue' || sla.state === 'late'
   return (
     <div className="ml-auto flex w-36 flex-col items-end gap-1 text-right">
@@ -64,41 +70,55 @@ export function SlaCell({ c }: { c: CaseSummary }) {
       {c.dueAt && sla.state !== 'met' && (
         <span className="text-muted text-xs tabular-nums">Due {formatDateTime(c.dueAt)}</span>
       )}
+      {c.expectedDueAt && sla.state === 'waiting' && (
+        <span className="text-muted text-xs tabular-nums">{formatDateTime(c.expectedDueAt)}</span>
+      )}
     </div>
   )
 }
 
 /** Inline form for a phone row: one line of words. */
 export function SlaText({ c }: { c: CaseSummary }) {
-  const head = headline(slaOf(c))
-  return <span className={cn('text-xs tabular-nums', head.tone)}>{head.text}</span>
+  const sla = slaOf(c)
+  const head = headline(sla, c)
+  const expected = sla.state === 'waiting' && c.expectedDueAt
+  return (
+    <span className={cn('text-xs tabular-nums', head.tone)}>
+      {head.text}
+      {expected && ` ${formatDateTime(expected)}`}
+    </span>
+  )
 }
 
 /** Detail page: the case's answer figure ("3 h 10 m left") with the full window under it. */
 export function SlaPanel({ c }: { c: CaseDetail }) {
   const sla = slaOf(c)
-  const head = headline(sla)
+  const head = headline(sla, c)
+  const expected = sla.state === 'waiting' ? c.expectedDueAt : null
   // Past the deadline the red figure is the case's one red mark: no full red bar under it (16/11).
   const pastDeadline = sla.state === 'overdue' || sla.state === 'late'
 
   return (
     <Card>
       <CardHeader
-        title="Deadline"
+        title={expected ? 'Expected due' : 'Deadline'}
         aside={sla.window ? `${formatDuration(sla.window)} window` : undefined}
       />
       <div
         className={cn(
-          'text-[34px] leading-10 font-normal tracking-[-0.03em] tabular-nums',
+          'font-normal tracking-[-0.03em] tabular-nums',
+          sla.state === 'waiting' ? 'text-2xl leading-8' : 'text-[34px] leading-10',
           head.tone,
         )}
       >
-        {head.text}
+        {expected ? formatDateTime(expected) : head.text}
       </div>
       {!pastDeadline && <Track sla={sla} className="mt-3 h-1.5" />}
       <dl className="mt-4 flex flex-col gap-2 text-sm">
         {c.slaStartedAt && <Row label="Clock started" value={formatDateTime(c.slaStartedAt)} />}
-        {/* "Starts with the work" is already the headline; the row would say it twice. */}
+        {expected && c.plannedStartAt && (
+          <Row label="Planned start" value={formatDateTime(c.plannedStartAt)} />
+        )}
         {c.dueAt && <Row label="Due" value={formatDateTime(c.dueAt)} />}
         {c.completedAt && <Row label="Reported done" value={formatDateTime(c.completedAt)} />}
       </dl>

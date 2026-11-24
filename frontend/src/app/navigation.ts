@@ -77,7 +77,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   },
   // F6
   { label: 'Analytics', group: 'Menu', to: paths.analytics, icon: 'chart', roles: ['manager'] }, // meeting 07/11: not for the staff
-  // F1 — buildings and assets (read for staff / manager, edit for admin)
+  // F1 — buildings and assets (read for staff / manager / admin; the admin keeps the buildings themselves)
   {
     label: 'Buildings',
     group: 'Property',
@@ -94,6 +94,15 @@ export const NAV_ITEMS: readonly NavItem[] = [
     // Meeting 07/11: the staff no longer browse the asset list (they still open an asset from a case).
     roles: ['manager', 'admin'],
   },
+  // Meeting note 18/11: floors, rooms and assets change through a list the staff write and a manager approves.
+  {
+    label: 'Asset changes',
+    group: 'Property',
+    to: paths.assetChanges,
+    icon: 'swap',
+    also: ['/asset-changes/'],
+    roles: ['staff', 'manager'],
+  },
   { label: 'Catalog', group: 'Property', to: paths.catalog, icon: 'list', roles: ['admin'] },
   {
     label: 'Accounts',
@@ -101,13 +110,6 @@ export const NAV_ITEMS: readonly NavItem[] = [
     to: paths.accounts,
     icon: 'users',
     also: ['/admin/accounts/'],
-    roles: ['admin'],
-  },
-  {
-    label: 'Replacements',
-    group: 'Property',
-    to: paths.replacements,
-    icon: 'swap',
     roles: ['admin'],
   },
   {

@@ -5,8 +5,8 @@ import { Card, LinkButton, LoadingBlock, PageHeader } from '@/shared/ui'
 import { useQrTarget } from '../hooks'
 
 /**
- * AST-07 QR landing: decides where a scanned label sends the person. Tenant of that place -> the report form with the
- * room and asset filled in; staff / manager / admin of that building -> the asset; anything else -> one sentence why.
+ * AST-07 QR landing: decides where a scanned label sends the person. A customer -> the report form with the room and
+ * asset filled in; staff / manager / admin of that building -> the asset; anything else -> one sentence why.
  */
 export function QrLandingPage() {
   const { id } = useParams()
@@ -35,11 +35,9 @@ export function QrLandingPage() {
 
   const where = `${t.location.buildingName} · ${t.location.floorName} · ${t.location.roomName}`
   const text =
-    user?.role === 'customer'
-      ? `This asset is in ${where}, outside your rented room and your building's common areas. Ask the staff of that building.`
-      : user?.role === 'technician'
-        ? `This asset is in ${where}. New problems are reported by tenants or the staff; your assigned work is in My work orders.`
-        : `This asset is in ${where}, a building not assigned to you.`
+    user?.role === 'technician'
+      ? `This asset is in ${where}. New problems are reported by customers or the staff; your assigned work is in My work orders.`
+      : `This asset is in ${where}, a building not assigned to you.`
   return <Explain title={t.name} text={text} />
 }
 

@@ -6,9 +6,9 @@ import type {
   AccountWithPassword,
   AdminOverview,
   BuildingOption,
-  ChangeRoleRequest,
   CreateAccountRequest,
   SpecialtyRef,
+  TemporaryPasswordResult,
   UpdateAccountRequest,
 } from './types'
 
@@ -31,9 +31,6 @@ export const accountsApi = {
   /** PUT /api/accounts/{id} — ADM-03 */
   update: ({ id, ...body }: Id & UpdateAccountRequest) =>
     apiClient.put<AccountDetail>(`/accounts/${id}`, body).then((r) => r.data),
-  /** POST /api/accounts/{id}/change-role — DLG-16; the account comes back with a NEW id. */
-  changeRole: ({ id, ...body }: Id & ChangeRoleRequest) =>
-    apiClient.post<AccountDetail>(`/accounts/${id}/change-role`, body).then((r) => r.data),
   /** POST /api/accounts/{id}/deactivate — DLG-16 */
   deactivate: ({ id }: Id) =>
     apiClient.post<AccountDetail>(`/accounts/${id}/deactivate`).then((r) => r.data),
@@ -42,9 +39,9 @@ export const accountsApi = {
     apiClient.post<AccountDetail>(`/accounts/${id}/reactivate`).then((r) => r.data),
   /** POST /api/accounts/{id}/reset-password — DLG-16 */
   resetPassword: ({ id }: Id) =>
-    apiClient
-      .post<{ temporaryPassword: string }>(`/accounts/${id}/reset-password`)
-      .then((r) => r.data),
+    apiClient.post<TemporaryPasswordResult>(`/accounts/${id}/reset-password`).then((r) => r.data),
+  /** DELETE /api/accounts/{id} — only an account with no data (meeting note 18/11) */
+  remove: ({ id }: Id) => apiClient.delete(`/accounts/${id}`).then(() => undefined),
   /** POST /api/accounts/{id}/unlock — DLG-16 */
   unlock: ({ id }: Id) =>
     apiClient.post<AccountDetail>(`/accounts/${id}/unlock`).then((r) => r.data),

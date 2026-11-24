@@ -29,7 +29,11 @@ internal static class CaseMapper
         c.IsSurvey,
         ToBrief(c),
         c.PlannedStartAt,
-        c.PlannedEndAt);
+        c.PlannedEndAt,
+        ExpectedDueAt(c),
+        c.CategoryId,
+        ToAsset(c),
+        DuplicateOf(c));
 
     /// <summary>
     /// Needs Images, History(ChangedBy), Rejections(Technician) and Asset loaded too.
@@ -67,9 +71,11 @@ internal static class CaseMapper
             ToBrief(c),
             c.PlannedStartAt,
             c.PlannedEndAt,
+            ExpectedDueAt(c),
+            DuplicateOf(c),
             c.Description,
             c.CategoryId,
-            c.Asset is null ? null : new AssetResponse(c.Asset.Id, c.Asset.Name, c.Asset.RoomId),
+            ToAsset(c),
             c.PreviousCaseId is { } previous ? ToRef(previous) : null,
             c.Followers.OrderBy(f => f.AddedAt).Select(f => ToPerson(f.Customer)).ToList(),
             c.Images
@@ -96,7 +102,8 @@ internal static class CaseMapper
             showWork
                 ? c.Costs.OrderBy(x => x.Id).Select(x => new CostResponse(
                     x.Id, x.Name, x.Description, x.Amount, x.ReceiptCode,
-                    x.ReceiptImage is { } receipt && photoUrls.TryGetValue(receipt, out var receiptUrl) ? receiptUrl : null)).ToList()
+                    x.ReceiptImage is { } receipt && photoUrls.TryGetValue(receipt, out var receiptUrl) ? receiptUrl : null,
+                    x.AddedById)).ToList()
                 : null,
             showWork && c.Costs.Count > 0 ? c.Costs.Sum(x => x.Amount) : null,
             showWork ? c.ActualCompletionHours : null,
@@ -123,9 +130,6 @@ internal static class CaseMapper
                 t.EvidenceImage is { } e && photoUrls.TryGetValue(e, out var url) ? url : null,
                 t.CreatedAt, t.FinishedAt)).ToList(),
             extras.DecisionInfo,
-            c.ReplacementModel is { } model
-                ? new ReplacementResponse(model, c.ReplacementSerial, extras.Replacement?.Status, extras.Replacement?.NewAssetId)
-                : null,
             extras.NextCaseId is { } next ? ToRef(next) : null,
             extras.StatusChanges,
             allowedActions);
@@ -135,7 +139,6 @@ internal static class CaseMapper
     public sealed record DetailExtras(
         IReadOnlyList<long> MergedCaseIds,
         DecisionInfoResponse? DecisionInfo,
-        AssetReplacementRequest? Replacement,
         long? NextCaseId,
         IReadOnlyList<EditStatusChange> StatusChanges);
 
@@ -146,17 +149,32 @@ internal static class CaseMapper
             : null;
 
     /// <summary>
-    /// In F4 = emergency urgency AND the 24/7 clock started (EmergencyAt). A customer may choose "Emergency" on a normal
-    /// service type: that case stays Pending in F3 until the staff confirms it on approval (Leader 09/11).
+    /// In F4 = emergency urgency AND the 24/7 clock started (EmergencyAt). A customer who chooses "Emergency" waits in
+    /// Pending until the staff approve it (meeting note 18/11).
     /// </summary>
     public static bool IsEmergencyFlow(Case c) => c.Priority.Code == CasePriority.Emergency && c.EmergencyAt is not null;
+
+    /// <summary>
+    /// Before the work starts: planned start + the urgency's SLA hours (meeting note 18/11). It only informs; the real
+    /// deadline (DueAt) is set when the technician starts, and only that one can be overdue.
+    /// </summary>
+    private static DateTimeOffset? ExpectedDueAt(Case c) =>
+        c.DueAt is null && c.PlannedStartAt is { } start ? start.AddHours(c.Priority.SlaHours) : null;
 
     /// <summary>F4 runs its clock from when the case became an emergency; F3 from when the technician started.</summary>
     private static DateTimeOffset? SlaStartedAt(Case c) => c.EmergencyAt ?? c.StartedAt;
 
     private static EmergencyResponse? ToEmergency(Case c) => c.EmergencyAt is { } since
-        ? new EmergencyResponse(since, c.AcknowledgedAt, c.MadeSafeAt, c.MergedIntoCaseId is { } m ? ToRef(m) : null)
+        ? new EmergencyResponse(since, c.AcknowledgedAt, c.MergedIntoCaseId is { } m ? ToRef(m) : null)
         : null;
+
+    private static AssetResponse? ToAsset(Case c) => c.Asset is not { } a
+        ? null
+        : new AssetResponse(a.Id, a.Name, a.RoomId, a.TypeId, a.Type.Name, a.Type.Category.CategoryName);
+
+    /// <summary>A request rejected because it repeats another case: it can be opened, but no figure counts it.</summary>
+    private static CaseRefResponse? DuplicateOf(Case c) =>
+        c.Status == CaseStatus.Rejected && c.MergedIntoCaseId is { } target ? ToRef(target) : null;
 
     private static CaseRefResponse ToRef(long id) => new(id, Case.CodeOf(id));
 

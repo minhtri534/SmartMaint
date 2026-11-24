@@ -13,6 +13,8 @@ internal sealed class BuildingConfiguration : IEntityTypeConfiguration<Building>
         builder.Property(x => x.Id).UseIdentityAlwaysColumn();
         builder.Property(x => x.Name).HasMaxLength(100);
         builder.Property(x => x.Address).HasMaxLength(200);
+        // A deleted building, floor or room (soft delete, meeting note 18/11) keeps its name: the indexes stay as they
+        // were so the code already deployed (and its seed) work unchanged.
         builder.HasIndex(x => x.Name).IsUnique();
     }
 }

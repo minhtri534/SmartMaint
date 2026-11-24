@@ -40,11 +40,12 @@ public sealed class CaseWorkflowTests : CaseTestBase
 
     [Fact]
     [Trait(TestType.Key, TestType.Boundary)]
-    public async Task Edit_ApprovedCaseNotAcceptedYet_JustChangesTheTechnician()
+    public async Task Reassign_ApprovedCaseNotAcceptedYet_JustChangesTheTechnician()
     {
         var id = await CaseAtAsync(CaseStatus.Approved);
+        As(Staff);
 
-        var result = await Sut.EditAsync(id, await EditOfAsync(id) with { TechnicianId = Technician2.Id }, default);
+        var result = await Sut.ReassignAsync(id, new ReassignRequest(Technician2.Id), default);
 
         Assert.Equal(CaseStatus.Approved, result.Status);
         Assert.Equal(Technician2.Id, result.Technician?.Id);
@@ -98,13 +99,14 @@ public sealed class CaseWorkflowTests : CaseTestBase
 
     [Fact]
     [Trait(TestType.Key, TestType.Boundary)]
-    public async Task Decline_ThenEditToSomeoneElse_KeepsTheDeclineAndTheNewTechnician()
+    public async Task Decline_ThenReassignToSomeoneElse_KeepsTheDeclineAndTheNewTechnician()
     {
         var id = await CaseAtAsync(CaseStatus.Approved);
         As(Technician);
         await Sut.DeclineAsync(id, new ReasonRequest("Fully booked with another job"), default);
+        As(Staff);
 
-        var result = await Sut.EditAsync(id, await EditOfAsync(id) with { TechnicianId = Technician2.Id }, default);
+        var result = await Sut.ReassignAsync(id, new ReassignRequest(Technician2.Id), default);
 
         Assert.Equal(Technician.Id, Assert.Single(result.Rejections).Technician.Id);
         Assert.Equal(Technician2.Id, result.Technician?.Id);
@@ -429,18 +431,29 @@ public sealed class CaseWorkflowTests : CaseTestBase
 
     [Fact]
     [Trait(TestType.Key, TestType.Boundary)]
-    public async Task EditReopen_ClosedExactlySevenDaysAgo_IsStillAllowed()
+    public async Task Reopen_ClosedExactlySevenDaysAgo_IsStillAllowed()
     {
         var id = await CaseAtAsync(CaseStatus.Closed);
         Clock.Now = Clock.Now.AddDays(7);
 
-        var result = await Sut.EditAsync(id, await EditOfAsync(id) with
-        {
-            StatusChange = EditStatusChange.Reopen,
-            Reason = "The customer says it is not fixed",
-        }, default);
+        var result = await Sut.ReopenAsync(id, new ReasonRequest("The customer says it is not fixed"), default);
 
         Assert.Equal(CaseStatus.Reopened, result.Status);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Boundary)]
+    public async Task ClosedCase_IsReadOnlyButForReopen()
+    {
+        var id = await CaseAtAsync(CaseStatus.Closed);
+        As(Staff);
+
+        var actions = (await Sut.GetAsync(id, default)).AllowedActions;
+
+        Assert.Contains(CaseAction.Reopen, actions);
+        Assert.DoesNotContain(CaseAction.Edit, actions);
+        Assert.DoesNotContain(CaseAction.UpdateCosts, actions);
+        Assert.DoesNotContain(CaseAction.ManageFollowers, actions);
     }
 
     [Fact]

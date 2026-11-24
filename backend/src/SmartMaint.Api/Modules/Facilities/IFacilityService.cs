@@ -3,8 +3,9 @@ using SmartMaint.Api.Modules.Facilities.Dtos;
 namespace SmartMaint.Api.Modules.Facilities;
 
 /// <summary>
-/// F1 (Huy) — AST-01 Facility tree: buildings, floors, rooms. Staff and managers read their own buildings; only the
-/// Administrator creates, edits and deletes (Screen Catalog rule 7). A place with content is never deleted (BR-10).
+/// F1 (Huy) — AST-01 Facility tree: buildings, floors, rooms. Staff and managers read their own buildings. The
+/// Administrator makes buildings; floors and rooms change when a manager approves a staff change list (meeting note
+/// 18/11, Modules/AssetChanges). A place with content is never deleted (BR-10).
 /// Every change is in the audit log.
 /// </summary>
 public interface IFacilityService

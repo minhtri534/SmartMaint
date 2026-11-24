@@ -8,13 +8,26 @@ interface PhotoPickerProps {
   max?: number
   error?: string
   hint?: string
+  /** Shown under each photo. */
+  captions?: string[]
+  /** The picked photos go here first (e.g. to a confirm step) instead of straight into the value. */
+  onPicked?: (photos: string[]) => void
 }
 
 /**
  * Pick photos from the device and preview them. Photos are shrunk to max 960 px JPEG data URLs.
  * TODO(api): upload to Supabase Storage through the Attachment module and keep the returned ids instead.
  */
-export function PhotoPicker({ label, value, onChange, max = 5, error, hint }: PhotoPickerProps) {
+export function PhotoPicker({
+  label,
+  value,
+  onChange,
+  max = 5,
+  error,
+  hint,
+  captions,
+  onPicked,
+}: PhotoPickerProps) {
   const inputId = useId()
   const [reading, setReading] = useState(false)
 
@@ -27,7 +40,8 @@ export function PhotoPicker({ label, value, onChange, max = 5, error, hint }: Ph
         .filter((f) => f.type.startsWith('image/'))
         .slice(0, room)
       const urls = await Promise.all(picked.map((f) => shrinkToDataUrl(f)))
-      onChange([...value, ...urls])
+      if (onPicked) onPicked(urls)
+      else onChange([...value, ...urls])
     } finally {
       setReading(false)
     }
@@ -38,12 +52,13 @@ export function PhotoPicker({ label, value, onChange, max = 5, error, hint }: Ph
       <span className="text-sm font-medium">{label}</span>
       <div className="flex flex-wrap gap-2">
         {value.map((url, i) => (
-          <div key={url.slice(-40) + i} className="relative">
+          <div key={url.slice(-40) + i} className="relative w-20">
             <img
               src={url}
-              alt=""
+              alt={captions?.[i] ?? ''}
               className="border-border size-20 rounded-lg border object-cover"
             />
+            {captions?.[i] && <p className="text-muted mt-1 line-clamp-2 text-xs">{captions[i]}</p>}
             <button
               type="button"
               onClick={() => onChange(value.filter((_, j) => j !== i))}

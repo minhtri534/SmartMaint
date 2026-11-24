@@ -1,8 +1,10 @@
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useState } from 'react'
 import { useFieldArray, useForm } from 'react-hook-form'
 import { Alert, Button, Dialog, DialogActions } from '@/shared/ui'
 import { casesApi } from '../../api'
 import { useCaseMutation } from '../../hooks'
+import { groupDigits } from '../../amount'
 import { costsSchema, toCostLines, type CostsFormValues } from '../../schemas'
 import type { CaseDetail } from '../../types'
 import { CostLinesField } from '../CostLinesField'
@@ -14,8 +16,8 @@ interface Props {
 }
 
 /**
- * Meeting 07/11: the staff records the costs (not the technician, who hands in the receipts). Any number of lines,
- * each a title, a description and an amount. Labour is computed by the system from the hours and the hourly rate.
+ * Meeting note 18/11, "Enter costs": the staff records what the case cost. Any number of lines, each a title, a
+ * description and an amount. Labour is computed by the system from the hours and the hourly rate.
  */
 export function CostsDialog({ caseDetail, open, onClose }: Props) {
   return (
@@ -23,8 +25,8 @@ export function CostsDialog({ caseDetail, open, onClose }: Props) {
       open={open}
       onClose={onClose}
       wide
-      title="Costs"
-      description="Parts, materials and outside services of this case. These lines replace the current ones."
+      title="Enter costs"
+      description="Record each cost of this case with a title, a description and an amount."
     >
       <CostsForm caseDetail={caseDetail} onDone={onClose} />
     </Dialog>
@@ -45,13 +47,14 @@ function CostsForm({ caseDetail, onDone }: { caseDetail: CaseDetail; onDone: () 
         id: String(c.id),
         name: c.name,
         description: c.description ?? '',
-        amount: String(c.amount),
+        amount: groupDigits(String(c.amount)),
       })),
     },
   })
   // keyName 'key': the rows carry their own "id" (the cost line id).
   const lines = useFieldArray({ control, name: 'lines', keyName: 'key' })
   const receipts = new Map((caseDetail.costs ?? []).map((c) => [String(c.id), c]))
+  const [zoomed, setZoomed] = useState<{ url: string; code: string | null } | null>(null)
 
   const onSubmit = handleSubmit((v) =>
     save.mutate({ id: caseDetail.id, lines: toCostLines(v.lines) }, { onSuccess: onDone }),
@@ -65,31 +68,57 @@ function CostsForm({ caseDetail, onDone }: { caseDetail: CaseDetail; onDone: () 
         errors={errors.lines}
         onAdd={() => lines.append({ id: '', name: '', description: '', amount: '' })}
         onRemove={lines.remove}
-        hint="Amounts in VND. A line the technician added keeps its receipt."
-        extra={(i) => {
+        hint="Amounts in VND."
+        // Meeting note 18/11: the receipt is what the staff checks first: shown first, large, and opens bigger.
+        lead={(i) => {
           const cost = receipts.get(lines.fields[i]?.id ?? '')
           if (!cost?.receiptCode && !cost?.receiptUrl) return null
           return (
-            <p className="text-muted text-xs sm:col-span-4">
-              Receipt {cost.receiptCode}
-              {cost.receiptUrl && (
-                <>
-                  {' '}
-                  <a
-                    href={cost.receiptUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="underline underline-offset-2"
-                  >
-                    photo
-                  </a>
-                </>
+            <div className="flex w-40 flex-col gap-1.5">
+              {cost.receiptUrl ? (
+                <button
+                  type="button"
+                  onClick={() => setZoomed({ url: cost.receiptUrl!, code: cost.receiptCode })}
+                  className="border-border block cursor-zoom-in overflow-hidden rounded-lg border"
+                >
+                  <img
+                    src={cost.receiptUrl}
+                    alt={`Receipt for ${cost.name}`}
+                    className="h-40 w-40 object-cover"
+                  />
+                </button>
+              ) : (
+                <div className="border-border bg-raised text-muted flex h-20 w-40 items-center justify-center rounded-lg border text-xs">
+                  No photo
+                </div>
               )}
-            </p>
+              <span className="text-xs">
+                {cost.receiptCode ? `Receipt ${cost.receiptCode}` : 'Receipt photo'}
+              </span>
+            </div>
           )
         }}
       />
       {save.error && <Alert>{save.error.message}</Alert>}
+      {zoomed && (
+        <Dialog
+          open
+          wide
+          onClose={() => setZoomed(null)}
+          title={zoomed.code ? `Receipt ${zoomed.code}` : 'Receipt'}
+        >
+          <img
+            src={zoomed.url}
+            alt="Receipt"
+            className="max-h-[70vh] w-full rounded-lg object-contain"
+          />
+          <DialogActions>
+            <Button variant="ghost" onClick={() => setZoomed(null)}>
+              Close
+            </Button>
+          </DialogActions>
+        </Dialog>
+      )}
       <DialogActions>
         <Button variant="ghost" onClick={onDone}>
           Back

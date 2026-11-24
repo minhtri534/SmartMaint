@@ -10,15 +10,20 @@ import {
   DialogActions,
   EmptyBlock,
   ErrorBlock,
+  Icon,
   LoadingBlock,
   PageHeader,
-  Select,
+  SearchInput,
+  SortHeader,
+  sortRows,
   TextField,
+  useTableSort,
 } from '@/shared/ui'
+import { cn } from '@/shared/utils/cn'
 import { maintenanceApi } from '../api'
-import { useChecklists, useMaintenanceMutation, useServiceTypeOptions } from '../hooks'
+import { useChecklists, useMaintenanceMutation } from '../hooks'
 import { checklistSchema, type ChecklistFormValues } from '../schemas'
-import type { Checklist, ServiceTypeOption } from '../types'
+import type { Checklist } from '../types'
 
 /**
  * PM-04 Checklist templates (ERD: CaseChecklists + ChecklistTasks). A plan copies the items of its checklist onto
@@ -31,6 +36,20 @@ export function ChecklistsPage() {
   const remove = useMaintenanceMutation(maintenanceApi.deleteChecklist)
   const [editing, setEditing] = useState<{ item: Checklist | null } | null>(null)
   const [deleting, setDeleting] = useState<Checklist | null>(null)
+  const [openId, setOpenId] = useState<number | null>(null)
+  const [search, setSearch] = useState('')
+  const { sort, toggle } = useTableSort<'name' | 'plans'>({ key: 'name', dir: 'asc' })
+  const words = search.trim().toLowerCase()
+  const rows = sortRows(
+    (list.data ?? []).filter(
+      (c) =>
+        !words ||
+        c.name.toLowerCase().includes(words) ||
+        c.tasks.some((t) => t.name.toLowerCase().includes(words)),
+    ),
+    sort,
+    { name: (c) => c.name, plans: (c) => c.usedByPlans },
+  )
   const canEdit = user?.role === 'admin' || user?.role === 'staff'
 
   return (
@@ -46,6 +65,12 @@ export function ChecklistsPage() {
           )
         }
       />
+      <SearchInput
+        label="Search checklists"
+        placeholder="Checklist or item"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+      />
       {list.isPending ? (
         <LoadingBlock rows={5} />
       ) : list.error ? (
@@ -56,27 +81,52 @@ export function ChecklistsPage() {
         />
       ) : list.data.length === 0 ? (
         <EmptyBlock>No checklist yet.</EmptyBlock>
+      ) : rows.length === 0 ? (
+        <EmptyBlock>{`No checklist matches “${search}”.`}</EmptyBlock>
       ) : (
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-border text-muted border-b text-xs">
-              <th className="h-9 pr-4 font-normal">Checklist</th>
-              <th className="hidden h-9 pr-4 font-normal md:table-cell">Items</th>
-              <th className="h-9 pr-4 text-right font-normal">used by plans</th>
+              <SortHeader sortKey="name" sort={sort} onSort={toggle}>
+                Checklist
+              </SortHeader>
+              <SortHeader sortKey="plans" sort={sort} onSort={toggle} align="right">
+                used by plans
+              </SortHeader>
               {canEdit && <th className="h-9" />}
             </tr>
           </thead>
           <tbody>
-            {list.data.map((c) => (
+            {rows.map((c) => (
               <tr key={c.id} className="border-rule border-b align-top last:border-0">
                 <td className="py-3 pr-4">
-                  <div className="font-medium">{c.name}</div>
-                  <div className="text-muted text-[13px]">
-                    {c.categoryName} · {c.tasks.length} {c.tasks.length === 1 ? 'item' : 'items'}
-                  </div>
-                </td>
-                <td className="text-muted hidden max-w-[420px] py-3 pr-4 text-[13px] md:table-cell">
-                  {c.tasks.map((t) => t.name).join(' · ')}
+                  <button
+                    type="button"
+                    aria-expanded={openId === c.id}
+                    onClick={() => setOpenId((id) => (id === c.id ? null : c.id))}
+                    className="flex items-start gap-2 text-left"
+                  >
+                    <Icon
+                      name="back"
+                      className={cn(
+                        'text-muted ease-snap mt-0.5 size-4 flex-none transition-transform duration-150',
+                        openId === c.id ? 'rotate-90' : '-rotate-90',
+                      )}
+                    />
+                    <span>
+                      <span className="block font-medium">{c.name}</span>
+                      <span className="text-muted block text-[13px]">
+                        {c.tasks.length} {c.tasks.length === 1 ? 'item' : 'items'}
+                      </span>
+                    </span>
+                  </button>
+                  {openId === c.id && (
+                    <ol className="mt-2 ml-6 flex list-decimal flex-col gap-1 pl-4 text-[13px]">
+                      {c.tasks.map((t) => (
+                        <li key={t.id ?? t.name}>{t.name}</li>
+                      ))}
+                    </ol>
+                  )}
                 </td>
                 <td className="text-muted py-3 pr-4 text-right tabular-nums">{c.usedByPlans}</td>
                 {canEdit && (
@@ -126,30 +176,7 @@ export function ChecklistsPage() {
   )
 }
 
-/** The service type select keeps its saved value only if its options exist when the form mounts. */
 function ChecklistForm({ item, onDone }: { item: Checklist | null; onDone: () => void }) {
-  const serviceTypes = useServiceTypeOptions()
-  if (serviceTypes.error)
-    return (
-      <ErrorBlock
-        what="the service types"
-        message={serviceTypes.error.message}
-        onRetry={() => void serviceTypes.refetch()}
-      />
-    )
-  if (!serviceTypes.data) return <LoadingBlock rows={3} />
-  return <ChecklistFields item={item} serviceTypes={serviceTypes.data} onDone={onDone} />
-}
-
-function ChecklistFields({
-  item,
-  serviceTypes,
-  onDone,
-}: {
-  item: Checklist | null
-  serviceTypes: ServiceTypeOption[]
-  onDone: () => void
-}) {
   const save = useMaintenanceMutation(maintenanceApi.saveChecklist)
   const {
     register,
@@ -161,7 +188,6 @@ function ChecklistFields({
     defaultValues: {
       name: item?.name ?? '',
       description: item?.description ?? '',
-      categoryId: item ? String(item.categoryId) : '',
       tasks: item?.tasks.map((t) => ({ name: t.name })) ?? [{ name: '' }],
     },
   })
@@ -173,7 +199,6 @@ function ChecklistFields({
         id: item?.id ?? null,
         name: v.name,
         description: v.description || null,
-        categoryId: Number(v.categoryId),
         tasks: v.tasks.map((t) => ({ name: t.name, description: null })),
       },
       { onSuccess: onDone },
@@ -182,26 +207,12 @@ function ChecklistFields({
 
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
-      <div className="grid gap-4 sm:grid-cols-2">
-        <TextField
-          label="Name *"
-          placeholder="e.g. Split AC monthly service"
-          error={errors.name?.message}
-          {...register('name')}
-        />
-        <Select
-          label="Service type *"
-          placeholder="Choose…"
-          error={errors.categoryId?.message}
-          {...register('categoryId')}
-        >
-          {serviceTypes.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.groupName} · {s.name}
-            </option>
-          ))}
-        </Select>
-      </div>
+      <TextField
+        label="Name *"
+        placeholder="e.g. Split AC monthly service"
+        error={errors.name?.message}
+        {...register('name')}
+      />
       <TextField label="Description" hint="Optional" {...register('description')} />
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-1 text-sm font-medium">Items *</legend>

@@ -49,7 +49,7 @@ internal sealed class MaintenanceGenerator(AppDbContext db, INotificationService
             {
                 foreach (var entry in detail.Assets)
                 {
-                    if (MaintenanceSchedule.DueToGenerate(entry, plan, today) is not { } due)
+                    if (MaintenanceSchedule.DueToGenerate(entry, detail, today) is not { } due)
                     {
                         continue;
                     }
@@ -72,7 +72,7 @@ internal sealed class MaintenanceGenerator(AppDbContext db, INotificationService
                     }
 
                     var staff = await StaffOfBuildingAsync(entry.Asset.Room.Floor.BuildingId, cancellationToken);
-                    var warning = await RecentRepairAsync(entry.Asset.Id, plan, now, cancellationToken);
+                    var warning = await RecentRepairAsync(entry.Asset.Id, detail, now, cancellationToken);
                     notifications.Send(staff, warning is null
                         ? $"{code} preventive maintenance of {entry.Asset.Name} was made (due {due:yyyy-MM-dd})."
                         : $"{code} preventive maintenance of {entry.Asset.Name} is due {due:yyyy-MM-dd}, but {warning}. Keep it, move the deadline or cancel it.");
@@ -96,8 +96,10 @@ internal sealed class MaintenanceGenerator(AppDbContext db, INotificationService
             RoomId = entry.Asset.RoomId,
             AssetId = entry.AssetId,
             CategoryId = detail.Checklist.CategoryId,
-            Title = $"Preventive: {detail.Checklist.Name}",
-            Description = $"Scheduled maintenance of {entry.Asset.Name}, due {due:yyyy-MM-dd} (plan #{plan.Id}). Go through every checklist item.",
+            // Plans made before 19/11 have no name: the checklist names the work as before.
+            Title = $"Preventive: {plan.Name ?? detail.Checklist.Name}",
+            Description = $"Scheduled maintenance of {entry.Asset.Name}, due {due:yyyy-MM-dd} (plan #{plan.Id}). " +
+                          (plan.Description is { } note ? $"{note} " : string.Empty) + "Go through every checklist item.",
             Status = CaseStatus.Approved,
             PriorityLevelId = detail.PriorityLevelId,
             StaffId = plan.StaffId,
@@ -126,9 +128,9 @@ internal sealed class MaintenanceGenerator(AppDbContext db, INotificationService
     }
 
     /// <summary>G3: an open case on the asset, or one closed within 10% of the period (P04). Null when none.</summary>
-    private async Task<string?> RecentRepairAsync(long assetId, MaintenanceTrigger plan, DateTimeOffset now, CancellationToken cancellationToken)
+    private async Task<string?> RecentRepairAsync(long assetId, MaintenanceWorkOrderDetail trigger, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        var since = now.AddDays(-Math.Max(1, MaintenanceSchedule.PeriodDays(plan) / 10));
+        var since = now.AddDays(-Math.Max(1, MaintenanceSchedule.PeriodDays(trigger) / 10));
         var last = await db.Cases.AsNoTracking()
             .Where(c => c.AssetId == assetId && c.TriggerWorkOrderId == null
                         && (!Finished.Contains(c.Status) || (c.ClosedAt != null && c.ClosedAt >= since)))

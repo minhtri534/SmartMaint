@@ -70,8 +70,3 @@ export function useServiceTypeOptions(enabled: boolean) {
     enabled,
   })
 }
-
-/** A06 replacement requests (Admin: all; staff and managers: their buildings). */
-export function useReplacements() {
-  return useQuery({ queryKey: assetKeys.replacements, queryFn: assetsApi.replacements })
-}

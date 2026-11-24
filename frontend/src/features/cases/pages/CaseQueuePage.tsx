@@ -5,7 +5,7 @@ import { useCases } from '../hooks'
 import { isOverdue } from '../sla'
 import { FINAL_STATUSES, type CaseStatus, type CaseSummary } from '../types'
 
-const WITH_TECHNICIANS: readonly CaseStatus[] = [
+const HANDLING: readonly CaseStatus[] = [
   'approved',
   'accepted',
   'in_progress',
@@ -13,13 +13,17 @@ const WITH_TECHNICIANS: readonly CaseStatus[] = [
   'reopened',
 ]
 
-// The staff's own steps: review (approve with a technician), choose a technician again (after a decline or for an
-// emergency that came in on its own), verify (Edit → close). Meeting 07/11: no separate "assign" step.
+const isDuplicate = (c: CaseSummary) => c.duplicateOf !== null
+
+// Meeting note 18/11: every counted case is in exactly one of the three, so they add up to All.
 const toReview = (c: CaseSummary) => c.status === 'pending'
-const toAssign = (c: CaseSummary) => c.status === 'approved' && !c.technician
+const toAssign = (c: CaseSummary) => HANDLING.includes(c.status) && !c.technician
 const toVerify = (c: CaseSummary) => c.status === 'completed'
-/** Waiting for the staff, or past its deadline wherever it is. */
-const needsYou = (c: CaseSummary) => toReview(c) || toAssign(c) || toVerify(c) || isOverdue(c)
+const waitingForStaff = (c: CaseSummary) =>
+  !isDuplicate(c) && (toReview(c) || toAssign(c) || toVerify(c))
+const withTechnician = (c: CaseSummary) =>
+  !isDuplicate(c) && HANDLING.includes(c.status) && !!c.technician
+const finished = (c: CaseSummary) => !isDuplicate(c) && FINAL_STATUSES.includes(c.status)
 
 /** Overdue first, then the staff's steps in flow order, oldest first. */
 const STEP_ORDER: Partial<Record<CaseStatus, number>> = { pending: 0, approved: 1, completed: 2 }
@@ -42,27 +46,43 @@ function countLine(rows: CaseSummary[]) {
 
 const TABS = [
   {
-    value: 'needs-you',
-    label: 'Needs you',
-    match: needsYou,
+    value: 'waiting',
+    label: 'Waiting for staff',
+    help: 'New requests to review, cases with no technician, and finished work to check and close.',
+    match: waitingForStaff,
     sort: byUrgencyOfWork,
     note: countLine,
-    emptyText: 'Nothing waits for you. New requests appear here.',
+    emptyText: 'Nothing waits for the staff. New requests appear here.',
   },
   {
     value: 'with-technicians',
     label: 'With technicians',
-    match: (c) => WITH_TECHNICIANS.includes(c.status) && !!c.technician,
+    help: 'Cases a technician holds: not accepted yet, accepted, in progress, on hold or reopened.',
+    match: withTechnician,
     sort: byUrgencyOfWork,
     emptyText: 'No technician is working on a case.',
   },
   {
-    value: 'closed',
-    label: 'Closed',
-    match: (c) => FINAL_STATUSES.includes(c.status),
-    emptyText: 'No closed cases.',
+    value: 'finished',
+    label: 'Finished',
+    help: 'Closed, rejected or cancelled cases. Duplicates are not included.',
+    match: finished,
+    emptyText: 'No finished cases.',
   },
-  { value: 'all', label: 'All', match: () => true, emptyText: 'No cases yet.' },
+  {
+    value: 'all',
+    label: 'All',
+    help: 'Waiting for staff + With technicians + Finished. Duplicates are not included.',
+    match: (c) => !isDuplicate(c),
+    emptyText: 'No cases yet.',
+  },
+  {
+    value: 'duplicates',
+    label: 'Duplicates',
+    help: 'Requests rejected because they repeat another case. You can open them, but no figure counts them.',
+    match: isDuplicate,
+    emptyText: 'No duplicate requests.',
+  },
 ] as const satisfies readonly [CaseTab, ...CaseTab[]]
 
 /**
@@ -77,17 +97,19 @@ export function CaseQueuePage() {
   const data = cases.data ?? []
   const reviewCount = data.filter(toReview).length
   const overdue = data.filter((c) => isOverdue(c)).length
-  const finding = cases.data
-    ? [
-        `${reviewCount} new ${reviewCount === 1 ? 'request' : 'requests'} to review`,
-        overdue > 0 ? `${overdue} past the deadline` : 'nothing past the deadline',
-      ].join(', ')
-    : undefined
+  // Only the staff review requests, so the manager gets no "to review" summary (meeting note 18/11).
+  const finding =
+    cases.data && !isManager
+      ? [
+          `${reviewCount} new ${reviewCount === 1 ? 'request' : 'requests'} to review`,
+          overdue > 0 ? `${overdue} past the deadline` : 'nothing past the deadline',
+        ].join(', ')
+      : undefined
 
   return (
     <div className="flex flex-col gap-5">
       <PageHeader title={isManager ? 'All cases' : 'Cases'} description={finding} />
-      <CaseListCard tabs={TABS} variant="cards" showRequester showTechnician />
+      <CaseListCard tabs={TABS} variant="cards" advanced showRequester showTechnician />
     </div>
   )
 }

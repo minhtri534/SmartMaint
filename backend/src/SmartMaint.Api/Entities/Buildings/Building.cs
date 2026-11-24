@@ -9,6 +9,12 @@ public class Building : AuditableEntity
     public string Name { get; set; } = string.Empty;
     public string? Address { get; set; }
     public List<Floor> Floors { get; set; } = [];
+
+    /// <summary>
+    /// NOT IN ERD v5 (meeting note 18/11): deleting it through an approved change list only marks it; it leaves every
+    /// list and pick list, its history stays.
+    /// </summary>
+    public DateTimeOffset? DeletedAt { get; set; }
 }
 
 /// <summary>ERD: Floors(ID, FloorNumber, Building).</summary>
@@ -21,6 +27,12 @@ public class Floor : AuditableEntity
     public string FloorNumber { get; set; } = string.Empty;
 
     public List<Room> Rooms { get; set; } = [];
+
+    /// <summary>
+    /// NOT IN ERD v5 (meeting note 18/11): deleting it through an approved change list only marks it; it leaves every
+    /// list and pick list, its history stays.
+    /// </summary>
+    public DateTimeOffset? DeletedAt { get; set; }
 
     public string DisplayName => $"Floor {FloorNumber}";
 }
@@ -36,6 +48,12 @@ public class Room : AuditableEntity
 
     /// <summary>NOT IN ERD v5: lobby, corridor, restroom... Every customer of the building may report problems here.</summary>
     public bool IsCommonArea { get; set; }
+
+    /// <summary>
+    /// NOT IN ERD v5 (meeting note 18/11): deleting it through an approved change list only marks it; it leaves every
+    /// list and pick list, its history stays.
+    /// </summary>
+    public DateTimeOffset? DeletedAt { get; set; }
 }
 
 /// <summary>ERD: AssetCategory(ID, Code, CategoryName, Description) — e.g. HVAC, Electrical.</summary>

@@ -48,7 +48,9 @@ public abstract class CaseTestBase : IDisposable
         var acType = new AssetType { Category = new AssetCategory { Code = "HVAC", CategoryName = "HVAC" }, Code = "AC", Name = "Split AC" };
         AcInRoomA = new Asset { Room = RoomA, Type = acType, Name = "AC 501" };
         AssetInRoomB = new Asset { Room = RoomB, Type = acType, Name = "AC 301" };
-        Db.AddRange(buildingA, buildingB, floorA, floorB, RoomA, RoomA2, CorridorA, RoomB, AcInRoomA, AssetInRoomB);
+        var acInRoomA2 = new Asset { Room = RoomA2, Type = acType, Name = "AC 502" };
+        var acInCorridor = new Asset { Room = CorridorA, Type = acType, Name = "AC corridor" };
+        Db.AddRange(buildingA, buildingB, floorA, floorB, RoomA, RoomA2, CorridorA, RoomB, AcInRoomA, AssetInRoomB, acInRoomA2, acInCorridor);
         Db.SaveChanges();
 
         Customer = new Customer("customer", "customer", "hash", false, RoomA.Id);
@@ -108,8 +110,10 @@ public abstract class CaseTestBase : IDisposable
         Me.Role = user.Role;
     }
 
-    protected static CreateCaseRequest NewRequest(CaseCategory category, Room room, long? assetId = null, IReadOnlyList<string>? photos = null) =>
-        new("Air conditioner blows warm air", "The AC has been running since 8am but the room is still hot.", category.Id, room.Id, assetId, photos);
+    /// <summary>A valid request about <paramref name="assetId"/>, by default the first asset of the room.</summary>
+    protected CreateCaseRequest NewRequest(CaseCategory category, Room room, long? assetId = null, IReadOnlyList<string>? photos = null) =>
+        new("Air conditioner blows warm air", "The AC has been running since 8am but the room is still hot.", category.Id, room.Id,
+            assetId ?? Db.Assets.Where(a => a.RoomId == room.Id).OrderBy(a => a.Id).Select(a => a.Id).First(), photos);
 
     /// <summary>A new case reported by the tenant of the room (Customer for building A, CustomerB for building B).</summary>
     protected async Task<CaseDetailResponse> NewCaseAsync(CaseCategory? category = null, Room? room = null)
@@ -155,19 +159,17 @@ public abstract class CaseTestBase : IDisposable
 
     /// <summary>Approve (the work order form) giving the case to <paramref name="technician"/> (default: Technician).</summary>
     protected ApproveCaseRequest Approval(CasePriority urgency = CasePriority.Normal, Account? technician = null) =>
-        new(urgency, (technician ?? Technician).Id);
+        new(urgency, (technician ?? Technician).Id, PlannedStartAt: Clock.GetUtcNow().AddHours(1));
 
     /// <summary>The Edit form filled in with the case as it is (tests change what they need with "with").</summary>
     protected static EditCaseRequest EditOf(CaseDetailResponse c) => new(
         c.Urgency,
-        c.Technician?.Id,
         c.ServiceTypeId,
         c.PlannedStartAt,
         c.PlannedEndAt,
         c.Tasks.Select(t => new TaskLineRequest(t.Id, t.Name, t.Description)).ToList(),
         c.Title,
-        c.Description,
-        c.Followers.Select(f => f.Id).ToList());
+        c.Description);
 
     /// <summary>The Edit form of case <paramref name="id"/> as it is now, read as the staff.</summary>
     protected async Task<EditCaseRequest> EditOfAsync(long id)

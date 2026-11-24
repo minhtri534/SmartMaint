@@ -6,9 +6,17 @@ const TONES: Record<PlanStatus, BadgeTone> = {
   active: 'positive',
   rejected: 'negative',
   paused: 'neutral',
-  ended: 'neutral',
+  archived: 'neutral',
 }
 
-export function PlanStatusBadge({ status }: { status: PlanStatus }) {
+/** A running or paused plan past every end day reads "Expired" (it can be extended); archived is for good. */
+export function PlanStatusBadge({
+  status,
+  expired = false,
+}: {
+  status: PlanStatus
+  expired?: boolean
+}) {
+  if (expired) return <Badge tone="warning">Expired</Badge>
   return <Badge tone={TONES[status]}>{PLAN_STATUS_LABELS[status]}</Badge>
 }

@@ -7,10 +7,12 @@ namespace SmartMaint.Api.Entities.Maintenance;
 // F2 (Trí) — preventive maintenance. Tables as in the ERD (Drive, logical page); NOT IN ERD v5 columns are listed in
 // docs/database/ERD_v5_Thay_Doi_Khi_Code.md.
 //
-// How the tables fit: a plan (MaintenanceTrigger) is approved by a manager; it has work-order details (which checklist,
-// how long, how urgent), each applied to some assets (MaintenanceWorkOrderAssets, with the default technician and the
-// first due day). Every period the job makes one Case per asset (Cases.TriggerWorkOrder) with one CaseTask per checklist
-// item; the technician marks each task.
+// How the tables fit (meeting note 18/11, like UpKeep): a plan (MaintenanceTrigger) holds the work-order template (name,
+// checklist, urgency, hours) and is approved by a manager. It has one or more triggers (MaintenanceWorkOrderDetails):
+// each repeats every N days / weeks / months / years from a start day until an optional end day, for some assets
+// (MaintenanceWorkOrderAssets, with the default technician). The template columns of the ERD stay on the trigger rows,
+// the same values on every trigger of a plan. Every period the job makes one Case per asset (Cases.TriggerWorkOrder)
+// with one CaseTask per checklist item; the technician marks each task.
 
 /// <summary>ERD: FrequencyType(ID, Name) — the unit of MaintenanceTriggers.Frequency.</summary>
 public enum FrequencyUnit
@@ -28,7 +30,12 @@ public enum TriggerStatus
     Active = 2,
     Rejected = 3,
     Paused = 4,
-    Ended = 5,
+
+    /// <summary>
+    /// Was "ended" until 19/11 (same row). Archived for good, like UpKeep: no edit, no new work orders; the ones already
+    /// made go on. A plan whose triggers passed their end day is not archived: it shows "Expired" and can be extended.
+    /// </summary>
+    Archived = 5,
 }
 
 /// <summary>ERD: TaskStatuses(ID, Name) — the result of one checklist item (ERD review #13: a result, not progress).</summary>
@@ -38,6 +45,12 @@ public enum CaseTaskStatus
     Pass = 2,
     Fail = 3,
     NotApplicable = 4,
+
+    /// <summary>
+    /// NOT IN ERD v5 (meeting note 18/11): not finished when the case was given to another technician; it goes on in
+    /// the new case (a copy), and stays here so the old case keeps its whole task list.
+    /// </summary>
+    Moved = 5,
 }
 
 /// <summary>Who finished a task (NOT IN ERD v5, meeting 07/11). Stored as text + CHECK.</summary>
@@ -75,10 +88,22 @@ public class ChecklistTask : AuditableEntity
 /// </summary>
 public class MaintenanceTrigger : AuditableEntity
 {
-    /// <summary>Every <see cref="Frequency"/> <see cref="FrequencyType"/>s, e.g. every 3 months.</summary>
+    /// <summary>
+    /// NOT IN ERD v5 (meeting note 18/11): the plan's name, also the title of its work orders. Empty on plans made by the
+    /// code deployed before 19/11: "checklist · building" is shown.
+    /// </summary>
+    public string? Name { get; set; }
+
+    /// <summary>NOT IN ERD v5 (meeting note 18/11): what the technician should know, copied into each work order.</summary>
+    public string? Description { get; set; }
+
+    /// <summary>
+    /// ERD: every Frequency FrequencyType. Since 19/11 each trigger (<see cref="MaintenanceWorkOrderDetail"/>) has its
+    /// own; this keeps the first trigger's value for the code deployed before.
+    /// </summary>
     public int Frequency { get; set; }
 
-    /// <summary>ERD: FrequencyType -> FrequencyType.ID (column frequency_type_id).</summary>
+    /// <summary>ERD: FrequencyType -> FrequencyType.ID (column frequency_type_id). See <see cref="Frequency"/>.</summary>
     public FrequencyUnit FrequencyType { get; set; }
 
     /// <summary>ERD: Staff — who made the plan.</summary>
@@ -97,8 +122,11 @@ public class MaintenanceTrigger : AuditableEntity
     /// <summary>When the job last made work orders for this plan.</summary>
     public DateTimeOffset? LastTriggered { get; set; }
 
-    /// <summary>NOT IN ERD v5: work orders are made this many days before the due day (Leader 02/11: 3).</summary>
+    /// <summary>NOT IN ERD v5: the first trigger's lead days, kept for the code deployed before 19/11.</summary>
     public int LeadDays { get; set; } = 3;
+
+    /// <summary>NOT IN ERD v5 (meeting note 18/11): when the plan was archived.</summary>
+    public DateTimeOffset? ArchivedAt { get; set; }
 
     /// <summary>NOT IN ERD v5 (ERD review #10): why the manager rejected it, shown to the staff member.</summary>
     public string? RejectReason { get; set; }
@@ -106,11 +134,29 @@ public class MaintenanceTrigger : AuditableEntity
     public List<MaintenanceWorkOrderDetail> Details { get; set; } = [];
 }
 
-/// <summary>ERD: MaintenanceWorkOrderDetails(ID, Trigger, Checklist, EstimatedHours, PriorityLevel).</summary>
+/// <summary>
+/// ERD: MaintenanceWorkOrderDetails(ID, Trigger, Checklist, EstimatedHours, PriorityLevel) — since 19/11 one trigger
+/// (schedule) of a plan. Checklist, hours and urgency are the plan's, the same on each of its triggers.
+/// </summary>
 public class MaintenanceWorkOrderDetail : AuditableEntity
 {
     public long TriggerId { get; set; }
     public MaintenanceTrigger Trigger { get; set; } = null!;
+
+    /// <summary>NOT IN ERD v5 (meeting note 18/11): every <see cref="Frequency"/> <see cref="FrequencyType"/>s.</summary>
+    public int Frequency { get; set; } = 1;
+
+    /// <summary>NOT IN ERD v5: column frequency_type_id -> frequency_types.</summary>
+    public FrequencyUnit FrequencyType { get; set; } = FrequencyUnit.Month;
+
+    /// <summary>NOT IN ERD v5: work orders are made this many days before the due day (Leader 02/11: 3).</summary>
+    public int LeadDays { get; set; } = 3;
+
+    /// <summary>NOT IN ERD v5: the first due day. Each asset row keeps its own copy (StartTime) for its schedule.</summary>
+    public DateOnly StartDate { get; set; }
+
+    /// <summary>NOT IN ERD v5: no work order is due after this day; empty = no end. Moving it later extends the plan.</summary>
+    public DateOnly? EndDate { get; set; }
 
     public long ChecklistId { get; set; }
     public CaseChecklist Checklist { get; set; } = null!;

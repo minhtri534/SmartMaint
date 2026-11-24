@@ -36,7 +36,9 @@ public sealed class CreateCaseRequestValidator : AbstractValidator<CreateCaseReq
             .WithMessage($"Describe the problem in at least {DescriptionMinLength} characters.")
             .MaximumLength(DescriptionMaxLength).WithMessage($"At most {DescriptionMaxLength} characters.");
         RuleFor(x => x.ServiceTypeId).GreaterThan(0).WithMessage("Choose what is wrong.");
-        RuleFor(x => x.RoomId).GreaterThan(0).WithMessage("Choose a room or area.");
+        RuleFor(x => x.RoomId).GreaterThan(0).WithMessage("Choose a room.");
+        RuleFor(x => x.AssetId).NotNull().WithMessage("Choose the asset that has the problem.")
+            .GreaterThan(0).WithMessage("Choose the asset that has the problem.");
         RuleFor(x => x.Photos).ValidPhotos();
         RuleFor(x => x.Urgency).IsInEnum().When(x => x.Urgency is not null).WithMessage("Choose how urgent it is.");
     }
@@ -69,6 +71,8 @@ public sealed class ApproveCaseRequestValidator : AbstractValidator<ApproveCaseR
         RuleFor(x => x.ServiceTypeId).GreaterThan(0).When(x => x.ServiceTypeId is not null).WithMessage("Choose a category.");
         RuleFor(x => x.Title).MaximumLength(CreateCaseRequestValidator.TitleMaxLength);
         RuleFor(x => x.Description).MaximumLength(CreateCaseRequestValidator.DescriptionMaxLength);
+        RuleFor(x => x.PlannedStartAt).NotNull().When(x => x.Urgency != Entities.Cases.CasePriority.Emergency)
+            .WithMessage("Choose the planned start.");
         RuleFor(x => x.PlannedEndAt).Must((x, end) => WorkOrderRules.ValidWindow(x.PlannedStartAt, end))
             .WithMessage("The planned end must be after the planned start.");
         RuleFor(x => x.Tasks).ValidTasks();
@@ -81,7 +85,6 @@ public sealed class EditCaseRequestValidator : AbstractValidator<EditCaseRequest
     public EditCaseRequestValidator()
     {
         RuleFor(x => x.Urgency).IsInEnum();
-        RuleFor(x => x.TechnicianId).GreaterThan(0).When(x => x.TechnicianId is not null).WithMessage("Choose a technician.");
         RuleFor(x => x.ServiceTypeId).GreaterThan(0).WithMessage("Choose a category.");
         RuleFor(x => x.Title).NotEmpty().Must(t => t.Trim().Length >= CreateCaseRequestValidator.TitleMinLength)
             .WithMessage($"At least {CreateCaseRequestValidator.TitleMinLength} characters.")
@@ -92,13 +95,25 @@ public sealed class EditCaseRequestValidator : AbstractValidator<EditCaseRequest
         RuleFor(x => x.PlannedEndAt).Must((x, end) => WorkOrderRules.ValidWindow(x.PlannedStartAt, end))
             .WithMessage("The planned end must be after the planned start.");
         RuleFor(x => (IReadOnlyList<TaskLineRequest>?)x.Tasks).NotNull().ValidTasks();
-        RuleFor(x => x.FollowerIds).Must(f => f is null || f.Count <= 20).WithMessage("At most 20 followers.");
         RuleFor(x => x.StatusChange).IsInEnum().When(x => x.StatusChange is not null);
         RuleFor(x => x.Reason!).NotEmpty().Must(r => r is not null && r.Trim().Length >= ReasonRequestValidator.MinLength)
             .WithMessage($"Say what is not OK (at least {ReasonRequestValidator.MinLength} characters).")
             .MaximumLength(ReasonRequestValidator.MaxLength)
             .When(x => x.StatusChange == EditStatusChange.Reopen);
     }
+}
+
+public sealed class ReassignRequestValidator : AbstractValidator<ReassignRequest>
+{
+    public ReassignRequestValidator() => RuleFor(x => x.TechnicianId).GreaterThan(0).WithMessage("Choose a technician.");
+}
+
+public sealed class SetFollowersRequestValidator : AbstractValidator<SetFollowersRequest>
+{
+    public const int MaxFollowers = 20;
+
+    public SetFollowersRequestValidator() =>
+        RuleFor(x => x.CustomerIds).NotNull().Must(f => f.Count <= MaxFollowers).WithMessage($"At most {MaxFollowers} followers.");
 }
 
 public sealed class RejectCaseRequestValidator : AbstractValidator<RejectCaseRequest>
@@ -111,6 +126,8 @@ public sealed class RejectCaseRequestValidator : AbstractValidator<RejectCaseReq
         RuleFor(x => x.Note).NotEmpty().Must(n => n.Trim().Length >= NoteMinLength)
             .WithMessage($"Tell the customer why (at least {NoteMinLength} characters).")
             .MaximumLength(500);
+        RuleFor(x => x.Duplicate).NotNull().When(x => x.Reason == RejectReason.Duplicate)
+            .WithMessage("Choose the case this request repeats.");
         RuleFor(x => x.Duplicate!.CaseId).GreaterThan(0).WithMessage("Choose the case this request repeats.")
             .When(x => x.Reason == RejectReason.Duplicate && x.Duplicate is not null);
     }
@@ -125,15 +142,6 @@ public sealed class ReasonRequestValidator : AbstractValidator<ReasonRequest>
         RuleFor(x => x.Reason).NotEmpty().Must(r => r.Trim().Length >= MinLength)
             .WithMessage($"At least {MinLength} characters.")
             .MaximumLength(MaxLength).WithMessage($"At most {MaxLength} characters.");
-}
-
-public sealed class CompleteWorkRequestValidator : AbstractValidator<CompleteWorkRequest>
-{
-    public CompleteWorkRequestValidator()
-    {
-        RuleFor(x => x.ReplacementModel).MaximumLength(150);
-        RuleFor(x => x.ReplacementSerial).MaximumLength(100);
-    }
 }
 
 public sealed class RateCaseRequestValidator : AbstractValidator<RateCaseRequest>
@@ -230,6 +238,21 @@ public sealed class AddCostRequestValidator : AbstractValidator<AddCostRequest>
         RuleFor(x => x)
             .Must(x => !string.IsNullOrWhiteSpace(x.ReceiptCode) || !string.IsNullOrWhiteSpace(x.ReceiptPhoto))
             .WithName("ReceiptCode").WithMessage("Add the receipt number or a photo of the receipt.");
+    }
+}
+
+/// <summary>Meeting note 18/11: the same rules as adding a cost; the receipt may already be on the line.</summary>
+public sealed class EditCostRequestValidator : AbstractValidator<EditCostRequest>
+{
+    public EditCostRequestValidator()
+    {
+        RuleFor(x => x.Name).Text(2, 150);
+        RuleFor(x => x.Description).MaximumLength(300);
+        RuleFor(x => x.Amount).InclusiveBetween(0, CostRules.MaxAmount).WithMessage("An amount is between 0 and 1,000,000,000 VND.");
+        RuleFor(x => x.ReceiptCode).MaximumLength(100);
+        RuleFor(x => x.ReceiptPhoto)
+            .Must(p => p is null || (p.Length <= PhotoRules.MaxLength && DataUrl.IsImage(p)))
+            .WithMessage("The receipt photo must be a JPEG, PNG or WebP image of reasonable size.");
     }
 }
 

@@ -8,11 +8,11 @@ namespace SmartMaint.UnitTests.Modules.Facilities;
 /// <summary>AST-01: the tree and its create / edit / delete.</summary>
 public sealed class FacilityServiceTests : F1TestBase
 {
-    private FacilityService Sut => new(Db, Scope, Audit);
+    private FacilityService Sut => new(Db, Scope, Audit, Clock);
 
     [Fact]
     [Trait(TestType.Key, TestType.Normal)]
-    public async Task GetTree_Staff_SeesOnlyTheirBuildingWithAssetCountsAndTenants()
+    public async Task GetTree_Staff_SeesOnlyTheirBuildingWithAssetCounts()
     {
         As(Staff);
 
@@ -22,7 +22,6 @@ public sealed class FacilityServiceTests : F1TestBase
         Assert.Equal("Tower A", tower.Name);
         var room = Assert.Single(tower.Floors).Rooms.Single(r => r.RoomNumber == "501");
         Assert.Equal(1, room.AssetCount);
-        Assert.Equal(["Tenant 501"], room.Tenants);
     }
 
     [Fact]
@@ -30,7 +29,7 @@ public sealed class FacilityServiceTests : F1TestBase
     public async Task CreateFloorAndRoom_Admin_AddsThemAndAudits()
     {
         var floor = await Sut.CreateFloorAsync(new FloorRequest(TowerA.Id, "12"), default);
-        var room = await Sut.CreateRoomAsync(new RoomRequest(floor.Id, "1201", false), default);
+        var room = await Sut.CreateRoomAsync(new RoomRequest(floor.Id, "1201"), default);
 
         Assert.Equal("Floor 12", floor.Name);
         Assert.Equal("1201", room.RoomNumber);
@@ -41,7 +40,7 @@ public sealed class FacilityServiceTests : F1TestBase
     [Trait(TestType.Key, TestType.Abnormal)]
     public async Task CreateRoom_SameNumberOnTheSameFloorInOtherCase_Throws() =>
         Assert.Equal("facility.room_taken",
-            await ErrorCodeAsync(() => Sut.CreateRoomAsync(new RoomRequest(Floor5.Id, "corridor 5", true), default)));
+            await ErrorCodeAsync(() => Sut.CreateRoomAsync(new RoomRequest(Floor5.Id, "corridor 5"), default)));
 
     [Fact]
     [Trait(TestType.Key, TestType.Abnormal)]
@@ -49,23 +48,32 @@ public sealed class FacilityServiceTests : F1TestBase
         Assert.Equal("facility.not_empty", await ErrorCodeAsync(() => Sut.DeleteRoomAsync(Room501.Id, default)));
 
     [Fact]
-    [Trait(TestType.Key, TestType.Abnormal)]
-    public async Task UpdateRoom_RentedRoomToCommonArea_Throws() =>
-        Assert.Equal("facility.room_rented",
-            await ErrorCodeAsync(() => Sut.UpdateRoomAsync(Room501.Id, new RoomRequest(Floor5.Id, "501", true), default)));
+    [Trait(TestType.Key, TestType.Boundary)]
+    public async Task DeleteRoom_AnOlderCustomerStillPointsAtIt_ClearsTheLink()
+    {
+        var room = await Sut.CreateRoomAsync(new RoomRequest(Floor5.Id, "599"), default);
+        var customer = new SmartMaint.Api.Entities.Accounts.Customer("old.tenant", "Old Tenant", "hash", false, room.Id);
+        Db.Customers.Add(customer);
+        await Db.SaveChangesAsync();
+
+        await Sut.DeleteRoomAsync(room.Id, default);
+
+        Assert.Null(Db.Customers.Single(c => c.Id == customer.Id).RoomId);
+    }
 
     [Fact]
     [Trait(TestType.Key, TestType.Boundary)]
     public async Task DeleteFloor_WhenItsLastRoomIsGone_Succeeds()
     {
         var floor = await Sut.CreateFloorAsync(new FloorRequest(OfficeB.Id, "4"), default);
-        var room = await Sut.CreateRoomAsync(new RoomRequest(floor.Id, "401", false), default);
+        var room = await Sut.CreateRoomAsync(new RoomRequest(floor.Id, "401"), default);
         Assert.Equal("facility.not_empty", await ErrorCodeAsync(() => Sut.DeleteFloorAsync(floor.Id, default)));
 
         await Sut.DeleteRoomAsync(room.Id, default);
         await Sut.DeleteFloorAsync(floor.Id, default);
 
-        Assert.DoesNotContain(Db.Floors, f => f.Id == floor.Id);
+        Assert.NotNull(Db.Floors.Single(f => f.Id == floor.Id).DeletedAt); // marked, not removed (meeting note 18/11)
+        Assert.DoesNotContain((await Sut.GetTreeAsync(default)).SelectMany(b => b.Floors), f => f.Id == floor.Id);
     }
 
     [Fact]

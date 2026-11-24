@@ -10,7 +10,12 @@ import { cn } from '@/shared/utils/cn'
  * SmartMaint's own element on Home (16/11): each building drawn as its floors, top floor first, each floor a row
  * of its rooms — the lit-window idea of the logo work. A room with open cases is tinted (accent), a room with an
  * overdue case is red (its one red mark). Answers "where in my buildings is work open?" at a glance.
+ * Meeting note 18/11: only the floors and rooms that have open cases; at most ROOMS_PER_FLOOR rooms a floor (the busiest)
+ * and a cell "N other rooms" with their total, and at most FLOORS floors, so a big building stays short.
  */
+
+const ROOMS_PER_FLOOR = 4
+const FLOORS = 6
 
 interface RoomState {
   open: CaseSummary[]
@@ -57,6 +62,21 @@ export function BuildingFloors({ cases }: { cases: CaseSummary[] }) {
   const building = buildings.find((b) => String(b.id) === picked) ?? busiest
   if (!building) return null
 
+  // Floors with open work, top floor first; in each, the rooms with an overdue case first, then the busiest.
+  const floors = [...building.floors]
+    .reverse()
+    .map((floor) => ({
+      floor,
+      rooms: floor.rooms
+        .filter((r) => states.has(r.id))
+        .sort((a, b) => {
+          const x = states.get(a.id)!
+          const y = states.get(b.id)!
+          return y.overdue - x.overdue || y.open.length - x.open.length
+        }),
+    }))
+    .filter((f) => f.rooms.length > 0)
+
   return (
     <Card>
       <CardHeader title={buildings.length === 1 ? building.name : 'Floors'} aside={<Legend />} />
@@ -74,29 +94,41 @@ export function BuildingFloors({ cases }: { cases: CaseSummary[] }) {
         </div>
       )}
 
-      {/* Top floor first, like the building itself. */}
-      <ol className="flex flex-col gap-2">
-        {[...building.floors].reverse().map((floor) => (
-          <li key={floor.id} className="flex items-start gap-3">
-            <span className="text-muted w-16 flex-none pt-2 text-right text-xs whitespace-nowrap tabular-nums">
-              {/* level marker of a building section drawing */}
-              <span aria-hidden="true" className="text-accent">
-                ▽{' '}
+      {floors.length === 0 ? (
+        <p className="text-muted py-6 text-center text-sm">No open case in {building.name}.</p>
+      ) : (
+        /* Top floor first, like the building itself. */
+        <ol className="flex flex-col gap-2">
+          {floors.slice(0, FLOORS).map(({ floor, rooms }) => (
+            <li key={floor.id} className="flex items-start gap-3">
+              <span className="text-muted w-16 flex-none pt-2 text-right text-xs whitespace-nowrap tabular-nums">
+                {/* level marker of a building section drawing */}
+                <span aria-hidden="true" className="text-accent">
+                  ▽{' '}
+                </span>
+                {floor.floorNumber === 'G' ? 'Ground' : `Floor ${floor.floorNumber}`}
               </span>
-              {floor.floorNumber === 'G' ? 'Ground' : `Floor ${floor.floorNumber}`}
-            </span>
-            <div className="border-slab flex min-w-0 flex-1 flex-wrap gap-1.5 border-l-2 pl-3">
-              {floor.rooms.length === 0 ? (
-                <span className="text-muted py-2 text-xs">No rooms</span>
-              ) : (
-                floor.rooms.map((room) => (
+              <div className="border-slab flex min-w-0 flex-1 flex-wrap gap-1.5 border-l-2 pl-3">
+                {rooms.slice(0, ROOMS_PER_FLOOR).map((room) => (
                   <RoomCell key={room.id} name={room.roomNumber} state={states.get(room.id)} />
-                ))
-              )}
-            </div>
-          </li>
-        ))}
-      </ol>
+                ))}
+                {rooms.length > ROOMS_PER_FLOOR && (
+                  <OtherRooms rooms={rooms.slice(ROOMS_PER_FLOOR).map((r) => states.get(r.id)!)} />
+                )}
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+      {floors.length > FLOORS && (
+        <Link
+          to={paths.cases}
+          className="text-muted mt-3 block text-right text-xs underline-offset-2 hover:underline"
+        >
+          {floors.length - FLOORS} more {floors.length - FLOORS === 1 ? 'floor' : 'floors'} with
+          open cases
+        </Link>
+      )}
     </Card>
   )
 }
@@ -135,6 +167,32 @@ function RoomCell({ name, state }: { name: string; state?: RoomState }) {
       )}
     >
       {body}
+    </Link>
+  )
+}
+
+/** The rooms past ROOMS_PER_FLOOR on one floor, as one cell with their total. */
+function OtherRooms({ rooms }: { rooms: RoomState[] }) {
+  const count = rooms.reduce((n, r) => n + r.open.length, 0)
+  const overdue = rooms.reduce((n, r) => n + r.overdue, 0)
+  return (
+    <Link
+      to={paths.cases}
+      title={rooms.flatMap((r) => r.open.map((c) => `${c.code} ${c.title}`)).join('\n')}
+      aria-label={`${rooms.length} other rooms: ${count} open ${count === 1 ? 'case' : 'cases'}${overdue ? `, ${overdue} overdue` : ''}`}
+      className={cn(
+        'rounded-control border-control text-muted flex h-8 items-center gap-2 border border-dashed px-2.5 text-[13px]',
+        'ease-snap hover:text-ink transition-[transform,color] duration-200 active:scale-[0.97]',
+      )}
+    >
+      <span>
+        {rooms.length} other {rooms.length === 1 ? 'room' : 'rooms'}
+      </span>
+      <span
+        className={cn('font-semibold tabular-nums', overdue > 0 ? 'text-negative' : 'text-ink')}
+      >
+        {count}
+      </span>
     </Link>
   )
 }

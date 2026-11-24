@@ -18,6 +18,40 @@ public sealed class AssetServiceTests : F1TestBase
 
     private const string Header = "building,floor,room,name,type_code,manufacturer,has_copyright,warranty_end_date\n";
 
+    // ----- sort -----
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Normal)]
+    public async Task List_SortedByNameDescending_PutsTheLastNameFirst()
+    {
+        await Sut.CreateAsync(NewAc("Zeta AC"), default);
+
+        var page = await Sut.ListAsync(new AssetListQuery { Sort = "name_desc" }, default);
+
+        Assert.Equal("Zeta AC", page.Items[0].Name);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Boundary)]
+    public async Task List_SortedByWarranty_PutsAssetsWithoutADateLast()
+    {
+        await Sut.CreateAsync(NewAc("With warranty"), default);
+
+        var page = await Sut.ListAsync(new AssetListQuery { Sort = "warranty_desc" }, default);
+
+        Assert.Equal("With warranty", page.Items[0].Name);
+        Assert.Null(page.Items[^1].WarrantyEndDate);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Abnormal)]
+    public async Task List_UnknownSort_KeepsTheOrderByPlace()
+    {
+        var page = await Sut.ListAsync(new AssetListQuery { Sort = "nonsense" }, default);
+
+        Assert.NotEmpty(page.Items);
+    }
+
     // ----- create / list / get -----
 
     [Fact]
@@ -29,7 +63,7 @@ public sealed class AssetServiceTests : F1TestBase
         Assert.Equal("Split air conditioner", result.TypeName);
         Assert.Equal("Air conditioning", result.CategoryName);
         Assert.True(result.UnderWarranty);
-        Assert.Contains(AssetAction.Delete, result.AllowedActions);
+        Assert.Empty(result.AllowedActions); // meeting note 18/11: changes go through a staff change list
         Assert.Single(Db.AuditLogs, a => a.TargetType == AuditTarget.Asset);
     }
 
@@ -63,7 +97,7 @@ public sealed class AssetServiceTests : F1TestBase
         Assert.Equal("AC broken", Assert.Single(forStaff.History!).Title);
         Assert.Null(forAdmin.History); // BR-11
         Assert.Equal(1, forAdmin.CaseCount);
-        Assert.Empty(forStaff.AllowedActions);
+        Assert.Equal([AssetAction.ProposeChange], forStaff.AllowedActions);
     }
 
     [Fact]
@@ -111,65 +145,6 @@ public sealed class AssetServiceTests : F1TestBase
         await Db.SaveChangesAsync();
 
         Assert.Equal("asset.has_history", await ErrorCodeAsync(() => Sut.DeleteAsync(Ac501.Id, default)));
-    }
-
-    // ----- import -----
-
-    [Fact]
-    [Trait(TestType.Key, TestType.Normal)]
-    public async Task Import_ValidFile_AddsEveryRow()
-    {
-        var csv = Header +
-                  "Tower A,5,501,AC 501 B,ac-split,Daikin,no,2027-06-30\n" +
-                  "\"Office B\",3,301,\"Panel, ceiling\",AC-SPLIT,,yes,\n";
-
-        var result = await Sut.ImportAsync(new ImportAssetsRequest(csv, false), default);
-
-        Assert.True(result.Imported);
-        Assert.Equal(0, result.ErrorCount);
-        Assert.Contains(Db.Assets, a => a.Name == "Panel, ceiling" && a.HasCopyright && a.ManufacturerId == null);
-        Assert.Single(Db.AuditLogs, a => a.Operation == AuditOperation.Import);
-    }
-
-    [Fact]
-    [Trait(TestType.Key, TestType.Abnormal)]
-    public async Task Import_OneBadRow_ImportsNothingAndNamesTheLine()
-    {
-        var csv = Header +
-                  "Tower A,5,501,AC 501 B,AC-SPLIT,,no,\n" +
-                  "Tower A,9,999,AC 999,NOPE,Nobody,maybe,30/06/2027\n";
-
-        var result = await Sut.ImportAsync(new ImportAssetsRequest(csv, false), default);
-
-        Assert.False(result.Imported);
-        var bad = Assert.Single(result.Rows, r => r.Errors.Count > 0);
-        Assert.Equal(3, bad.Line);
-        Assert.Equal(5, bad.Errors.Count); // room, type, maker, copyright, date
-        Assert.Single(Db.Assets);
-    }
-
-    [Fact]
-    [Trait(TestType.Key, TestType.Boundary)]
-    public async Task Import_DryRunOrDuplicateInsideTheFile_ImportsNothing()
-    {
-        var csv = Header + "Tower A,5,501,AC 501 B,AC-SPLIT,,no,\nTower A,5,501,ac 501 b,AC-SPLIT,,no,\n";
-
-        var check = await Sut.ImportAsync(new ImportAssetsRequest(Header + "Tower A,5,501,AC 501 B,AC-SPLIT,,no,\n", true), default);
-        var duplicate = await Sut.ImportAsync(new ImportAssetsRequest(csv, false), default);
-
-        Assert.False(check.Imported);
-        Assert.Equal(0, check.ErrorCount);
-        Assert.Equal(1, duplicate.ErrorCount);
-        Assert.Single(Db.Assets);
-    }
-
-    [Fact]
-    [Trait(TestType.Key, TestType.Abnormal)]
-    public async Task Import_MissingColumn_ReportsTheHeader()
-    {
-        var result = await Sut.ImportAsync(new ImportAssetsRequest("building,floor,name\nTower A,5,AC\n", false), default);
-
-        Assert.Contains("room", Assert.Single(result.Rows).Errors.Single());
     }
 
     // ----- QR target -----

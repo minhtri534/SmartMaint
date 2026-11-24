@@ -21,6 +21,8 @@
   </ItemGroup>
   <ItemGroup Label="Application">
     <PackageVersion Include="FluentValidation" Version="12.2.0" />
+    <!-- Excel export of the analytics (meeting note 18/11, Leader: ClosedXML, MIT). -->
+    <PackageVersion Include="ClosedXML" Version="0.105.0" />
     <PackageVersion Include="FluentValidation.DependencyInjectionExtensions" Version="12.2.0" />
   </ItemGroup>
   <ItemGroup Label="Testing">

@@ -25,8 +25,11 @@ export interface AssetSummary {
   openCases: number
 }
 
-/** 'open_survey': staff, F5 way 2 (the asset fails often). */
-export type AssetAction = 'edit' | 'retire' | 'delete' | 'open_survey'
+/**
+ * 'propose_change': staff of the building, put the asset in a change list (meeting note 18/11).
+ * 'open_survey': staff, F5 way 2 (the asset fails often).
+ */
+export type AssetAction = 'propose_change' | 'open_survey'
 
 /** A case of the asset (G5). Status values as in features/cases. */
 export interface AssetCase {
@@ -63,35 +66,25 @@ export interface AssetPage {
   totalCount: number
 }
 
+export type AssetListStatus = 'InService' | 'OpenCase' | 'Retired'
+
 export interface AssetFilters {
   buildingId?: number
   roomId?: number
+  categoryId?: number
   typeId?: number
   search?: string
   includeRetired?: boolean
+  status?: AssetListStatus
+  /** name_asc, name_desc, warranty_asc or warranty_desc */
+  sort?: string
   page: number
-}
-
-export interface AssetRequest {
-  name: string
-  roomId: number
-  typeId: number
-  manufacturerId: number | null
-  hasCopyright: boolean
-  warrantyEndDate: string | null
 }
 
 export interface ImportRow {
   line: number
   name: string
   errors: string[]
-}
-
-export interface ImportResult {
-  rowCount: number
-  errorCount: number
-  imported: boolean
-  rows: ImportRow[]
 }
 
 export interface QrTarget {
@@ -122,48 +115,13 @@ export interface PlaceOption {
   floors: {
     id: number
     name: string
-    rooms: { id: number; name: string; isCommonArea: boolean }[]
+    rooms: { id: number; name: string }[]
   }[]
 }
 
 export interface AssetRef {
   id: number
   name: string
-}
-
-// ---------------------------------------------------------------------------
-// A06 / A07 replacement requests (F5 → F1). Mirrors backend Modules/Assets/Dtos/ReplacementDtos.cs.
-// ---------------------------------------------------------------------------
-
-export type ReplacementStatus = 'open' | 'done' | 'dismissed'
-
-export interface ReplacementRequest {
-  id: number
-  /** A reference to quote; the Administrator cannot open the case (BR-11). */
-  caseCode: string
-  /** Empty for the Administrator. */
-  caseId: number | null
-  oldAsset: AssetRef
-  oldAssetTypeId: number
-  oldAssetTypeName: string
-  oldManufacturerId: number | null
-  location: AssetLocation
-  newModel: string
-  newSerial: string | null
-  requestedBy: string
-  requestedAt: string
-  status: ReplacementStatus
-  newAsset: AssetRef | null
-  finishedAt: string | null
-  dismissReason: string | null
-}
-
-export interface CompleteReplacementRequest {
-  name: string
-  typeId: number
-  manufacturerId: number | null
-  hasCopyright: boolean
-  warrantyEndDate: string | null
 }
 
 export interface ServiceTypeOption {

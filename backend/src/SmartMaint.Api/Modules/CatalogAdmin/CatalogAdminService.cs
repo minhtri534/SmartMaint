@@ -12,26 +12,41 @@ namespace SmartMaint.Api.Modules.CatalogAdmin;
 
 /// <summary>
 /// Each list follows the same three steps: Save = create (id null) or update, with a duplicate check;
-/// Delete = only when nothing uses the item. <see cref="SaveAsync{T}"/> / <see cref="DeleteAsync{T}"/> hold the shared part.
+/// Delete = only when nothing uses the item; fault categories and specialties can also be archived. <see cref="SaveAsync{T}"/> / <see cref="DeleteAsync{T}"/> hold the shared part.
 /// </summary>
-internal sealed class CatalogAdminService(AppDbContext db, IAuditService audit) : ICatalogAdminService
+internal sealed class CatalogAdminService(AppDbContext db, IAuditService audit, TimeProvider clock) : ICatalogAdminService
 {
-    // ----- service types (case categories) ----------------------------------------------------------------------
+    // ----- fault categories (ERD: CaseCategories) -----------------------------------------------------------------
+
+    /// <summary>The group shown beside the name of a fault that is not linked to one asset type.</summary>
+    private const string GeneralGroup = "General";
 
     public async Task<IReadOnlyList<CaseCategoryAdminResponse>> ListCaseCategoriesAsync(CancellationToken cancellationToken) =>
         await db.CaseCategories.AsNoTracking()
-            .OrderBy(c => c.GroupName).ThenBy(c => c.Name)
+            .OrderBy(c => c.ArchivedAt != null).ThenBy(c => c.Name)
             .Select(c => new CaseCategoryAdminResponse(
-                c.Id, c.GroupName, c.Name, c.Description, c.IsEmergency, c.DefaultPriority.Code,
-                c.PhotoRequired, db.Cases.Count(x => x.CategoryId == c.Id)))
+                c.Id, c.GroupName, c.Name, c.Description, c.AssetTypeId, c.AssetType == null ? null : c.AssetType.Name,
+                c.ArchivedAt, db.Cases.Count(x => x.CategoryId == c.Id)))
             .ToListAsync(cancellationToken);
 
     public async Task<CaseCategoryAdminResponse> SaveCaseCategoryAsync(
         long? id, CaseCategoryRequest request, CancellationToken cancellationToken)
     {
-        var group = request.GroupName.Trim();
+        var assetType = request.AssetTypeId is { } typeId
+            ? await db.AssetTypes.AsNoTracking().SingleOrDefaultAsync(t => t.Id == typeId, cancellationToken)
+              ?? throw CatalogAdminErrors.UnknownAssetType()
+            : null;
+        var existing = id is { } current
+            ? await db.CaseCategories.AsNoTracking().SingleOrDefaultAsync(c => c.Id == current, cancellationToken)
+              ?? throw CatalogAdminErrors.NotFound()
+            : null;
+
+        // Faults made before the asset type existed keep their group until someone links them to another type.
+        var group = existing is not null && existing.AssetTypeId == request.AssetTypeId
+            ? existing.GroupName
+            : assetType?.Name ?? GeneralGroup;
         var name = request.Name.Trim();
-        var priority = await db.PriorityLevels.SingleAsync(p => p.Code == request.DefaultPriority, cancellationToken);
+        var normal = await db.PriorityLevels.AsNoTracking().SingleAsync(p => p.Code == CasePriority.Normal, cancellationToken);
         var category = await SaveAsync(
             db.CaseCategories, id, AuditTarget.CaseCategory,
             c => c.GroupName.ToLower() == group.ToLower() && c.Name.ToLower() == name.ToLower(),
@@ -40,14 +55,24 @@ internal sealed class CatalogAdminService(AppDbContext db, IAuditService audit) 
                 c.GroupName = group;
                 c.Name = name;
                 c.Description = Blank(request.Description);
-                // An emergency type always opens an emergency case (N26).
-                c.IsEmergency = request.IsEmergency;
-                c.DefaultPriorityId = priority.Id;
-                c.PhotoRequired = request.PhotoRequired;
+                c.AssetTypeId = request.AssetTypeId;
+                // The column is still required, but the customer chooses the urgency now (meeting note 18/11).
+                if (c.DefaultPriorityId == 0)
+                {
+                    c.DefaultPriorityId = normal.Id;
+                }
             },
-            c => new { c.Id, c.GroupName, c.Name, c.IsEmergency, c.DefaultPriorityId, c.PhotoRequired },
+            c => new { c.Id, c.GroupName, c.Name, c.AssetTypeId, c.ArchivedAt },
             cancellationToken);
         return (await ListCaseCategoriesAsync(cancellationToken)).Single(c => c.Id == category.Id);
+    }
+
+    public async Task<CaseCategoryAdminResponse> SetCaseCategoryArchivedAsync(long id, bool archived, CancellationToken cancellationToken)
+    {
+        await SetArchivedAsync(
+            db.CaseCategories, id, AuditTarget.CaseCategory, archived,
+            c => new { c.Id, c.GroupName, c.Name, c.AssetTypeId, c.ArchivedAt }, cancellationToken);
+        return (await ListCaseCategoriesAsync(cancellationToken)).Single(c => c.Id == id);
     }
 
     public Task DeleteCaseCategoryAsync(long id, CancellationToken cancellationToken) =>
@@ -60,7 +85,8 @@ internal sealed class CatalogAdminService(AppDbContext db, IAuditService audit) 
         await db.AssetCategories.AsNoTracking()
             .OrderBy(c => c.CategoryName)
             .Select(c => new AssetCategoryResponse(
-                c.Id, c.Code, c.CategoryName, c.Description, db.AssetTypes.Count(t => t.CategoryId == c.Id)))
+                c.Id, c.Code, c.CategoryName, c.Description, db.AssetTypes.Count(t => t.CategoryId == c.Id),
+                db.Assets.Count(a => a.Type.CategoryId == c.Id)))
             .ToListAsync(cancellationToken);
 
     public async Task<AssetCategoryResponse> SaveAssetCategoryAsync(
@@ -93,6 +119,7 @@ internal sealed class CatalogAdminService(AppDbContext db, IAuditService audit) 
             .OrderBy(t => t.Category.CategoryName).ThenBy(t => t.Name)
             .Select(t => new AssetTypeResponse(
                 t.Id, t.CategoryId, t.Category.CategoryName, t.Code, t.Name, t.Description, t.ExpectedLifeYears,
+                db.Assets.Count(a => a.TypeId == t.Id) + db.CaseCategories.Count(c => c.AssetTypeId == t.Id),
                 db.Assets.Count(a => a.TypeId == t.Id)))
             .ToListAsync(cancellationToken);
 
@@ -121,7 +148,9 @@ internal sealed class CatalogAdminService(AppDbContext db, IAuditService audit) 
     }
 
     public Task DeleteAssetTypeAsync(long id, CancellationToken cancellationToken) =>
-        DeleteAsync(db.AssetTypes, id, AuditTarget.AssetType, () => db.Assets.CountAsync(a => a.TypeId == id, cancellationToken),
+        DeleteAsync(db.AssetTypes, id, AuditTarget.AssetType,
+            async () => await db.Assets.CountAsync(a => a.TypeId == id, cancellationToken)
+                        + await db.CaseCategories.CountAsync(c => c.AssetTypeId == id, cancellationToken),
             t => new { t.Id, t.Code, t.Name }, cancellationToken);
 
     // ----- manufacturers ----------------------------------------------------------------------------------------
@@ -159,8 +188,8 @@ internal sealed class CatalogAdminService(AppDbContext db, IAuditService audit) 
 
     public async Task<IReadOnlyList<SpecialtyResponse>> ListSpecialtiesAsync(CancellationToken cancellationToken) =>
         await db.Specialties.AsNoTracking()
-            .OrderBy(s => s.Name)
-            .Select(s => new SpecialtyResponse(s.Id, s.Name, db.TechnicianSpecialties.Count(t => t.SpecialtyId == s.Id)))
+            .OrderBy(s => s.ArchivedAt != null).ThenBy(s => s.Name)
+            .Select(s => new SpecialtyResponse(s.Id, s.Name, s.ArchivedAt, db.TechnicianSpecialties.Count(t => t.SpecialtyId == s.Id)))
             .ToListAsync(cancellationToken);
 
     public async Task<SpecialtyResponse> SaveSpecialtyAsync(long? id, SpecialtyRequest request, CancellationToken cancellationToken)
@@ -179,6 +208,12 @@ internal sealed class CatalogAdminService(AppDbContext db, IAuditService audit) 
         DeleteAsync(db.Specialties, id, AuditTarget.Specialty,
             () => db.TechnicianSpecialties.CountAsync(t => t.SpecialtyId == id, cancellationToken),
             s => new { s.Id, s.Name }, cancellationToken);
+
+    public async Task<SpecialtyResponse> SetSpecialtyArchivedAsync(long id, bool archived, CancellationToken cancellationToken)
+    {
+        await SetArchivedAsync(db.Specialties, id, AuditTarget.Specialty, archived, s => new { s.Id, s.Name, s.ArchivedAt }, cancellationToken);
+        return (await ListSpecialtiesAsync(cancellationToken)).Single(s => s.Id == id);
+    }
 
     // ----- shared steps -----------------------------------------------------------------------------------------
 
@@ -234,6 +269,23 @@ internal sealed class CatalogAdminService(AppDbContext db, IAuditService audit) 
 
         set.Remove(item);
         audit.Record(target, AuditOperation.Delete, snapshot(item), null);
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>Archive or restore one item. Doing it twice changes nothing.</summary>
+    private async Task SetArchivedAsync<T>(
+        DbSet<T> set, long id, AuditTarget target, bool archived, Func<T, object> snapshot, CancellationToken cancellationToken)
+        where T : Entity, IArchivable
+    {
+        var item = await set.SingleOrDefaultAsync(x => x.Id == id, cancellationToken) ?? throw CatalogAdminErrors.NotFound();
+        if (item.ArchivedAt is not null == archived)
+        {
+            return;
+        }
+
+        var before = snapshot(item);
+        item.ArchivedAt = archived ? clock.GetUtcNow() : null;
+        audit.Record(target, AuditOperation.Update, before, snapshot(item));
         await db.SaveChangesAsync(cancellationToken);
     }
 

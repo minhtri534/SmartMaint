@@ -18,10 +18,9 @@ public sealed class CaseCategoryRequestValidator : AbstractValidator<CaseCategor
 {
     public CaseCategoryRequestValidator()
     {
-        RuleFor(x => x.GroupName).ValidName(60);
         RuleFor(x => x.Name).ValidName(100);
         RuleFor(x => x.Description).MaximumLength(300);
-        RuleFor(x => x.DefaultPriority).IsInEnum();
+        RuleFor(x => x.AssetTypeId).GreaterThan(0).When(x => x.AssetTypeId is not null);
     }
 }
 

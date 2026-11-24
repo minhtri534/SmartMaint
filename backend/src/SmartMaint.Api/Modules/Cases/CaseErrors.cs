@@ -19,9 +19,11 @@ internal static class CaseErrors
     public static AppException UnknownRoom() =>
         new(ErrorKind.BadRequest, "case.unknown_room", "Choose a room or area.");
 
-    public static AppException RoomNotAllowed() =>
-        new(ErrorKind.BadRequest, "case.room_not_allowed",
-            "You can report problems in your own room or in the common areas of your building.");
+    public static AppException FaultNotForAsset() =>
+        new(ErrorKind.BadRequest, "case.fault_not_for_asset", "This fault category does not apply to the chosen asset.");
+
+    public static AppException PlannedStartRequired() =>
+        new(ErrorKind.BadRequest, "case.planned_start_required", "Choose the planned start.");
 
     public static AppException AssetNotInRoom() =>
         new(ErrorKind.BadRequest, "case.asset_not_in_room", "That asset is not in the chosen room, or it was retired.");
@@ -38,10 +40,6 @@ internal static class CaseErrors
     public static AppException InvalidTechnician() =>
         new(ErrorKind.BadRequest, "case.invalid_technician", "Choose an active technician.");
 
-    public static AppException ReplacementModelRequired() =>
-        new(ErrorKind.BadRequest, "case.replacement_model_required",
-            "The asset was replaced: write the model (and serial) of the new asset.");
-
     public static AppException SurveyNotAllowed() =>
         new(ErrorKind.BadRequest, "case.survey_not_allowed",
             "Open a survey for an asset in use in one of your buildings that has no open survey yet.");
@@ -50,16 +48,21 @@ internal static class CaseErrors
         new(ErrorKind.BadRequest, "case.invalid_duplicate_target",
             "Choose another open case of the same building as the one this request repeats.");
 
-    public static AppException TechnicianRequired() =>
-        new(ErrorKind.BadRequest, "case.technician_required",
-            "The technician already took this job: choose who continues it instead of leaving it empty.");
-
     public static AppException TaskAlreadyDone(string task) =>
         new(ErrorKind.BadRequest, "case.task_done", $"\"{task}\" already has a result and cannot be removed.");
 
     public static AppException TaskByThirdParty(string task) =>
         new(ErrorKind.Conflict, "case.task_third_party",
             $"\"{task}\" was done by an outside party; only the staff can change it.");
+
+    public static AppException SameTechnician() =>
+        new(ErrorKind.BadRequest, "case.same_technician", "This technician already has the case. Choose another one.");
+
+    public static AppException CostNotYours() =>
+        new(ErrorKind.Conflict, "case.cost_not_yours", "You can only edit the costs you added yourself.");
+
+    public static AppException ReceiptRequired() =>
+        new(ErrorKind.BadRequest, "case.receipt_required", "Add the receipt number or a photo of the receipt.");
 
     public static AppException CostNotFound() =>
         new(ErrorKind.NotFound, "case.cost_not_found", "This cost line does not belong to the case. Reload the page.");

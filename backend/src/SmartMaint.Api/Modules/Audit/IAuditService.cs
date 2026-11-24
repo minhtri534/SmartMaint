@@ -11,7 +11,7 @@ namespace SmartMaint.Api.Modules.Audit;
 /// </summary>
 public interface IAuditService
 {
-    /// <summary>An action of the signed-in Administrator.</summary>
+    /// <summary>An action of the signed-in Administrator (nothing is written for another role).</summary>
     void Record(AuditTarget target, AuditOperation operation, object? oldValue, object? newValue);
 
     /// <summary>An action of an Administrator who is not the signed-in user yet (sign-in).</summary>

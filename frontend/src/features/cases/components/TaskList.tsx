@@ -20,6 +20,7 @@ const TONES: Record<TaskStatus, BadgeTone> = {
   pass: 'positive',
   fail: 'negative',
   not_applicable: 'neutral',
+  moved: 'warning',
 }
 
 /**
@@ -57,6 +58,13 @@ export function TasksDialog({
 function TaskList({ caseDetail }: { caseDetail: CaseDetail }) {
   const thirdParty = useCaseMutation(casesApi.setTaskThirdParty)
   const [editing, setEditing] = useState<CaseTask | null>(null)
+  // Meeting note 18/11: notes and photos open from a button on each task.
+  const [shown, setShown] = useState<{ taskId: number; part: 'notes' | 'photos' } | null>(null)
+  const [zoomed, setZoomed] = useState<{
+    url: string
+    caption: string | null
+    task: string
+  } | null>(null)
   const technicianMay = caseDetail.allowedActions.includes('update_task')
   const staffMay = caseDetail.allowedActions.includes('set_task_third_party')
 
@@ -89,6 +97,21 @@ function TaskList({ caseDetail }: { caseDetail: CaseDetail }) {
                 </div>
                 <div className="flex flex-none flex-wrap items-center justify-end gap-1">
                   <Badge tone={TONES[task.status]}>{TASK_STATUS_LABELS[task.status]}</Badge>
+                  {(['notes', 'photos'] as const).map((part) => {
+                    const count = task[part].length
+                    const open = shown?.taskId === task.id && shown.part === part
+                    return (
+                      <Button
+                        key={part}
+                        variant="ghost"
+                        disabled={count === 0}
+                        aria-expanded={open}
+                        onClick={() => setShown(open ? null : { taskId: task.id, part })}
+                      >
+                        {part === 'notes' ? 'Notes' : 'Photos'} ({count})
+                      </Button>
+                    )
+                  })}
                   {/* Meeting 07/11: a task an outside party did is the staff's, the technician no longer changes it. */}
                   {technicianMay && !byOutside && (
                     <Button variant="secondary" onClick={() => setEditing(task)}>
@@ -112,47 +135,48 @@ function TaskList({ caseDetail }: { caseDetail: CaseDetail }) {
                   )}
                 </div>
               </div>
-              {(task.notes.length > 0 || task.photos.length > 0 || task.repairCaseId) && (
-                <div className="mt-2 ml-6 flex flex-col gap-2 text-[13px]">
+              {shown?.taskId === task.id && shown.part === 'notes' && (
+                <ul className="bg-raised rounded-control mt-2 ml-6 flex flex-col gap-2 p-3 text-[13px]">
                   {task.notes.map((n) => (
-                    <p key={n.at}>
+                    <li key={n.at}>
                       {n.note} <span className="text-muted">· {formatDateTime(n.at)}</span>
-                    </p>
+                    </li>
                   ))}
-                  {task.photos.length > 0 && (
-                    <div className="flex flex-wrap gap-3">
-                      {task.photos.map((p) => (
-                        <a
-                          key={p.url}
-                          href={p.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="flex w-24 flex-col gap-1"
-                        >
-                          <img
-                            src={p.url}
-                            alt={p.caption ?? `Photo of ${task.name}`}
-                            className="border-border size-24 rounded-lg border object-cover"
-                          />
-                          {p.caption && (
-                            <span className="text-muted line-clamp-2 text-xs">{p.caption}</span>
-                          )}
-                        </a>
-                      ))}
-                    </div>
-                  )}
-                  {task.repairCaseId && (
-                    <p>
-                      Repair case{' '}
-                      <Link
-                        to={caseDetailPath(task.repairCaseId)}
-                        className="font-mono underline underline-offset-2"
+                </ul>
+              )}
+              {shown?.taskId === task.id && shown.part === 'photos' && (
+                <ul className="bg-raised rounded-control mt-2 ml-6 flex flex-wrap gap-3 p-3">
+                  {task.photos.map((p) => (
+                    <li key={p.url} className="w-24">
+                      <button
+                        type="button"
+                        aria-label={`Enlarge ${p.caption ?? `a photo of ${task.name}`}`}
+                        onClick={() => setZoomed({ ...p, task: task.name })}
+                        className="flex w-24 cursor-zoom-in flex-col gap-1 text-left"
                       >
-                        {task.repairCaseCode}
-                      </Link>
-                    </p>
-                  )}
-                </div>
+                        <img
+                          src={p.url}
+                          alt={p.caption ?? `Photo of ${task.name}`}
+                          className="border-border size-24 rounded-lg border object-cover"
+                        />
+                        {p.caption && (
+                          <span className="text-muted line-clamp-2 text-xs">{p.caption}</span>
+                        )}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {task.repairCaseId && (
+                <p className="mt-2 ml-6 text-[13px]">
+                  Repair case{' '}
+                  <Link
+                    to={caseDetailPath(task.repairCaseId)}
+                    className="font-mono underline underline-offset-2"
+                  >
+                    {task.repairCaseCode}
+                  </Link>
+                </p>
               )}
             </li>
           )
@@ -162,6 +186,21 @@ function TaskList({ caseDetail }: { caseDetail: CaseDetail }) {
         <div className="mt-3">
           <Alert>{thirdParty.error.message}</Alert>
         </div>
+      )}
+      {zoomed && (
+        <Dialog open wide onClose={() => setZoomed(null)} title={zoomed.task}>
+          <img
+            src={zoomed.url}
+            alt={zoomed.caption ?? `Photo of ${zoomed.task}`}
+            className="max-h-[65vh] w-full rounded-lg object-contain"
+          />
+          {zoomed.caption && <p className="text-sm">{zoomed.caption}</p>}
+          <DialogActions>
+            <Button variant="ghost" onClick={() => setZoomed(null)}>
+              Close
+            </Button>
+          </DialogActions>
+        </Dialog>
       )}
       {editing && (
         <TaskUpdateDialog

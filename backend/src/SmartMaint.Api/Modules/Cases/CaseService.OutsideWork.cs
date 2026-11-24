@@ -64,9 +64,10 @@ internal sealed partial class CaseService
             throw CaseErrors.SurveyNotAllowed();
         }
 
-        var category = await db.CaseCategories.Include(x => x.DefaultPriority)
-            .SingleOrDefaultAsync(x => x.Id == request.ServiceTypeId, cancellationToken)
+        var category = await db.CaseCategories
+            .SingleOrDefaultAsync(x => x.Id == request.ServiceTypeId && x.ArchivedAt == null, cancellationToken)
             ?? throw CaseErrors.UnknownServiceType();
+        var normal = await db.PriorityLevels.SingleAsync(p => p.Code == CasePriority.Normal, cancellationToken);
 
         var now = clock.GetUtcNow();
         var repairs = await AssetRepairStats.RepairsSinceAsync(db, asset.Id, now - AssetRepairStats.Window, cancellationToken);
@@ -80,7 +81,7 @@ internal sealed partial class CaseService
                 ? $"Survey of an asset that failed {repairs} times in 12 months: repair or replace?"
                 : request.Note.Trim(),
             Status = CaseStatus.Approved,
-            PriorityLevelId = category.DefaultPriority.Id,
+            PriorityLevelId = normal.Id,
             StaffId = currentUser.Id,
             IsSurvey = true,
             SubmittedAt = now,
@@ -152,32 +153,5 @@ internal sealed partial class CaseService
         return new DecisionInfoResponse(
             repairs, reopens, age, life, asset.WarrantyEndDate, underWarranty, asset.HasCopyright,
             asset.Manufacturer?.Name, asset.Manufacturer?.PhoneNumber, c.AssessmentRecommendation, suggest, reasons);
-    }
-
-    /// <summary>
-    /// A06: closing a case whose asset an outside party replaced asks the Administrator to register the new asset and
-    /// retire the old one. The Administrator gets the asset, the model and the case code, not the case content (BR-11).
-    /// </summary>
-    private async Task AddReplacementRequestAsync(Case c, CancellationToken cancellationToken)
-    {
-        if (c.AssetId is not { } assetId || c.ReplacementModel is null
-            || await db.AssetReplacementRequests.AnyAsync(r => r.CaseId == c.Id, cancellationToken))
-        {
-            return;
-        }
-
-        db.AssetReplacementRequests.Add(new AssetReplacementRequest
-        {
-            CaseId = c.Id,
-            OldAssetId = assetId,
-            NewModel = c.ReplacementModel,
-            NewSerial = c.ReplacementSerial,
-            RequestedById = currentUser.Id,
-            Status = ReplacementStatus.Open,
-        });
-        var assetName = await db.Assets.Where(a => a.Id == assetId).Select(a => a.Name).SingleAsync(cancellationToken);
-        var admins = await db.Admins.Where(a => a.Status == UserStatus.Active).Select(a => a.Id).ToListAsync(cancellationToken);
-        notifications.Send(admins,
-            $"Asset replaced: register \"{c.ReplacementModel}\" in place of \"{assetName}\" ({c.Room.Floor.Building.Name}, {c.Room.RoomNumber}).");
     }
 }

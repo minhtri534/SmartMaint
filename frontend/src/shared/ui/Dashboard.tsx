@@ -3,6 +3,7 @@ import { useEffect, useId, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { cn } from '@/shared/utils/cn'
 import { EASE_SNAP } from '@/shared/utils/motion'
+import { HelpTip } from './HelpTip'
 import { Icon, type IconName } from './Icon'
 
 /*
@@ -89,6 +90,8 @@ export interface KpiCardProps {
   to?: string
   /** Red figure: late or unacknowledged work above zero. */
   alert?: boolean
+  /** What the figure counts and how, behind a "?" (meeting note 18/11). */
+  help?: ReactNode
   index?: number
 }
 
@@ -101,13 +104,21 @@ export function KpiCard({
   hint,
   to,
   alert,
+  help,
   index = 0,
 }: KpiCardProps) {
   return (
     <Rise index={index} className="h-full">
       <div className="card-soft rounded-card flex h-full flex-col p-4 sm:p-5">
         <div className="flex items-start justify-between gap-3">
-          <span className="text-[13.5px] font-semibold">{label}</span>
+          <span className="flex items-center gap-1.5 text-[13.5px] font-semibold">
+            {label}
+            {help && (
+              <HelpTip label={label} align={index % 2 === 0 ? 'left' : 'right'}>
+                {help}
+              </HelpTip>
+            )}
+          </span>
           <span
             className={cn(
               'grid size-9 flex-none place-items-center rounded-xl shadow-[inset_0_1px_0_rgb(255_255_255/0.5)]',
@@ -399,11 +410,33 @@ export function MiniStat({
   )
 }
 
-/** A card title row in the dashboard style: title left, a round control or link right. */
-export function PanelHeader({ title, aside }: { title: string; aside?: ReactNode }) {
+/** A card title row in the dashboard style: title (and what it shows) left, a round control or link right. */
+export function PanelHeader({
+  title,
+  subtitle,
+  help,
+  aside,
+}: {
+  title: string
+  /** One grey line under the title, e.g. the period the numbers cover. */
+  subtitle?: ReactNode
+  /** What the panel shows, behind a "?" (meeting note 18/11). */
+  help?: ReactNode
+  aside?: ReactNode
+}) {
   return (
-    <div className="mb-4 flex items-center justify-between gap-3">
-      <h2 className="text-section font-semibold">{title}</h2>
+    <div className="mb-4 flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <h2 className="text-section flex items-center gap-1.5 font-semibold">
+          {title}
+          {help && (
+            <HelpTip label={title} align="left">
+              {help}
+            </HelpTip>
+          )}
+        </h2>
+        {subtitle && <p className="text-muted mt-0.5 text-xs">{subtitle}</p>}
+      </div>
       {aside}
     </div>
   )

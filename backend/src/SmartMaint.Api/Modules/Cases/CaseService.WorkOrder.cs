@@ -8,28 +8,66 @@ namespace SmartMaint.Api.Modules.Cases;
 
 /// <summary>
 /// Meeting 07/11, the staff's side of a case: approve with the work order form (technician, planned window, tasks),
-/// one Edit instead of reassign / change urgency / continue / close / reopen, a new technician on taken work = a new
-/// case, a repeated request handed to the case it repeats, outside parties marked on the tasks, followers.
+/// one Edit instead of change urgency / continue / close / reopen, Reassign (a new technician on taken work = a new
+/// case), a repeated request handed to the case it repeats, outside parties marked on the tasks, followers.
 /// </summary>
 internal sealed partial class CaseService
 {
     private const int TaskDescriptionMax = 500;
 
-    public async Task<IReadOnlyList<PersonResponse>> GetFollowerOptionsAsync(long id, CancellationToken cancellationToken)
+    private const int FollowerMatches = 20;
+
+    public async Task<FollowerOptionsResponse> GetFollowerOptionsAsync(long id, string? search, CancellationToken cancellationToken)
     {
         var scope = await LoadScopeAsync(cancellationToken);
         var c = await Visible(db.Cases.AsNoTracking(), scope)
             .Where(x => x.Id == id)
-            .Select(x => new { x.RequestingCustomerId, x.Room.Floor.BuildingId })
+            .Select(x => new { x.RequestingCustomerId, Followers = x.Followers.Select(f => f.CustomerId).ToList() })
             .SingleOrDefaultAsync(cancellationToken)
             ?? throw CaseErrors.NotFound();
 
-        return await db.Customers.AsNoTracking()
-            .Where(x => x.Status == UserStatus.Active && x.Room.Floor.BuildingId == c.BuildingId && x.Id != c.RequestingCustomerId)
+        var customers = db.Customers.AsNoTracking().Where(x => x.Status == UserStatus.Active && x.Id != c.RequestingCustomerId);
+        var current = await customers.Where(x => c.Followers.Contains(x.Id))
             .OrderBy(x => x.FullName)
-            .Select(x => new PersonResponse(x.Id, x.FullName))
+            .Select(x => new FollowerOptionResponse(x.Id, x.FullName, x.Username, x.Email))
             .ToListAsync(cancellationToken);
+
+        var words = search?.Trim().ToLower();
+        var matches = await customers
+            .Where(x => !c.Followers.Contains(x.Id))
+            .Where(x => string.IsNullOrEmpty(words) || x.Username.ToLower().Contains(words)
+                        || (x.Email != null && x.Email.ToLower().Contains(words)) || x.FullName.ToLower().Contains(words))
+            .OrderBy(x => x.FullName)
+            .Take(FollowerMatches)
+            .Select(x => new FollowerOptionResponse(x.Id, x.FullName, x.Username, x.Email))
+            .ToListAsync(cancellationToken);
+        return new FollowerOptionsResponse(current, matches);
     }
+
+    public Task<CaseDetailResponse> SetFollowersAsync(long id, SetFollowersRequest request, CancellationToken cancellationToken) =>
+        ActAsync(id, CaseAction.ManageFollowers, async (c, now) =>
+        {
+            await SyncFollowersAsync(c, request.CustomerIds, now, cancellationToken);
+            return null;
+        }, cancellationToken);
+
+    public Task<CaseDetailResponse> ReassignAsync(long id, ReassignRequest request, CancellationToken cancellationToken) =>
+        ActAsync(id, CaseAction.Reassign, async (c, now) =>
+        {
+            if (request.TechnicianId == c.AssignedTechnicianId)
+            {
+                throw CaseErrors.SameTechnician();
+            }
+
+            if (CaseTransitions.Taken.Contains(c.Status))
+            {
+                var input = new WorkOrderInput(c.Priority.Code, c.CategoryId, null, null, c.PlannedStartAt, c.PlannedEndAt, null);
+                return await ContinueInNewCaseAsync(c, request.TechnicianId, input, now, cancellationToken);
+            }
+
+            await ChangeTechnicianAsync(c, request.TechnicianId, cancellationToken);
+            return null;
+        }, cancellationToken);
 
     public Task<CaseDetailResponse> ApproveAsync(long id, ApproveCaseRequest request, CancellationToken cancellationToken) =>
         ActAsync(id, CaseAction.Approve, async (c, now) =>
@@ -71,24 +109,17 @@ internal sealed partial class CaseService
                 throw CaseErrors.StatusChangeNotAllowed();
             }
 
+            // Until the work starts the expected due time is counted from the planned start (meeting note 18/11).
+            if (request.PlannedStartAt is null && c.StartedAt is null && c.DueAt is null && request.Urgency != CasePriority.Emergency)
+            {
+                throw CaseErrors.PlannedStartRequired();
+            }
+
             var input = new WorkOrderInput(
                 request.Urgency, request.ServiceTypeId, request.Title, request.Description,
                 request.PlannedStartAt, request.PlannedEndAt, request.Tasks);
 
-            // A new technician on work the old one already took: a new case continues it (meeting 07/11).
-            if (request.TechnicianId != c.AssignedTechnicianId && CaseTransitions.Taken.Contains(c.Status))
-            {
-                if (request.TechnicianId is not { } nextTechnicianId)
-                {
-                    throw CaseErrors.TechnicianRequired();
-                }
-
-                return await ContinueInNewCaseAsync(c, nextTechnicianId, input, request.FollowerIds, now, cancellationToken);
-            }
-
             var notes = await ApplyWorkOrderAsync(c, input, now, cancellationToken);
-            await SyncFollowersAsync(c, request.FollowerIds, now, cancellationToken);
-            await ChangeTechnicianAsync(c, request.TechnicianId, cancellationToken);
 
             string? reason = null;
             switch (request.StatusChange)
@@ -103,7 +134,6 @@ internal sealed partial class CaseService
                 case EditStatusChange.Close:
                     c.Status = CaseStatus.Closed;
                     c.ClosedAt = now;
-                    await AddReplacementRequestAsync(c, cancellationToken);
                     notifications.Send(CustomersOf(c), $"{Case.CodeOf(c.Id)} \"{c.Title}\" was closed. Please rate the repair.");
                     await NotifyEmergencyClosedAsync(c, await StaffOfBuildingAsync(c.Room.Floor.BuildingId, cancellationToken), cancellationToken);
                     break;
@@ -167,7 +197,6 @@ internal sealed partial class CaseService
     {
         CaseStatus.OnHold => [EditStatusChange.Continue],
         CaseStatus.Completed => [EditStatusChange.Close, EditStatusChange.Reopen],
-        CaseStatus.Closed when c.ClosedAt is { } closed && now - closed <= ReopenWindow => [EditStatusChange.Reopen],
         _ => [],
     };
 
@@ -201,8 +230,15 @@ internal sealed partial class CaseService
 
         if (input.ServiceTypeId != c.CategoryId)
         {
-            var category = await db.CaseCategories.SingleOrDefaultAsync(x => x.Id == input.ServiceTypeId, cancellationToken)
+            var category = await db.CaseCategories
+                .SingleOrDefaultAsync(x => x.Id == input.ServiceTypeId && x.ArchivedAt == null, cancellationToken)
                 ?? throw CaseErrors.UnknownServiceType();
+            if (category.AssetTypeId is { } typeId && c.AssetId is { } assetId
+                && !await db.Assets.AnyAsync(a => a.Id == assetId && a.TypeId == typeId, cancellationToken))
+            {
+                throw CaseErrors.FaultNotForAsset();
+            }
+
             notes.Add($"Category corrected from {CaseMapper.ServiceTypeName(c.Category)} to {CaseMapper.ServiceTypeName(category)}.");
             c.CategoryId = category.Id;
             c.Category = category;
@@ -306,18 +342,12 @@ internal sealed partial class CaseService
 
     private static string? Clean(string? text) => string.IsNullOrWhiteSpace(text) ? null : text.Trim();
 
-    /// <summary>The followers become exactly <paramref name="customerIds"/> (null = leave them).</summary>
-    private async Task SyncFollowersAsync(Case c, IReadOnlyList<long>? customerIds, DateTimeOffset now, CancellationToken cancellationToken)
+    /// <summary>The followers become exactly <paramref name="customerIds"/>.</summary>
+    private async Task SyncFollowersAsync(Case c, IReadOnlyList<long> customerIds, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        if (customerIds is null)
-        {
-            return;
-        }
-
         var wanted = customerIds.Where(x => x != c.RequestingCustomerId).ToHashSet();
-        var buildingId = c.Room.Floor.BuildingId;
         var valid = await db.Customers
-            .Where(x => wanted.Contains(x.Id) && x.Status == UserStatus.Active && x.Room.Floor.BuildingId == buildingId)
+            .Where(x => wanted.Contains(x.Id) && x.Status == UserStatus.Active)
             .Select(x => x.Id)
             .ToListAsync(cancellationToken);
         if (valid.Count != wanted.Count)
@@ -338,29 +368,16 @@ internal sealed partial class CaseService
         }
     }
 
-    /// <summary>A case nobody has taken yet simply gets the new technician (or none, after a decline).</summary>
-    private async Task ChangeTechnicianAsync(Case c, long? technicianId, CancellationToken cancellationToken)
+    /// <summary>A case nobody has taken yet simply gets the new technician.</summary>
+    private async Task ChangeTechnicianAsync(Case c, long technicianId, CancellationToken cancellationToken)
     {
-        if (technicianId == c.AssignedTechnicianId)
-        {
-            return;
-        }
-
         var before = c.AssignedTechnicianId;
         var code = Case.CodeOf(c.Id);
-        if (technicianId is { } id)
-        {
-            var technician = await ActiveTechnicianAsync(id, cancellationToken);
-            c.AssignedTechnicianId = technician.Id;
-            c.Technician = technician;
-            c.AcceptRemindedAt = null;
-            notifications.Send([technician.Id], $"{code} \"{c.Title}\" was assigned to you.");
-        }
-        else
-        {
-            c.AssignedTechnicianId = null;
-            c.Technician = null;
-        }
+        var technician = await ActiveTechnicianAsync(technicianId, cancellationToken);
+        c.AssignedTechnicianId = technician.Id;
+        c.Technician = technician;
+        c.AcceptRemindedAt = null;
+        notifications.Send([technician.Id], $"{code} \"{c.Title}\" was assigned to you.");
 
         if (before is { } old)
         {
@@ -381,7 +398,6 @@ internal sealed partial class CaseService
         Case c,
         long technicianId,
         WorkOrderInput input,
-        IReadOnlyList<long>? followerIds,
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
@@ -425,16 +441,25 @@ internal sealed partial class CaseService
             next.Followers.Add(new CaseFollower { CustomerId = follower.CustomerId, AddedAt = now });
         }
 
+        // Meeting note 18/11: the old case keeps its whole task list; the unfinished tasks are marked Moved there and go
+        // on as copies (with their notes and photos) in the new case.
+        await db.Entry(c).Collection(x => x.Tasks).Query().Include(t => t.Notes).Include(t => t.Images).LoadAsync(cancellationToken);
         var finished = c.Tasks.Where(t => t.Status != CaseTaskStatus.Pending || t.DoneBy is not null).ToList();
         foreach (var task in c.Tasks.Except(finished).ToList())
         {
-            c.Tasks.Remove(task);
-            next.Tasks.Add(task);
+            task.Status = CaseTaskStatus.Moved;
+            next.Tasks.Add(new CaseTask
+            {
+                Name = task.Name,
+                Description = task.Description,
+                Status = CaseTaskStatus.Pending,
+                Notes = task.Notes.Select(n => new TaskNote { Note = n.Note }).ToList(),
+                Images = task.Images.Select(i => new TaskImage { Image = i.Image, Notes = i.Notes }).ToList(),
+            });
         }
 
         await ApplyWorkOrderAsync(next, input with { Tasks = null }, now, cancellationToken);
-        SyncTasks(next, input.Tasks, keepFinishedOf: finished.Select(t => t.Id).ToHashSet());
-        await SyncFollowersAsync(next, followerIds, now, cancellationToken);
+        SyncTasks(next, input.Tasks, keepFinishedOf: null);
         next.History.Add(new CaseStatusHistory
         {
             NewStatus = CaseStatus.Approved,
@@ -458,6 +483,7 @@ internal sealed partial class CaseService
         }
 
         c.Status = CaseStatus.Closed;
+        c.ReassignedAt = now;
 
         var nextCode = Case.CodeOf(next.Id);
         notifications.Send([technician.Id], $"{nextCode} \"{next.Title}\" was assigned to you (continues {Case.CodeOf(c.Id)}).");
@@ -482,6 +508,9 @@ internal sealed partial class CaseService
 
         var code = Case.CodeOf(c.Id);
         var targetCode = Case.CodeOf(target.Id);
+
+        // Meeting note 18/11: the repeat can still be opened, but it counts as one problem with the case it repeats.
+        c.MergedIntoCaseId = target.Id;
         if (duplicate.AddAsTask)
         {
             var description = $"From {code}: {c.Description}";

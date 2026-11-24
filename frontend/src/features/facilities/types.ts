@@ -1,13 +1,9 @@
 /** Mirrors backend Modules/Facilities/Dtos. ERD: Buildings -> Floors -> Rooms. */
 export interface RoomNode {
   id: number
-  /** ERD: Rooms.RoomNumber ("501", or a short name for a common area) */
+  /** ERD: Rooms.RoomNumber ("501", "Lobby") */
   roomNumber: string
-  /** NOT IN ERD v5: lobby, corridor, restroom... */
-  isCommonArea: boolean
   assetCount: number
-  /** Customers renting this room. */
-  tenants: string[]
 }
 
 export interface FloorNode {
@@ -24,20 +20,4 @@ export interface BuildingNode {
   name: string
   address: string | null
   floors: FloorNode[]
-}
-
-export interface BuildingRequest {
-  name: string
-  address: string | null
-}
-
-export interface FloorRequest {
-  buildingId: number
-  floorNumber: string
-}
-
-export interface RoomRequest {
-  floorId: number
-  roomNumber: string
-  isCommonArea: boolean
 }

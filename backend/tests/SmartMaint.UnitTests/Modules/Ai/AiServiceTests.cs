@@ -65,7 +65,7 @@ public sealed class AiServiceTests : IDisposable
         Assert.Equal(_notCooling.Id, result.ServiceTypeId);
         Assert.Equal(CasePriority.Normal, result.Urgency);
         Assert.Equal(["Say which unit."], result.Tips);
-        Assert.Contains($"{_notCooling.Id} | Air conditioning · Not cooling | normal", _ai.LastPrompt);
+        Assert.Contains($"{_notCooling.Id} | Air conditioning · Not cooling", _ai.LastPrompt);
         var conversation = Assert.Single(_db.AiConversations);
         Assert.Equal(AiService.RequestContext, conversation.ContextType);
         Assert.Equal(_me.Id, conversation.UserId);
@@ -152,15 +152,39 @@ public sealed class AiServiceTests : IDisposable
         Assert.Equal(["Add a photo."], result.Tips);
     }
 
+    private static readonly SmartMaint.Api.Modules.Catalog.Dtos.TechnicianOptionResponse[] Offered =
+        [new(5, "Duc", 0, ["HVAC"], [], true), new(6, "Long", 2, ["Plumbing"], [], false)];
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Normal)]
+    public void ParseTechnicianReply_KnownTechnician_IsTheSuggestion()
+    {
+        var result = AiService.ParseTechnicianReply("""{"technicianId": 6, "reason": "Knows pipes."}""", Offered);
+
+        Assert.Equal(6, result!.TechnicianId);
+        Assert.Equal("Knows pipes.", result.Reason);
+        Assert.Equal(SuggestionSource.Ai, result.Source);
+    }
+
     [Fact]
     [Trait(TestType.Key, TestType.Abnormal)]
-    public async Task SuggestRequest_EmergencyForANonEmergencyType_IsLoweredToHigh()
+    public void ParseTechnicianReply_TechnicianNotOffered_IsIgnored() =>
+        Assert.Null(AiService.ParseTechnicianReply("""{"technicianId": 99, "reason": "Made up."}""", Offered));
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Boundary)]
+    public void ParseTechnicianReply_NotJson_IsIgnored() =>
+        Assert.Null(AiService.ParseTechnicianReply("I would choose Duc.", Offered));
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Abnormal)]
+    public async Task SuggestRequest_EmergencyForAnyFault_StaysASuggestion()
     {
         _ai.Reply = $$"""{"serviceTypeId": {{_notCooling.Id}}, "urgency": "emergency", "tips": []}""";
 
         var result = await Suggest();
 
-        Assert.Equal(CasePriority.High, result.Urgency);
+        Assert.Equal(CasePriority.Emergency, result.Urgency);
     }
 
     [Fact]

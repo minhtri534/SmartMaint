@@ -14,9 +14,6 @@ internal static class MaintenanceErrors
     public static AppException ChecklistInUse(int plans) =>
         new(ErrorKind.Conflict, "maintenance.checklist_in_use", $"{plans} plan(s) use this checklist: it cannot be deleted.");
 
-    public static AppException UnknownCategory() =>
-        new(ErrorKind.BadRequest, "maintenance.unknown_category", "Choose the service type of the checklist.");
-
     // Also returned for a plan outside the caller's buildings (B3).
     public static AppException PlanNotFound() =>
         new(ErrorKind.NotFound, "maintenance.plan_not_found", "Maintenance plan not found.");
@@ -33,6 +30,13 @@ internal static class MaintenanceErrors
 
     public static AppException UnknownTechnician() =>
         new(ErrorKind.BadRequest, "maintenance.unknown_technician", "One of the technicians is not an active technician.");
+
+    public static AppException UnknownTrigger() =>
+        new(ErrorKind.BadRequest, "maintenance.unknown_trigger", "One of the triggers is not part of this plan.");
+
+    public static AppException TriggerHasWorkOrders() =>
+        new(ErrorKind.Conflict, "maintenance.trigger_has_work_orders",
+            "A trigger that already made work orders cannot be removed: give it an end day instead.");
 
     public static AppException ActionNotAllowed() =>
         new(ErrorKind.Conflict, "maintenance.action_not_allowed",

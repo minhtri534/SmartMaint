@@ -1,7 +1,7 @@
 import { motion } from 'motion/react'
-import { useId } from 'react'
+import { useId, useState } from 'react'
 import { useSearchParams } from 'react-router'
-import { Button, FilterSelect, Tabs } from '@/shared/ui'
+import { Button, FilterDate, FilterSelect, HelpTip, SearchInput, Tabs } from '@/shared/ui'
 import { cn } from '@/shared/utils/cn'
 import { pageFade, slide } from '@/shared/utils/motion'
 import { useCases } from '../hooks'
@@ -17,21 +17,51 @@ import {
 } from '../types'
 import { CaseTable } from './CaseTable'
 
-const DAY = 24 * 60 * 60 * 1000
+/** One extra filter: the id and the name a case has for it (null = it has none). */
+interface MoreFilter {
+  key: string
+  label: string
+  of: (c: CaseSummary) => readonly [id: number, name: string] | null
+}
 
-/** "Reported" filter: how far back. */
-const PERIODS = {
-  today: { label: 'Today', days: 0 },
-  '7d': { label: 'Last 7 days', days: 7 },
-  '30d': { label: 'Last 30 days', days: 30 },
-  '90d': { label: 'Last 90 days', days: 90 },
-} as const
-type Period = keyof typeof PERIODS
+/** The filters of the staff and the manager (meeting note 18/11), each one a URL parameter. */
+const MORE_FILTERS: readonly MoreFilter[] = [
+  {
+    key: 'technician',
+    label: 'Technician',
+    of: (c) => (c.technician ? [c.technician.id, c.technician.fullName] : null),
+  },
+  { key: 'staff', label: 'Staff', of: (c) => (c.staff ? [c.staff.id, c.staff.fullName] : null) },
+  { key: 'asset', label: 'Asset', of: (c) => (c.asset ? [c.asset.id, c.asset.name] : null) },
+  {
+    key: 'assetType',
+    label: 'Asset type',
+    of: (c) => (c.asset ? [c.asset.typeId, c.asset.typeName] : null),
+  },
+  { key: 'fault', label: 'Fault category', of: (c) => [c.serviceTypeId, c.serviceTypeName] },
+  {
+    key: 'building',
+    label: 'Location',
+    of: (c) => [c.location.buildingId, c.location.buildingName],
+  },
+]
 
-/** "Today" = since local midnight; "Last N days" = the last N × 24 h before `now` (when the list was loaded). */
-function periodStart(period: Period, now: number): number {
-  const days = PERIODS[period].days
-  return days === 0 ? new Date(now).setHours(0, 0, 0, 0) : now - days * DAY
+/** The choices of one filter: what occurs in the list, by name. */
+function optionsOf(rows: CaseSummary[], of: MoreFilter['of']) {
+  const found = new Map<string, string>()
+  for (const c of rows) {
+    const pair = of(c)
+    if (pair) found.set(String(pair[0]), String(pair[1]))
+  }
+  return [...found.entries()].sort((a, b) => a[1].localeCompare(b[1]))
+}
+
+/** "CS-000022", "000022" or "22" all find case 22. */
+function codeMatches(c: CaseSummary, typed: string) {
+  const code = typed.trim().toUpperCase()
+  if (!code) return true
+  const digits = code.replace(/\D/g, '')
+  return c.code.includes(code) || (digits !== '' && String(c.id) === String(Number(digits)))
 }
 
 const urgencyRank = (u: Urgency) => URGENCIES.indexOf(u)
@@ -71,6 +101,8 @@ export interface CaseTab {
   sort?: (a: CaseSummary, b: CaseSummary) => number
   /** One grey line under the count on a count card, e.g. "2 review · 1 assign". */
   note?: (rows: CaseSummary[]) => string | null
+  /** What the tile counts, behind its "?" (count cards only). */
+  help?: string
 }
 
 interface CaseListCardProps {
@@ -80,14 +112,16 @@ interface CaseListCardProps {
   showRequester?: boolean
   showTechnician?: boolean
   timeColumn?: 'reported' | 'planned'
+  /** The staff's and the manager's extra filters. */
+  advanced?: boolean
 }
 
 /**
  * Case list with its filter, shared by the customer, staff, manager and technician screens.
  * The selected filter lives in the URL (?tab=...) so "Back" from a case returns to the same filter.
  * Counts are computed from the rows on every render.
- * Meeting 07/11: every list can also be filtered by status, urgency and when it was reported, and sorted;
- * those choices live in the URL too (?status=&urgency=&period=&sort=). Tab counts ignore them.
+ * Meeting 07/11: every list can also be filtered by status, urgency and the dates it was reported, found by its code,
+ * and sorted; those choices live in the URL too. Tab counts ignore them.
  */
 export function CaseListCard({
   tabs,
@@ -95,6 +129,7 @@ export function CaseListCard({
   showRequester,
   showTechnician,
   timeColumn,
+  advanced,
 }: CaseListCardProps) {
   const cases = useCases()
   const tileGroup = useId()
@@ -116,13 +151,24 @@ export function CaseListCard({
   const status = CASE_STATUSES.includes(rawStatus as CaseStatus) ? (rawStatus as CaseStatus) : ''
   const rawUrgency = params.get('urgency')
   const urgency = URGENCIES.includes(rawUrgency as Urgency) ? (rawUrgency as Urgency) : ''
-  const rawPeriod = params.get('period')
-  const period: Period | '' = isKey(PERIODS, rawPeriod) ? rawPeriod : ''
+  const from = params.get('from') ?? ''
+  const to = params.get('to') ?? ''
+  const code = params.get('code') ?? ''
+  const more = MORE_FILTERS.map((f) => ({ ...f, value: params.get(f.key) ?? '' }))
+  const moreActive = more.filter((f) => f.value !== '').length
+  const [showMore, setShowMore] = useState(moreActive > 0)
   const rawSort = params.get('sort')
   const sort: SortKey | '' = isKey(SORTS, rawSort) ? rawSort : ''
   // ui/mercato-style: the top bar's search lands here as ?q= (title, code, building or room).
   const q = (params.get('q') ?? '').trim().toLowerCase()
-  const filtered = status !== '' || urgency !== '' || period !== '' || q !== ''
+  const filtered =
+    status !== '' ||
+    urgency !== '' ||
+    from !== '' ||
+    to !== '' ||
+    code.trim() !== '' ||
+    moreActive > 0 ||
+    q !== ''
 
   if (cases.isPending) return <ListSkeleton cards={variant === 'cards' ? tabs.length : 0} />
   if (cases.error) {
@@ -138,12 +184,17 @@ export function CaseListCard({
 
   const all = cases.data
   const inTab = all.filter(current.match)
-  const since = period === '' ? null : periodStart(period, cases.dataUpdatedAt)
+  // The chosen days, whole days in the viewer's time zone.
+  const since = from ? new Date(`${from}T00:00:00`).getTime() : null
+  const until = to ? new Date(`${to}T23:59:59.999`).getTime() : null
   const rows = inTab.filter(
     (c) =>
       (status === '' || c.status === status) &&
       (urgency === '' || c.urgency === urgency) &&
       (since === null || new Date(c.submittedAt).getTime() >= since) &&
+      (until === null || new Date(c.submittedAt).getTime() <= until) &&
+      codeMatches(c, code) &&
+      more.every((f) => f.value === '' || String(f.of(c)?.[0]) === f.value) &&
       (q === '' ||
         [c.title, c.code, c.location.buildingName, c.location.roomName].some((t) =>
           t.toLowerCase().includes(q),
@@ -161,45 +212,53 @@ export function CaseListCard({
           role="tablist"
           className="grid grid-cols-2 gap-2 sm:auto-cols-fr sm:grid-flow-col sm:grid-cols-none"
         >
-          {tabs.map((t) => {
+          {tabs.map((t, tileIndex) => {
             const inTab = all.filter(t.match)
             const overdue = inTab.filter((c) => isOverdue(c)).length
             const note = t.note?.(inTab)
             const selected = t.value === current.value
             return (
-              <button
-                key={t.value}
-                type="button"
-                role="tab"
-                aria-selected={selected}
-                onClick={() => select(t.value)}
-                className={cn(
-                  'card-soft rounded-card relative isolate min-w-0 px-4 py-3 text-left',
-                  'ease-snap transition-[border-color,transform] duration-150 active:scale-[0.98]',
-                  selected ? 'border-transparent' : 'border-border hover:border-control',
-                )}
-              >
-                {/* The selected tint slides to the chosen card (shared layoutId), like the tab underline. */}
-                {selected && (
-                  <motion.span
-                    layoutId={`case-tile-${tileGroup}`}
-                    transition={slide}
-                    className="rounded-card border-accent bg-accent-soft absolute -inset-px -z-10 border"
-                  />
-                )}
-                <div className="text-muted truncate text-[13px] leading-5">{t.label}</div>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-[28px] leading-8 font-normal tracking-[-0.03em] tabular-nums">
-                    {inTab.length}
-                  </span>
-                  {overdue > 0 && (
-                    <span className="text-negative truncate text-xs tabular-nums">
-                      {overdue} overdue
-                    </span>
+              <div key={t.value} className="relative min-w-0">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  onClick={() => select(t.value)}
+                  className={cn(
+                    'card-soft rounded-card relative isolate h-full w-full min-w-0 px-4 py-3 pr-8 text-left',
+                    'ease-snap transition-[border-color,transform] duration-150 active:scale-[0.98]',
+                    selected ? 'border-transparent' : 'border-border hover:border-control',
                   )}
-                </div>
-                {note && <div className="text-muted mt-0.5 truncate text-xs">{note}</div>}
-              </button>
+                >
+                  {/* The selected tint slides to the chosen card (shared layoutId), like the tab underline. */}
+                  {selected && (
+                    <motion.span
+                      layoutId={`case-tile-${tileGroup}`}
+                      transition={slide}
+                      className="rounded-card border-accent bg-accent-soft absolute -inset-px -z-10 border"
+                    />
+                  )}
+                  <div className="text-muted text-[13px] leading-5">{t.label}</div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-[28px] leading-8 font-normal tracking-[-0.03em] tabular-nums">
+                      {inTab.length}
+                    </span>
+                    {overdue > 0 && (
+                      <span className="text-negative truncate text-xs tabular-nums">
+                        {overdue} overdue
+                      </span>
+                    )}
+                  </div>
+                  {note && <div className="text-muted mt-0.5 truncate text-xs">{note}</div>}
+                </button>
+                {t.help && (
+                  <span className="absolute top-2.5 right-2.5">
+                    <HelpTip label={t.label} align={tileIndex < tabs.length / 2 ? 'left' : 'right'}>
+                      {t.help}
+                    </HelpTip>
+                  </span>
+                )}
+              </div>
             )
           })}
         </div>
@@ -218,6 +277,12 @@ export function CaseListCard({
       {/* One row: the three filters, what they leave, then the order on the right (16/11, was 4 full-width
           selects). On a phone the row scrolls sideways inside itself so the list starts high on the screen. */}
       <div className="-mx-4 flex items-center gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
+        <SearchInput
+          label="Find a case by its code"
+          placeholder="Case code"
+          value={code}
+          onChange={(e) => setParam('code', e.target.value)}
+        />
         <FilterSelect
           label="Status"
           value={status}
@@ -242,18 +307,24 @@ export function CaseListCard({
             </option>
           ))}
         </FilterSelect>
-        <FilterSelect
-          label="Reported"
-          value={period}
-          onChange={(e) => setParam('period', e.target.value)}
-        >
-          <option value="">Any time</option>
-          {Object.entries(PERIODS).map(([key, p]) => (
-            <option key={key} value={key}>
-              {p.label}
-            </option>
-          ))}
-        </FilterSelect>
+        <FilterDate
+          label="From"
+          value={from}
+          max={to || undefined}
+          onChange={(v) => setParam('from', v)}
+        />
+        <FilterDate
+          label="To"
+          value={to}
+          min={from || undefined}
+          onChange={(v) => setParam('to', v)}
+        />
+        {advanced && (
+          <Button variant="ghost" aria-expanded={showMore} onClick={() => setShowMore((v) => !v)}>
+            {showMore ? 'Fewer filters' : 'More filters'}
+            {moreActive > 0 && ` (${moreActive})`}
+          </Button>
+        )}
 
         {filtered && (
           <>
@@ -271,7 +342,16 @@ export function CaseListCard({
                 setParams(
                   (prev) => {
                     const next = new URLSearchParams(prev)
-                    for (const key of ['status', 'urgency', 'period', 'q']) next.delete(key)
+                    for (const key of [
+                      'status',
+                      'urgency',
+                      'from',
+                      'to',
+                      'code',
+                      'q',
+                      ...MORE_FILTERS.map((f) => f.key),
+                    ])
+                      next.delete(key)
                     return next
                   },
                   { replace: true },
@@ -301,9 +381,31 @@ export function CaseListCard({
         </FilterSelect>
       </div>
 
+      {advanced && showMore && (
+        <div className="-mx-4 flex items-center gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
+          {more.map((f) => (
+            <FilterSelect
+              key={f.key}
+              label={f.label}
+              value={f.value}
+              onChange={(e) => setParam(f.key, e.target.value)}
+            >
+              <option value="">All</option>
+              {optionsOf(all, f.of).map(([id, name]) => (
+                <option key={id} value={id}>
+                  {name}
+                </option>
+              ))}
+            </FilterSelect>
+          ))}
+        </div>
+      )}
+
       {/* A new filter swaps the rows with a 150ms fade (opacity only) instead of a flash. */}
       <motion.div
-        key={[current.value, status, urgency, period, sort].join('|')}
+        key={[current.value, status, urgency, from, to, sort, ...more.map((f) => f.value)].join(
+          '|',
+        )}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={pageFade}

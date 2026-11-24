@@ -49,3 +49,42 @@ export function FilterSelect({
     </label>
   )
 }
+
+/** A 32px date for a filter row, the same shape as FilterSelect. */
+export function FilterDate({
+  label,
+  value,
+  onChange,
+  min,
+  max,
+}: {
+  label: string
+  /** yyyy-mm-dd, '' = no filter. */
+  value: string
+  onChange: (value: string) => void
+  min?: string
+  max?: string
+}) {
+  return (
+    <label
+      className={cn(
+        'rounded-control inline-flex h-8 flex-none items-center gap-1.5 border pr-2 pl-3 text-sm whitespace-nowrap',
+        'focus-within:ring-accent/20 transition-colors duration-150 focus-within:ring-2',
+        value
+          ? 'border-accent bg-accent-soft text-ink'
+          : 'border-control bg-surface hover:bg-raised',
+      )}
+    >
+      <span className="text-muted">{label}</span>
+      <input
+        type="date"
+        aria-label={label}
+        value={value}
+        min={min}
+        max={max}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-full bg-transparent font-medium outline-none"
+      />
+    </label>
+  )
+}

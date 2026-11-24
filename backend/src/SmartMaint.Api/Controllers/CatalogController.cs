@@ -28,14 +28,20 @@ public sealed class CatalogController(ICatalogService catalog) : ControllerBase
 
     [HttpGet("technicians")]
     [AuthorizeRoles(UserRole.Staff)]
-    public Task<IReadOnlyList<TechnicianOptionResponse>> Technicians(CancellationToken cancellationToken) =>
-        catalog.GetTechniciansAsync(cancellationToken);
+    public Task<IReadOnlyList<TechnicianOptionResponse>> Technicians([FromQuery] long? caseId, CancellationToken cancellationToken) =>
+        catalog.GetTechniciansAsync(cancellationToken, caseId);
 
     /// <summary>Asset types, for the asset filters and form (F1).</summary>
     [HttpGet("asset-types")]
     [AuthorizeRoles(UserRole.Staff, UserRole.Manager, UserRole.Admin)]
     public Task<IReadOnlyList<AssetTypeOptionResponse>> AssetTypes(CancellationToken cancellationToken) =>
         catalog.GetAssetTypesAsync(cancellationToken);
+
+    /// <summary>Manufacturers, for the staff change lists of assets (meeting note 18/11).</summary>
+    [HttpGet("manufacturers")]
+    [AuthorizeRoles(UserRole.Staff, UserRole.Manager, UserRole.Admin)]
+    public Task<IReadOnlyList<ManufacturerOptionResponse>> Manufacturers(CancellationToken cancellationToken) =>
+        catalog.GetManufacturersAsync(cancellationToken);
 
     /// <summary>Technician specialties, for the account form (ADM-03).</summary>
     [HttpGet("specialties")]

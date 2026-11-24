@@ -8,7 +8,7 @@ namespace SmartMaint.Api.Modules.Analytics;
 /// </summary>
 public interface IAnalyticsService
 {
-    /// <summary>ANA-01 (and the MGR-01 tiles): this period against the one before.</summary>
+    /// <summary>ANA-01 (and the MGR-01 tiles): totals and averages of the period.</summary>
     Task<OverviewResponse> OverviewAsync(AnalyticsQuery query, CancellationToken cancellationToken);
 
     /// <summary>ANA-02, Manager only.</summary>
@@ -20,6 +20,9 @@ public interface IAnalyticsService
     /// <summary>F6 step ④ "Needs attention", now.</summary>
     Task<IReadOnlyList<AttentionItem>> AttentionAsync(CancellationToken cancellationToken);
 
-    /// <summary>ANA-04: one report as CSV (UTF-8 with BOM).</summary>
-    Task<(string FileName, byte[] Content)> ExportAsync(ExportReport report, AnalyticsQuery query, CancellationToken cancellationToken);
+    /// <summary>The Charts tab: one metric over time and split by who or where (managers).</summary>
+    Task<ChartResponse> ChartAsync(ChartQuery query, CancellationToken cancellationToken);
+
+    /// <summary>The tab on screen as an Excel workbook, with a sheet of the cases of the period.</summary>
+    Task<(string FileName, byte[] Content)> ExportAsync(ExportQuery query, CancellationToken cancellationToken);
 }

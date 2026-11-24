@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { caseKeys, casesApi } from './api'
 import { suggestServiceType } from './suggest'
 import type { ServiceType, ServiceTypeSuggestion } from './types'
@@ -41,17 +41,28 @@ export function useAssetLookup() {
   return useMutation({ mutationFn: casesApi.assetByCode })
 }
 
-/** Staff: the customers of the case's building who may follow it (Edit form). */
-export function useFollowerOptions(caseId: number, enabled: boolean) {
+/** Staff: the followers dialog. The previous results stay on screen while the next search loads. */
+export function useFollowerOptions(caseId: number, search: string, enabled: boolean) {
   return useQuery({
-    queryKey: caseKeys.followerOptions(caseId),
-    queryFn: () => casesApi.followerOptions(caseId),
+    queryKey: caseKeys.followerOptions(caseId, search),
+    queryFn: () => casesApi.followerOptions(caseId, search),
+    enabled,
+    placeholderData: keepPreviousData,
+  })
+}
+
+/** Staff: the technicians to choose from; for a case, the ones who fit it come first. */
+export function useTechnicians(enabled: boolean, caseId?: number) {
+  return useQuery({
+    queryKey: caseKeys.technicians(caseId),
+    queryFn: () => casesApi.technicians(caseId),
     enabled,
   })
 }
 
-export function useTechnicians(enabled: boolean) {
-  return useQuery({ queryKey: caseKeys.technicians, queryFn: casesApi.technicians, enabled })
+/** Staff: ask who should take the case. Nothing changes until the staff member chooses. */
+export function useTechnicianSuggestion() {
+  return useMutation({ mutationFn: casesApi.technicianSuggestion })
 }
 
 /**

@@ -10,6 +10,9 @@ using SmartMaint.Api.Modules.Accounts.Dtos;
 using SmartMaint.Api.Modules.Audit;
 using SmartMaint.UnitTests.Common;
 
+using Microsoft.Extensions.Options;
+using SmartMaint.Api.Modules.Notifications;
+
 namespace SmartMaint.UnitTests.Modules.Accounts;
 
 /// <summary>ADM-02..04 and DLG-16, called as the Administrator <see cref="_admin"/>.</summary>
@@ -23,7 +26,6 @@ public sealed class AccountServiceTests : IDisposable
 
     private readonly Admin _admin;
     private readonly Building _towerA;
-    private readonly Room _room501, _lobby;
     private readonly Specialty _electrical, _plumbing;
 
     public AccountServiceTests()
@@ -31,23 +33,25 @@ public sealed class AccountServiceTests : IDisposable
         _db = TestDbContextFactory.Create(_clock);
         _towerA = new Building { Name = "Tower A" };
         var floor = new Floor { Building = _towerA, FloorNumber = "5" };
-        _room501 = new Room { Floor = floor, RoomNumber = "501" };
-        _lobby = new Room { Floor = floor, RoomNumber = "Lobby", IsCommonArea = true };
         _electrical = new Specialty { Name = "Electrical" };
         _plumbing = new Specialty { Name = "Plumbing" };
         _admin = new Admin("root", "Root Admin", "hash", false);
-        _db.AddRange(_towerA, floor, _room501, _lobby, _electrical, _plumbing, _admin);
+        _db.AddRange(_towerA, floor, _electrical, _plumbing, _admin);
         _db.SaveChanges();
 
         _me.Id = _admin.Id;
         _me.Role = UserRole.Admin;
-        _sut = new AccountService(_db, _me, _hasher, new AuditService(_db, _me, _clock), _clock);
+        _sut = new AccountService(
+            _db, _me, _hasher, new AuditService(_db, _me, _clock), _email, Options.Create(new EmailOptions { WebUrl = "https://app.test" }),
+            _clock);
     }
 
     public void Dispose() => _db.Dispose();
 
-    private static CreateAccountRequest NewTechnician(string username = "duc") =>
-        new(username, "Pham Minh Duc", "duc@test.local", "0901 234 567", UserRole.Technician, null, 80000m, [], null);
+    private readonly FakeEmailSender _email = new();
+
+    private static CreateAccountRequest NewTechnician(string email = "duc@test.local") =>
+        new("Pham Minh Duc", email, "0901 234 567", UserRole.Technician, 80000m, [], null);
 
     private async Task<long> CreateAsync(CreateAccountRequest request) => (await _sut.CreateAsync(request, default)).Account.Id;
 
@@ -58,19 +62,23 @@ public sealed class AccountServiceTests : IDisposable
 
     [Fact]
     [Trait(TestType.Key, TestType.Normal)]
-    public async Task Create_Technician_SavesDetailsAndReturnsATemporaryPasswordOnce()
+    public async Task Create_Technician_SavesDetailsAndShowsThePasswordWhenNoEmailWentOut()
     {
+        _email.Works = false;
+
         var result = await _sut.CreateAsync(NewTechnician() with { SpecialtyIds = [_electrical.Id] }, default);
 
         var account = result.Account;
-        Assert.Equal("duc", account.Username);
+        Assert.False(result.EmailSent);
+        Assert.Equal("duc", account.Username); // made from the e-mail
+        Assert.Equal("0901234567", account.PhoneNumber); // stored as digits
         Assert.Equal(UserRole.Technician, account.Role);
         Assert.True(account.MustChangePassword);
         Assert.Equal(80000m, account.HourlyRate);
         Assert.Equal("Electrical", Assert.Single(account.Specialties).Name);
         Assert.Matches("^(?=.*[A-Z])(?=.*[a-z])(?=.*[0-9]).{12}$", result.TemporaryPassword);
         var saved = _db.Technicians.Single(t => t.Id == account.Id);
-        Assert.True(_hasher.Verify(saved.PasswordHash, result.TemporaryPassword));
+        Assert.True(_hasher.Verify(saved.PasswordHash, result.TemporaryPassword!));
         var audit = Assert.Single(_db.AuditLogs);
         Assert.Equal(AuditOperation.Create, audit.Operation);
         Assert.DoesNotContain("hash", audit.NewValue, StringComparison.OrdinalIgnoreCase);
@@ -78,27 +86,58 @@ public sealed class AccountServiceTests : IDisposable
 
     [Fact]
     [Trait(TestType.Key, TestType.Abnormal)]
-    public async Task Create_UsernameAlreadyUsedInOtherCase_Throws()
+    public async Task Create_PhoneNumberAlreadyUsedWrittenDifferently_Throws()
     {
-        await CreateAsync(NewTechnician("duc"));
+        await CreateAsync(NewTechnician("duc@test.local"));
 
-        Assert.Equal("account.username_taken", await ErrorCodeAsync(() => _sut.CreateAsync(NewTechnician(" DUC "), default)));
+        var error = await ErrorCodeAsync(() => _sut.CreateAsync(NewTechnician("duc2@test.local") with { PhoneNumber = "090-123-4567" }, default));
+
+        Assert.Equal("account.phone_taken", error);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Normal)]
+    public async Task Create_EmailWorks_SendsThePasswordAndDoesNotShowIt()
+    {
+        var result = await _sut.CreateAsync(NewTechnician(), default);
+
+        Assert.True(result.EmailSent);
+        Assert.Null(result.TemporaryPassword);
+        var mail = Assert.Single(_email.Sent);
+        Assert.Equal("duc@test.local", mail.To);
+        Assert.Contains("https://app.test/login", mail.Body);
+        var saved = _db.Technicians.Single(t => t.Id == result.Account.Id);
+        var password = mail.Body.Split('\n').Single(l => l.StartsWith("    ")).Trim();
+        Assert.True(_hasher.Verify(saved.PasswordHash, password));
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Boundary)]
+    public async Task Create_UsernameFromAnEmailAlreadyUsed_GetsANumber()
+    {
+        await CreateAsync(NewTechnician("duc@test.local"));
+
+        var second = await _sut.CreateAsync(NewTechnician("duc@other.local") with { PhoneNumber = null }, default);
+
+        Assert.Equal("duc2", second.Account.Username);
     }
 
     [Fact]
     [Trait(TestType.Key, TestType.Abnormal)]
-    public async Task Create_CustomerInACommonArea_Throws()
+    public async Task Create_CustomerWithAnUnknownBuildingList_IgnoresIt()
     {
-        var request = new CreateAccountRequest("lan", "Do Ngoc Lan", null, null, UserRole.Customer, _lobby.Id, null, null, null);
+        var request = new CreateAccountRequest("Do Ngoc Lan", "lan@test.local", null, UserRole.Customer, null, null, [new BuildingAssignmentRequest(9999, false)]);
 
-        Assert.Equal("account.common_area_room", await ErrorCodeAsync(() => _sut.CreateAsync(request, default)));
+        var id = await CreateAsync(request);
+
+        Assert.Null(_db.Customers.Single(c => c.Id == id).RoomId);
     }
 
     [Fact]
     [Trait(TestType.Key, TestType.Boundary)]
     public async Task Create_EmailDifferingOnlyInCase_IsTaken()
     {
-        await CreateAsync(NewTechnician("duc"));
+        await CreateAsync(NewTechnician("duc@test.local"));
 
         var code = await ErrorCodeAsync(() => _sut.CreateAsync(NewTechnician("duc2") with { Email = " DUC@Test.Local " }, default));
 
@@ -111,12 +150,12 @@ public sealed class AccountServiceTests : IDisposable
     [Trait(TestType.Key, TestType.Normal)]
     public async Task Update_StaffMadePrimary_DemotesThePreviousPrimaryOfTheBuilding()
     {
-        var first = await CreateAsync(new("staff1", "Staff One", null, null, UserRole.Staff, null, null, null,
+        var first = await CreateAsync(new("Staff One", "staff1@test.local", null, UserRole.Staff, null, null,
             [new BuildingAssignmentRequest(_towerA.Id, true)]));
-        var second = await CreateAsync(new("staff2", "Staff Two", null, null, UserRole.Staff, null, null, null,
+        var second = await CreateAsync(new("Staff Two", "staff2@test.local", null, UserRole.Staff, null, null,
             [new BuildingAssignmentRequest(_towerA.Id, false)]));
 
-        var result = await _sut.UpdateAsync(second, new UpdateAccountRequest("Staff Two", null, null, null, null, null,
+        var result = await _sut.UpdateAsync(second, new UpdateAccountRequest("Staff Two", null, null, null, null,
             [new BuildingAssignmentRequest(_towerA.Id, true)]), default);
 
         Assert.True(Assert.Single(result.Buildings).IsPrimary);
@@ -130,7 +169,7 @@ public sealed class AccountServiceTests : IDisposable
         var id = await CreateAsync(NewTechnician());
 
         var code = await ErrorCodeAsync(() => _sut.UpdateAsync(id,
-            new UpdateAccountRequest("Pham Minh Duc", null, null, null, null, [9999], null), default));
+            new UpdateAccountRequest("Pham Minh Duc", null, null, null, [9999], null), default));
 
         Assert.Equal("account.unknown_specialty", code);
     }
@@ -142,59 +181,55 @@ public sealed class AccountServiceTests : IDisposable
         var id = await CreateAsync(NewTechnician() with { SpecialtyIds = [_electrical.Id] });
 
         var result = await _sut.UpdateAsync(id,
-            new UpdateAccountRequest("Pham Minh Duc", null, null, null, 90000m, [_electrical.Id, _plumbing.Id], null), default);
+            new UpdateAccountRequest("Pham Minh Duc", null, null, 90000m, [_electrical.Id, _plumbing.Id], null), default);
 
         Assert.Equal(["Electrical", "Plumbing"], result.Specialties.Select(s => s.Name));
         Assert.Equal(2, _db.TechnicianSpecialties.Count(t => t.TechnicianId == id));
         Assert.Equal(90000m, result.HourlyRate);
     }
 
-    // ----- Change role -----
+    // ----- Sort by last sign-in -----
 
     [Fact]
     [Trait(TestType.Key, TestType.Normal)]
-    public async Task ChangeRole_AccountWithoutHistory_RecreatesItInTheNewRoleWithTheSameLogin()
+    public async Task List_SortedByLastSignIn_NewestFirstAndNeverLast()
     {
-        var created = await _sut.CreateAsync(NewTechnician(), default);
-
-        var result = await _sut.ChangeRoleAsync(created.Account.Id,
-            new ChangeRoleRequest(UserRole.Staff, null, null, null, [new BuildingAssignmentRequest(_towerA.Id, true)]), default);
-
-        Assert.NotEqual(created.Account.Id, result.Id);
-        Assert.Equal(UserRole.Staff, result.Role);
-        Assert.Equal("duc", result.Username);
-        Assert.Equal("duc@test.local", result.Email);
-        Assert.Single(result.Buildings);
-        Assert.Empty(_db.Technicians);
-        Assert.True(_hasher.Verify(_db.Staff.Single().PasswordHash, created.TemporaryPassword));
-        Assert.Contains(_db.AuditLogs, a => a.Operation == AuditOperation.ChangeRole);
-    }
-
-    [Fact]
-    [Trait(TestType.Key, TestType.Abnormal)]
-    public async Task ChangeRole_AccountWithHistory_Throws()
-    {
-        var id = await CreateAsync(NewTechnician());
-        _db.CaseStatusHistory.Add(new CaseStatusHistory { CaseId = 1, ChangedById = id, NewStatus = CaseStatus.Accepted });
+        var never = await CreateAsync(NewTechnician());
+        var older = await CreateAsync(NewTechnician("older@test.local") with { PhoneNumber = "0911111111" });
+        var newer = await CreateAsync(NewTechnician("newer@test.local") with { PhoneNumber = "0922222222" });
+        var now = DateTimeOffset.UtcNow;
+        _db.Accounts.Single(a => a.Id == older).RecordSuccessfulLogin(now.AddDays(-3));
+        _db.Accounts.Single(a => a.Id == newer).RecordSuccessfulLogin(now.AddDays(-1));
         await _db.SaveChangesAsync();
 
-        var code = await ErrorCodeAsync(() => _sut.ChangeRoleAsync(id,
-            new ChangeRoleRequest(UserRole.Staff, null, null, null, null), default));
+        var page = await _sut.ListAsync(new AccountListQuery { Role = UserRole.Technician, LastSignIn = "desc" }, default);
 
-        Assert.Equal("account.has_history", code);
-        Assert.DoesNotContain(AccountAction.ChangeRole, (await _sut.GetAsync(id, default)).AllowedActions);
+        Assert.Equal([newer, older, never], page.Items.Select(a => a.Id).Where(id => id == newer || id == older || id == never));
     }
 
     [Fact]
     [Trait(TestType.Key, TestType.Boundary)]
-    public async Task ChangeRole_ToTheSameRole_IsNotAllowed()
+    public async Task List_SortedOldestFirst_StillPutsNeverSignedInLast()
+    {
+        var never = await CreateAsync(NewTechnician());
+        var older = await CreateAsync(NewTechnician("older@test.local") with { PhoneNumber = "0911111111" });
+        _db.Accounts.Single(a => a.Id == older).RecordSuccessfulLogin(DateTimeOffset.UtcNow.AddDays(-3));
+        await _db.SaveChangesAsync();
+
+        var page = await _sut.ListAsync(new AccountListQuery { Role = UserRole.Technician, LastSignIn = "asc" }, default);
+
+        Assert.Equal([older, never], page.Items.Select(a => a.Id).Where(id => id == older || id == never));
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Abnormal)]
+    public async Task AllowedActions_NeverOfferAChangeOfRole()
     {
         var id = await CreateAsync(NewTechnician());
 
-        var code = await ErrorCodeAsync(() => _sut.ChangeRoleAsync(id,
-            new ChangeRoleRequest(UserRole.Technician, null, null, null, null), default));
+        var account = await _sut.GetAsync(id, default);
 
-        Assert.Equal("account.action_not_allowed", code);
+        Assert.DoesNotContain("ChangeRole", account.AllowedActions.Select(a => a.ToString()));
     }
 
     // ----- Deactivate / reactivate -----
@@ -251,9 +286,12 @@ public sealed class AccountServiceTests : IDisposable
         account.RecordFailedLogin(_clock.Now, 1, TimeSpan.FromMinutes(15));
         await _db.SaveChangesAsync();
 
+        _email.Works = false;
+
         var result = await _sut.ResetPasswordAsync(id, default);
 
-        Assert.True(_hasher.Verify(account.PasswordHash, result.TemporaryPassword));
+        Assert.False(result.EmailSent);
+        Assert.True(_hasher.Verify(account.PasswordHash, result.TemporaryPassword!));
         Assert.True(account.MustChangePassword);
         Assert.False(account.IsLockedOut(_clock.Now));
     }
@@ -290,8 +328,8 @@ public sealed class AccountServiceTests : IDisposable
     [Trait(TestType.Key, TestType.Normal)]
     public async Task List_FilteredByRoleAndSearch_ReturnsTheMatches()
     {
-        await CreateAsync(NewTechnician("duc"));
-        await CreateAsync(NewTechnician("long") with { FullName = "Vo Thanh Long", Email = null });
+        await CreateAsync(NewTechnician("duc@test.local"));
+        await CreateAsync(NewTechnician("long@test.local") with { FullName = "Vo Thanh Long", PhoneNumber = null });
 
         var page = await _sut.ListAsync(new AccountListQuery { Role = UserRole.Technician, Search = "thanh" }, default);
 
@@ -302,8 +340,8 @@ public sealed class AccountServiceTests : IDisposable
     [Trait(TestType.Key, TestType.Boundary)]
     public async Task List_SecondPageOfOne_HasOneItem()
     {
-        await CreateAsync(NewTechnician("duc"));
-        await CreateAsync(NewTechnician("long") with { Email = null });
+        await CreateAsync(NewTechnician("duc@test.local"));
+        await CreateAsync(NewTechnician("long@test.local") with { PhoneNumber = null });
 
         var page = await _sut.ListAsync(new AccountListQuery { Role = UserRole.Technician, Page = 2, PageSize = 1 }, default);
 
@@ -329,4 +367,37 @@ public sealed class AccountServiceTests : IDisposable
     [Trait(TestType.Key, TestType.Abnormal)]
     public async Task Get_UnknownAccount_Throws() =>
         Assert.Equal("account.not_found", await ErrorCodeAsync(() => _sut.GetAsync(9999, default)));
+
+    // ----- Delete (meeting note 18/11) -----
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Normal)]
+    public async Task Delete_AccountWithNoData_IsGone()
+    {
+        var id = await CreateAsync(NewTechnician() with { SpecialtyIds = [_electrical.Id] });
+        Assert.Contains(AccountAction.Delete, (await _sut.GetAsync(id, default)).AllowedActions);
+
+        await _sut.DeleteAsync(id, default);
+
+        Assert.DoesNotContain(_db.Accounts, a => a.Id == id);
+        Assert.DoesNotContain(_db.TechnicianSpecialties, t => t.TechnicianId == id);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Abnormal)]
+    public async Task Delete_AccountThatAddedACost_IsRefused()
+    {
+        var id = await CreateAsync(NewTechnician());
+        _db.Costs.Add(new Cost { CaseId = 1, Name = "Filter", Amount = 1000, AddedById = id });
+        await _db.SaveChangesAsync();
+
+        Assert.Equal("account.action_not_allowed", await ErrorCodeAsync(() => _sut.DeleteAsync(id, default)));
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Boundary)]
+    public async Task Delete_OwnAccount_IsNotOffered()
+    {
+        Assert.DoesNotContain(AccountAction.Delete, (await _sut.GetAsync(_me.Id, default)).AllowedActions);
+    }
 }

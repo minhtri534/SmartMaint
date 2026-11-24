@@ -18,11 +18,14 @@ export const paths = {
   // F1 — buildings and assets
   facilities: '/facilities',
   assets: '/assets',
-  assetNew: '/assets/new',
-  assetImport: '/assets/import',
   qrLabels: '/assets/qr-labels',
   assetDetail: '/assets/:id',
-  assetEdit: '/assets/:id/edit',
+  /** Meeting note 18/11: the staff's change lists of floors, rooms and assets, approved by a manager. */
+  assetChanges: '/asset-changes',
+  /** Meeting note 18/11 (tree version 24/11): the staff's tree editor of their draft. */
+  assetChangeDraft: '/asset-changes/draft',
+  assetChangeDetail: '/asset-changes/:id',
+  assetChangeEdit: '/asset-changes/:id/edit',
   qrLanding: '/qr/assets/:id',
   catalog: '/admin/catalog',
   // F2 — preventive maintenance
@@ -36,11 +39,9 @@ export const paths = {
   accountNew: '/admin/accounts/new',
   accountDetail: '/admin/accounts/:id',
   accountEdit: '/admin/accounts/:id/edit',
-  accountChangeRole: '/admin/accounts/:id/change-role',
   roles: '/admin/roles',
   auditLog: '/admin/audit-log',
   slaSettings: '/admin/sla',
-  replacements: '/admin/replacements',
   // F6 — analytics (ANA-01..04)
   analytics: '/analytics',
 } as const
@@ -49,7 +50,20 @@ export const caseDetailPath = (id: number) => `/cases/${id}`
 export const caseApprovePath = (id: number) => `/cases/${id}/approve`
 export const caseEditPath = (id: number) => `/cases/${id}/edit`
 export const assetDetailPath = (id: number) => `/assets/${id}`
-export const assetEditPath = (id: number) => `/assets/${id}/edit`
+export const assetChangeDetailPath = (id: number) => `/asset-changes/${id}`
+export const assetChangeEditPath = (id: number) => `/asset-changes/${id}/edit`
+/** A new change list, for a building, or starting with a change of one asset. */
+/** The staff's tree editor (their draft), opened at a building, floor or room of the tree. */
+export const assetChangeDraftPath = (
+  at: { buildingId?: number; floorId?: number; roomId?: number } = {},
+) => {
+  const p = new URLSearchParams()
+  if (at.buildingId) p.set('building', `b${at.buildingId}`)
+  if (at.floorId) p.set('floor', `f${at.floorId}`)
+  if (at.roomId) p.set('room', `r${at.roomId}`)
+  const q = p.toString()
+  return q ? `/asset-changes/draft?${q}` : '/asset-changes/draft'
+}
 /** What a QR label encodes (AST-06 / AST-07); prefixed with the site origin when printed. */
 export const qrLandingPath = (id: number) => `/qr/assets/${id}`
 /** The customer's report form filled in from a QR label. */
@@ -59,7 +73,6 @@ export const planDetailPath = (id: number) => `/maintenance/plans/${id}`
 export const planEditPath = (id: number) => `/maintenance/plans/${id}/edit`
 export const accountDetailPath = (id: number) => `/admin/accounts/${id}`
 export const accountEditPath = (id: number) => `/admin/accounts/${id}/edit`
-export const accountChangeRolePath = (id: number) => `/admin/accounts/${id}/change-role`
 
 /** New request form pre-filled from a rejected case ("Submit again", N6). */
 export const resubmitPath = (fromCaseId: number) => `${paths.newRequest}?from=${fromCaseId}`

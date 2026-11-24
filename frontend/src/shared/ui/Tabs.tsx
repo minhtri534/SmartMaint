@@ -23,7 +23,10 @@ export function Tabs<T extends string>({ items, value, onChange }: TabsProps<T>)
   const groupId = useId()
 
   return (
-    <div role="tablist" className="border-border flex gap-6 overflow-x-auto border-b">
+    <div
+      role="tablist"
+      className="border-border flex gap-6 overflow-x-auto overflow-y-hidden border-b"
+    >
       {items.map((item) => {
         const active = item.value === value
         return (

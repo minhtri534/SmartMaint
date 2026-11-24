@@ -1,158 +1,138 @@
-import type { ReactNode } from 'react'
+import { useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { useAuth } from '@/features/auth'
 import {
   Alert,
   Button,
   Card,
-  CardHeader,
   EmptyBlock,
   ErrorBlock,
-  LoadingBlock,
-  PageHeader,
-  controlClass,
+  FilterDate,
   FilterSelect,
   Gauge,
   KpiCard,
+  LoadingBlock,
   MiniStat,
+  PageHeader,
   PanelHeader,
   PerformanceChart,
   Rise,
   Segmented,
+  SortHeader,
+  sortRows,
   Tabs,
   type KpiCardProps,
+  type SortState,
 } from '@/shared/ui'
-import { formatDate } from '@/shared/utils/format'
+import { formatDate, formatVnd } from '@/shared/utils/format'
+import { AttentionList } from '../components/AttentionList'
 import { BarList } from '../components/Bars'
-import { change, hours, minutes, percent } from '../format'
-import { useExport, useFailures, useOverview, useTechnicianStats } from '../hooks'
-import type { AnalyticsFilters, ExportReport, Overview } from '../types'
+import { ColumnChart } from '../components/ColumnChart'
+import { PieChart } from '../components/PieChart'
+import { hours, minutes, percent } from '../format'
+import { useChart, useExport, useFailures, useOverview, useTechnicianStats } from '../hooks'
+import type {
+  AnalyticsFilters,
+  Chart,
+  ChartMetric,
+  ChartStep,
+  ExportTab,
+  Overview,
+  TechnicianRow,
+} from '../types'
 
-type Tab = 'overview' | 'technicians' | 'failures' | 'reports'
+type Tab = 'overview' | 'charts' | 'technicians' | 'failures' | 'attention'
 
-/** yyyy-MM-dd in local time, `offsetDays` from today. Called from event handlers only (no clock in render). */
-function localDay(offsetDays: number, from = new Date()) {
-  const d = new Date(from.getTime() + offsetDays * 86_400_000)
+const EXPORT_TAB: Record<Tab, ExportTab> = {
+  overview: 'Overview',
+  charts: 'Charts',
+  technicians: 'Technicians',
+  failures: 'Failures',
+  attention: 'Attention',
+}
+
+/** yyyy-MM-dd of a local date. */
+function isoDay(d: Date) {
   return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 10)
 }
 
-/** The from / to of a period preset; '' (last 30 days) is the server's default and sends nothing. */
-function presetRange(preset: string): { from: string; to: string } | null {
-  const today = localDay(0)
-  switch (preset) {
-    case '7d':
-      return { from: localDay(-6), to: today }
-    case '90d':
-      return { from: localDay(-89), to: today }
-    case 'month':
-      return { from: today.slice(0, 8) + '01', to: today } // day 1 of the month, not numbering: taste-skill-ignore
-    default:
-      return null
-  }
+/** From the same day `months` months (or `days` days) ago to today. Called from event handlers and state setup only. */
+function rangeBack(months: number, days = 0) {
+  const from = new Date()
+  from.setMonth(from.getMonth() - months)
+  from.setDate(from.getDate() - days)
+  return { from: isoDay(from), to: isoDay(new Date()) }
 }
 
 /**
- * ANA-01..04 (F6, staff and managers of their buildings; read only, BR-12). Staff get the short version: no
- * technician ranking, no ratings (S01). The period and building live in the URL so a link shows the same numbers.
+ * ANA-01..04 (F6, managers of their buildings; read only, BR-12). Meeting note 18/11: the period is From – To (by
+ * default a month back to today) and every figure is a total or an average over it, with no comparison; a Charts tab;
+ * Export saves the tab on screen as an Excel file. The choices live in the URL so a link shows the same numbers.
  */
 export function AnalyticsPage() {
   const { user } = useAuth()
   const isManager = user?.role === 'manager'
   const [params, setParams] = useSearchParams()
+  const [defaults] = useState(() => rangeBack(1))
   const filters: AnalyticsFilters = {
-    from: params.get('from') || undefined,
-    to: params.get('to') || undefined,
+    from: params.get('from') || defaults.from,
+    to: params.get('to') || defaults.to,
     buildingId: params.get('building') ? Number(params.get('building')) : undefined,
   }
   const tabs: { value: Tab; label: string }[] = [
     { value: 'overview', label: 'Overview' },
-    ...(isManager ? [{ value: 'technicians' as const, label: 'Technicians' }] : []),
+    ...(isManager
+      ? [
+          { value: 'charts' as const, label: 'Charts' },
+          { value: 'technicians' as const, label: 'Technicians' },
+        ]
+      : []),
     { value: 'failures', label: 'Failures and assets' },
-    { value: 'reports', label: 'Reports' },
+    { value: 'attention', label: 'Needs attention' },
   ]
   const tab = tabs.find((t) => t.value === params.get('tab'))?.value ?? 'overview'
-  const set = (key: string, value: string) => {
+  const set = (patch: Record<string, string>) => {
     const next = new URLSearchParams(params)
-    if (value) next.set(key, value)
-    else next.delete(key)
-    setParams(next, { replace: true })
-  }
-  // The building list comes from the unfiltered overview (the caller's buildings).
-  const scope = useOverview({ from: filters.from, to: filters.to })
-  const buildings = scope.data?.byBuilding ?? []
-  // The finding under the title: the same numbers as the Overview tab, for the chosen scope (cached query).
-  const shown = useOverview(filters).data
-  const overdueNow = shown?.byBuilding.reduce((n, b) => n + b.overdueNow, 0) ?? 0
-  const finding =
-    shown &&
-    `${shown.current.reported} reported, ${percent(shown.current.onTimeRate)} on time` +
-      (overdueNow > 0
-        ? `; ${overdueNow} past the deadline now.`
-        : '; nothing past the deadline now.')
-
-  // 16/11: the period is a preset (one 32px control) instead of two native date fields; "Custom" opens them.
-  const period = params.get('period') ?? (filters.from || filters.to ? 'custom' : '')
-  const choosePeriod = (value: string) => {
-    const next = new URLSearchParams(params)
-    next.delete('from')
-    next.delete('to')
-    next.delete('period')
-    if (value) {
-      next.set('period', value)
-      const range = presetRange(value)
-      if (range) {
-        next.set('from', range.from)
-        next.set('to', range.to)
-      }
+    for (const [key, value] of Object.entries(patch)) {
+      if (value) next.set(key, value)
+      else next.delete(key)
     }
     setParams(next, { replace: true })
   }
+  // The building list comes from the overview of all the caller's buildings.
+  const scope = useOverview({ from: filters.from, to: filters.to })
+  const buildings = scope.data?.byBuilding ?? []
+  const exportFile = useExport()
+  const chartChoice = chartChoiceOf(params)
+  const technicianSort = technicianSortOf(params)
+  // The Charts tab's window: the button last pressed; a typed From or To reads as no window.
+  const windowValue = params.get('window') ?? (params.get('from') || params.get('to') ? '' : '1m')
 
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
         title="Analytics"
-        description={finding}
+        description={`${formatDate(filters.from!)} – ${formatDate(filters.to!)}. Duplicates and asset surveys are not counted.`}
         actions={
           <>
-            <div className="flex flex-wrap items-center gap-2 print:hidden">
-              {/* a pill segmented control: five short choices read better side by side than in a menu */}
-              <Segmented
-                label="Period"
-                value={period}
-                onChange={choosePeriod}
-                options={[
-                  { value: '7d', label: '7 days' },
-                  { value: '', label: '30 days' },
-                  { value: '90d', label: '90 days' },
-                  { value: 'month', label: 'This month' },
-                  { value: 'custom', label: 'Custom' },
-                ]}
+            <div className="flex flex-wrap items-center gap-2">
+              <FilterDate
+                label="From"
+                value={filters.from!}
+                max={filters.to}
+                onChange={(v) => set({ from: v, window: '' })}
               />
-              {period === 'custom' && (
-                <>
-                  <input
-                    type="date"
-                    aria-label="From"
-                    value={filters.from ?? ''}
-                    onChange={(e) => set('from', e.target.value)}
-                    className={controlClass() + ' h-8 max-w-36'}
-                  />
-                  <span className="text-muted">–</span>
-                  <input
-                    type="date"
-                    aria-label="To"
-                    value={filters.to ?? ''}
-                    onChange={(e) => set('to', e.target.value)}
-                    className={controlClass() + ' h-8 max-w-36'}
-                  />
-                </>
-              )}
+              <FilterDate
+                label="To"
+                value={filters.to!}
+                min={filters.from}
+                onChange={(v) => set({ to: v, window: '' })}
+              />
               {buildings.length > 1 && (
                 <FilterSelect
                   label="Building"
                   value={filters.buildingId ? String(filters.buildingId) : ''}
-                  onChange={(e) => set('building', e.target.value)}
+                  onChange={(e) => set({ building: e.target.value })}
                 >
                   <option value="">All</option>
                   {buildings.map((b) => (
@@ -163,19 +143,36 @@ export function AnalyticsPage() {
                 </FilterSelect>
               )}
             </div>
-            <Button variant="secondary" onClick={() => window.print()}>
-              Print / PDF
+            <Button
+              variant="secondary"
+              loading={exportFile.isPending}
+              onClick={() =>
+                exportFile.mutate({
+                  ...filters,
+                  tab: EXPORT_TAB[tab],
+                  metric: chartChoice.metric,
+                  step: chartChoice.step,
+                  sort: technicianSort?.key,
+                  descending: technicianSort?.dir === 'desc',
+                })
+              }
+            >
+              Export
             </Button>
           </>
         }
       />
-      <div className="print:hidden">
-        <Tabs items={tabs} value={tab} onChange={(v) => set('tab', v)} />
-      </div>
+      {exportFile.error && <Alert>{exportFile.error.message}</Alert>}
+      <Tabs items={tabs} value={tab} onChange={(v) => set({ tab: v })} />
       {tab === 'overview' && <OverviewTab filters={filters} isManager={isManager} />}
-      {tab === 'technicians' && isManager && <TechniciansTab filters={filters} />}
+      {tab === 'charts' && isManager && (
+        <ChartsTab filters={filters} choice={chartChoice} windowValue={windowValue} set={set} />
+      )}
+      {tab === 'technicians' && isManager && (
+        <TechniciansTab filters={filters} sort={technicianSort} set={set} />
+      )}
       {tab === 'failures' && <FailuresTab filters={filters} />}
-      {tab === 'reports' && <ReportsTab filters={filters} isManager={isManager} />}
+      {tab === 'attention' && <AttentionList />}
     </div>
   )
 }
@@ -189,7 +186,7 @@ function OverviewTab({ filters, isManager }: { filters: AnalyticsFilters; isMana
     return (
       <ErrorBlock what="the numbers" message={q.error.message} onRetry={() => void q.refetch()} />
     )
-  // While a new period loads, the old numbers stay, dimmed, and the bars then ease to the new values.
+  // While a new period loads, the old numbers stay, dimmed.
   return (
     <div className={q.isPlaceholderData ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
       <OverviewView o={q.data} isManager={isManager} />
@@ -197,9 +194,22 @@ function OverviewTab({ filters, isManager }: { filters: AnalyticsFilters; isMana
   )
 }
 
+const HELP = {
+  reported: 'Requests reported in the period. Duplicates and asset surveys are not counted.',
+  firstResponse:
+    "Average time from a report to the staff's first decision (approve or reject). For an emergency: from the moment it became one to the staff acknowledging it.",
+  resolution:
+    'Average time from the start of work (the technician sets In progress; an emergency: the moment it became one) to the technician reporting it done. Waiting before the work starts is not counted.',
+  onTime:
+    'Share of deadlines met: cases reported done by their deadline, out of those done in the period plus those still open whose deadline passed in the period.',
+  reopened: 'Share of the cases done in the period that were reopened at least once.',
+  rating: 'Average of the stars customers gave to the cases they rated in the period.',
+  declined: 'How many times technicians declined a job in the period.',
+}
+
 /**
- * Exported for the Manager home (MGR-01 uses the same numbers). ui/mercato-style: KPI cards with an icon chip;
- * `compact` keeps the four the home shows (the full dashboard shows six).
+ * Exported for the Manager home (MGR-01 uses the same numbers). Meeting note 18/11: totals and averages of the period,
+ * no comparison with the one before; each tile explains itself behind its "?". `compact` keeps the ones the home shows.
  */
 export function KpiTiles({
   o,
@@ -211,39 +221,30 @@ export function KpiTiles({
   compact?: boolean
 }) {
   const c = o.current
-  const p = o.previous
   const cards: (Omit<KpiCardProps, 'index'> & { full?: boolean })[] = [
-    {
-      label: 'Reported',
-      value: c.reported,
-      icon: 'requests',
-      hue: 'orange',
-      change: change(c.reported, p.reported, 'down', 'number'),
-      hint: `${c.completed} completed`,
-    },
+    { label: 'Reported', value: c.reported, icon: 'requests', hue: 'orange', help: HELP.reported },
     {
       label: 'First response',
       value: minutes(c.avgFirstResponseMinutes),
       icon: 'clock',
       hue: 'blue',
-      change: change(c.avgFirstResponseMinutes, p.avgFirstResponseMinutes, 'down', 'minutes'),
-      hint: 'report → decision',
+      hint: 'report → first decision',
+      help: HELP.firstResponse,
     },
     {
       label: 'Resolution',
       value: hours(c.avgResolutionHours),
       icon: 'wrench',
       hue: 'violet',
-      change: change(c.avgResolutionHours, p.avgResolutionHours, 'down', 'hours'),
-      hint: 'report → done',
+      hint: 'start of work → done',
+      help: HELP.resolution,
     },
     {
       label: 'On time',
       value: percent(c.onTimeRate),
       icon: 'checklist',
       hue: 'green',
-      change: change(c.onTimeRate, p.onTimeRate, 'up', 'rate'),
-      hint: `${percent(c.onTimeOriginalRate)} by the first deadline`,
+      help: HELP.onTime,
       full: true,
     },
     {
@@ -251,34 +252,40 @@ export function KpiTiles({
       value: percent(c.reopenRate),
       icon: 'swap',
       hue: 'red',
-      change: change(c.reopenRate, p.reopenRate, 'down', 'rate'),
-      hint: `${c.deadlineMoves} deadline moves`,
+      help: HELP.reopened,
       full: true,
     },
-    isManager
-      ? {
-          label: 'Rating',
-          value: c.avgRating === null ? '—' : `${c.avgRating} / 5`,
-          icon: 'users',
-          hue: 'green',
-          change: change(c.avgRating, p.avgRating, 'up', 'number'),
-          hint: `${c.technicianDeclines} jobs declined`,
-        }
-      : {
-          label: 'Jobs declined',
-          value: c.technicianDeclines,
-          icon: 'users',
-          hue: 'green',
-          hint: 'by technicians',
-        },
+    ...(isManager
+      ? [
+          {
+            label: 'Rating',
+            value: c.avgRating === null ? '—' : `${c.avgRating.toFixed(1)} / 5`,
+            icon: 'users' as const,
+            hue: 'green' as const,
+            hint:
+              c.ratings === 0
+                ? 'no rating yet'
+                : `average stars of ${c.ratings} ${c.ratings === 1 ? 'rating' : 'ratings'}`,
+            help: HELP.rating,
+          },
+        ]
+      : []),
+    {
+      label: 'Jobs declined',
+      value: c.technicianDeclines,
+      icon: 'swap',
+      hue: 'blue',
+      hint: 'by technicians',
+      help: HELP.declined,
+    },
   ]
   const shown = compact ? cards.filter((k) => !k.full) : cards
   return (
     <div
       className={
         compact
-          ? 'grid grid-cols-2 gap-3 sm:gap-5 xl:grid-cols-4'
-          : 'grid grid-cols-2 gap-3 sm:gap-5 xl:grid-cols-3'
+          ? 'grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-5 xl:grid-cols-5'
+          : 'grid grid-cols-2 gap-3 sm:gap-5 xl:grid-cols-4'
       }
     >
       {shown.map(({ full: _full, ...k }, i) => (
@@ -289,19 +296,18 @@ export function KpiTiles({
 }
 
 function OverviewView({ o, isManager }: { o: Overview; isManager: boolean }) {
+  const holdTotal = o.holdTime.reduce((n, h) => n + h.totalHours, 0)
   return (
     <div className="flex flex-col gap-5">
-      <p className="text-muted text-sm">
-        {formatDate(o.period.from)} – {formatDate(o.period.to)}, compared with{' '}
-        {formatDate(o.previousPeriod.from)} – {formatDate(o.previousPeriod.to)}. Merged reports and
-        surveys are not counted.
-      </p>
       <KpiTiles o={o} isManager={isManager} />
 
       <div className="grid items-stretch gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <Rise index={6}>
           <Card className="h-full">
-            <PanelHeader title="Cases per week" />
+            <PanelHeader
+              title="Cases per week"
+              help="Each week of the period: the cases reported (bars) and the cases reported done (line)."
+            />
             <PerformanceChart
               data={o.weekly.map((w) => {
                 const label = new Date(w.weekStart).toLocaleDateString('en-GB', {
@@ -317,63 +323,49 @@ function OverviewView({ o, isManager }: { o: Overview; isManager: boolean }) {
         </Rise>
         <Rise index={7}>
           <Card className="flex h-full flex-col">
-            <PanelHeader title="On time" />
+            <PanelHeader title="On time" help={HELP.onTime} />
             <div className="flex flex-1 items-center justify-center">
               <Gauge value={o.current.onTimeRate} caption="finished by the deadline" />
             </div>
             <div className="mt-4 grid grid-cols-2 gap-3">
-              <MiniStat label="First deadline" value={percent(o.current.onTimeOriginalRate)} />
+              <MiniStat label="Completed" value={o.current.completed} />
               <MiniStat label="Reopened" value={percent(o.current.reopenRate)} />
             </div>
           </Card>
         </Rise>
       </div>
 
-      <div>
-        <Card>
-          <CardHeader title="Emergencies and preventive work" />
-          <dl className="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
-            <Row label="Emergencies">{o.emergency.count}</Row>
-            <Row label="Acknowledged after">{minutes(o.emergency.avgAcknowledgeMinutes)}</Row>
-            <Row label="Made safe after">{minutes(o.emergency.avgMadeSafeMinutes)}</Row>
-            <Row label="Fixed after">{hours(o.emergency.avgFixHours)}</Row>
-            <Row label="Downgraded to F3">{o.emergency.downgraded}</Row>
-            <Row label="Merged reports">{o.emergency.merged}</Row>
-            <Row label="Preventive due">{o.preventive.due}</Row>
-            <Row label="Done on time">{percent(o.preventive.onTimeRate)}</Row>
-            <Row label="Inspected">{o.preventive.inspected}</Row>
-            <Row label="No failed item">{percent(o.preventive.passedRate)}</Row>
-          </dl>
-        </Card>
-      </div>
-
       <div className="grid gap-5 lg:grid-cols-2">
         <Card>
-          <CardHeader
+          <PanelHeader
             title="Time on hold"
-            aside={
+            subtitle={
               o.avgOutsideHours === null
-                ? 'no outside work finished'
-                : `outside party ${hours(o.avgOutsideHours)} on average`
+                ? 'No outside work finished in the period'
+                : `Outside party: ${hours(o.avgOutsideHours)} on average`
             }
+            help="Hours cases spent on hold in the period, by why they were put on hold."
           />
           {o.holdTime.length === 0 ? (
             <EmptyBlock>No case was put on hold.</EmptyBlock>
           ) : (
-            <BarList
-              unit="hours"
-              rows={o.holdTime.map((h) => ({
+            <PieChart
+              unit="hours on hold"
+              totalText={hours(holdTotal)}
+              slices={o.holdTime.map((h) => ({
                 key: h.reason,
-                label: h.reason,
+                label: `${h.reason} (${h.times}×)`,
                 value: h.totalHours,
                 valueText: hours(h.totalHours),
-                detail: `${h.times}×, ${hours(h.avgHours)} each on average`,
               }))}
             />
           )}
         </Card>
         <Card>
-          <CardHeader title="By building" />
+          <PanelHeader
+            title="By building"
+            help="Reported and on time in the period; open and overdue are counted now."
+          />
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-border text-muted border-b text-xs">
@@ -408,10 +400,248 @@ function OverviewView({ o, isManager }: { o: Overview; isManager: boolean }) {
   )
 }
 
+// ----- Charts (meeting note 18/11) -----
+
+const TOPICS = {
+  cases: {
+    label: 'Cases',
+    metrics: [
+      ['CasesReported', 'Reported'],
+      ['CasesCompleted', 'Completed'],
+      ['CasesLate', 'Late'],
+    ],
+  },
+  technicians: {
+    label: 'Technicians',
+    metrics: [
+      ['TechnicianCompleted', 'Completed'],
+      ['TechnicianOnTime', 'On time'],
+      ['TechnicianLabourHours', 'Labour hours'],
+    ],
+  },
+  staff: {
+    label: 'Staff',
+    metrics: [
+      ['StaffDecisions', 'Requests decided'],
+      ['StaffFirstResponse', 'First response time'],
+    ],
+  },
+  costs: {
+    label: 'Costs',
+    metrics: [
+      ['CostTotal', 'By building'],
+      ['CostByFault', 'By fault category'],
+    ],
+  },
+} as const satisfies Record<
+  string,
+  { label: string; metrics: readonly (readonly [ChartMetric, string])[] }
+>
+type Topic = keyof typeof TOPICS
+
+const STEPS: { value: ChartStep; label: string }[] = [
+  { value: 'Day', label: 'Day' },
+  { value: 'Week', label: 'Week' },
+  { value: 'Month', label: 'Month' },
+]
+
+interface ChartChoice {
+  topic: Topic
+  metric: ChartMetric
+  step: ChartStep
+}
+
+function chartChoiceOf(params: URLSearchParams): ChartChoice {
+  const topic = (Object.keys(TOPICS) as Topic[]).find((t) => t === params.get('topic')) ?? 'cases'
+  const metrics = TOPICS[topic].metrics as readonly (readonly [ChartMetric, string])[]
+  const metric = metrics.find(([m]) => m === params.get('metric'))?.[0] ?? metrics[0]![0]
+  const step = STEPS.find((s) => s.value === params.get('step'))?.value ?? 'Week'
+  return { topic, metric, step }
+}
+
+/** How one value of the chart reads, by its unit. */
+function valueText(unit: Chart['unit'], value: number | null) {
+  if (value === null) return '—'
+  switch (unit) {
+    case '%':
+      return `${Math.round(value)}%`
+    case 'hours':
+      return hours(value)
+    case 'minutes':
+      return minutes(value)
+    case 'VND':
+      return formatVnd(value)
+    default:
+      return String(Math.round(value * 10) / 10)
+  }
+}
+
+function ChartsTab({
+  filters,
+  choice,
+  windowValue,
+  set,
+}: {
+  filters: AnalyticsFilters
+  choice: ChartChoice
+  windowValue: string
+  set: (patch: Record<string, string>) => void
+}) {
+  const q = useChart({ ...filters, metric: choice.metric, step: choice.step })
+  const metrics = TOPICS[choice.topic].metrics as readonly (readonly [ChartMetric, string])[]
+  const metricLabel = metrics.find(([m]) => m === choice.metric)?.[1] ?? ''
+  // The window buttons set From – To.
+  const windows = [
+    { value: '1w', label: '1 week', range: () => rangeBack(0, 7) },
+    { value: '1m', label: '1 month', range: () => rangeBack(1) },
+    { value: '3m', label: '3 months', range: () => rangeBack(3) },
+  ]
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Tabs
+        items={(Object.keys(TOPICS) as Topic[]).map((t) => ({ value: t, label: TOPICS[t].label }))}
+        value={choice.topic}
+        onChange={(t) => set({ topic: t, metric: '' })}
+      />
+      <div className="flex flex-wrap items-center gap-2">
+        <FilterSelect
+          label="Show"
+          neutral
+          value={choice.metric}
+          onChange={(e) => set({ metric: e.target.value })}
+        >
+          {metrics.map(([m, label]) => (
+            <option key={m} value={m}>
+              {label}
+            </option>
+          ))}
+        </FilterSelect>
+        <Segmented
+          label="Window"
+          value={windowValue}
+          onChange={(v) => {
+            const w = windows.find((x) => x.value === v)
+            if (w) set({ ...w.range(), window: v })
+          }}
+          options={windows.map((w) => ({ value: w.value, label: w.label }))}
+        />
+        <FilterSelect
+          label="Each"
+          neutral
+          value={choice.step}
+          onChange={(e) => set({ step: e.target.value })}
+        >
+          {STEPS.map((s) => (
+            <option key={s.value} value={s.value}>
+              {s.label}
+            </option>
+          ))}
+        </FilterSelect>
+      </div>
+      {q.isPending ? (
+        <LoadingBlock rows={6} />
+      ) : q.error ? (
+        <ErrorBlock what="the chart" message={q.error.message} onRetry={() => void q.refetch()} />
+      ) : (
+        <div
+          className={
+            'grid gap-5 transition-opacity xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]' +
+            (q.isPlaceholderData ? ' opacity-60' : '')
+          }
+        >
+          <Card>
+            <PanelHeader
+              title={`${TOPICS[choice.topic].label}: ${metricLabel.toLowerCase()}`}
+              subtitle={`Each ${choice.step.toLowerCase()}, ${formatDate(q.data.period.from)} – ${formatDate(q.data.period.to)}`}
+            />
+            <ColumnChart
+              axis={(v) => valueText(q.data.unit, v)}
+              columns={q.data.points.map((p) => {
+                const day = new Date(p.start)
+                const label =
+                  choice.step === 'Month'
+                    ? day.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })
+                    : day.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+                return {
+                  key: p.start,
+                  label,
+                  title: choice.step === 'Week' ? `Week of ${label}` : label,
+                  value: p.value,
+                  valueText: valueText(q.data.unit, p.value),
+                }
+              })}
+            />
+          </Card>
+          <Card>
+            <PanelHeader
+              title={`By ${q.data.breakdownBy.toLowerCase()}`}
+              subtitle="The whole period"
+            />
+            {q.data.breakdown.length === 0 ? (
+              <EmptyBlock>Nothing in this period.</EmptyBlock>
+            ) : (
+              <BarList
+                unit={q.data.unit}
+                rows={q.data.breakdown.map((b) => ({
+                  key: b.name,
+                  label: b.name,
+                  value: b.value,
+                  valueText: valueText(q.data.unit, b.value),
+                }))}
+              />
+            )}
+          </Card>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ----- ANA-02 -----
 
-function TechniciansTab({ filters }: { filters: AnalyticsFilters }) {
+type TechnicianKey =
+  | 'name'
+  | 'completed'
+  | 'avgTime'
+  | 'onTime'
+  | 'reopened'
+  | 'rating'
+  | 'labour'
+  | 'open'
+  | 'declined'
+
+const TECHNICIAN_VALUES: Record<TechnicianKey, (t: TechnicianRow) => string | number | null> = {
+  name: (t) => t.technician.fullName,
+  completed: (t) => t.completed,
+  avgTime: (t) => t.avgCompletionHours,
+  onTime: (t) => t.onTimeRate,
+  reopened: (t) => t.reopenRate,
+  rating: (t) => t.avgRating,
+  labour: (t) => t.laborHours,
+  open: (t) => t.openNow,
+  declined: (t) => t.declines,
+}
+
+/** The technician table's sort lives in the URL, so Export saves the same order. */
+function technicianSortOf(params: URLSearchParams): SortState<TechnicianKey> | null {
+  const key = params.get('sort')
+  if (!key || !(key in TECHNICIAN_VALUES)) return null
+  return { key: key as TechnicianKey, dir: params.get('dir') === 'desc' ? 'desc' : 'asc' }
+}
+
+function TechniciansTab({
+  filters,
+  sort,
+  set,
+}: {
+  filters: AnalyticsFilters
+  sort: SortState<TechnicianKey> | null
+  set: (patch: Record<string, string>) => void
+}) {
   const q = useTechnicianStats(filters, true)
+  const onSort = (key: TechnicianKey) =>
+    set({ sort: key, dir: sort?.key === key && sort.dir === 'asc' ? 'desc' : 'asc' })
   if (q.isPending) return <LoadingBlock rows={5} />
   if (q.error)
     return (
@@ -422,6 +652,12 @@ function TechniciansTab({ filters }: { filters: AnalyticsFilters }) {
       />
     )
   if (q.data.length === 0) return <EmptyBlock>No technician worked in this period.</EmptyBlock>
+  const rows = sortRows(q.data, sort, TECHNICIAN_VALUES)
+  const head = (key: TechnicianKey, label: string, align: 'left' | 'right' = 'right') => (
+    <SortHeader sortKey={key} sort={sort} onSort={onSort} align={align} className="h-10">
+      {label}
+    </SortHeader>
+  )
   return (
     <Card
       padding="none"
@@ -429,20 +665,20 @@ function TechniciansTab({ filters }: { filters: AnalyticsFilters }) {
     >
       <table className="w-full min-w-[760px] text-left text-sm">
         <thead>
-          <tr className="border-border text-muted border-b text-xs">
-            <th className="h-10 px-4 font-normal">Technician</th>
-            <th className="h-10 pr-4 text-right font-normal">Completed</th>
-            <th className="h-10 pr-4 text-right font-normal">Avg time</th>
-            <th className="h-10 pr-4 text-right font-normal">On time</th>
-            <th className="h-10 pr-4 text-right font-normal">Reopened</th>
-            <th className="h-10 pr-4 text-right font-normal">Rating</th>
-            <th className="h-10 pr-4 text-right font-normal">Labour</th>
-            <th className="h-10 pr-4 text-right font-normal">Open now</th>
-            <th className="h-10 pr-4 font-normal">Declined</th>
+          <tr className="border-border text-muted border-b text-xs [&>th:first-child]:pl-4">
+            {head('name', 'Technician', 'left')}
+            {head('completed', 'Completed')}
+            {head('avgTime', 'Avg time')}
+            {head('onTime', 'On time')}
+            {head('reopened', 'Reopened')}
+            {head('rating', 'Rating')}
+            {head('labour', 'Labour')}
+            {head('open', 'Open now')}
+            {head('declined', 'Declined', 'left')}
           </tr>
         </thead>
         <tbody className="tabular-nums">
-          {q.data.map((t) => (
+          {rows.map((t) => (
             <tr key={t.technician.id} className="border-rule border-b align-top last:border-0">
               <td className="px-4 py-3">
                 {t.technician.fullName}
@@ -491,38 +727,40 @@ function FailuresTab({ filters }: { filters: AnalyticsFilters }) {
     >
       <div className="grid gap-5 lg:grid-cols-2">
         <Card>
-          <CardHeader title="Cases by service type" />
+          <PanelHeader
+            title="By fault category"
+            help="Cases reported in the period, split by fault category. Rejected and cancelled cases are not counted."
+          />
           {f.byServiceType.length === 0 ? (
             <EmptyBlock>No case in this period.</EmptyBlock>
           ) : (
-            <BarList
+            <PieChart
               unit="cases"
-              rows={f.byServiceType.slice(0, 10).map((s) => ({
+              slices={f.byServiceType.map((s) => ({
                 key: s.id,
                 label: s.name,
                 value: s.cases,
-                detail:
-                  s.avgResolutionHours === null
-                    ? undefined
-                    : `${hours(s.avgResolutionHours)} to fix`,
               }))}
             />
           )}
         </Card>
         <Card>
-          <CardHeader title="Cases by group" />
-          {f.byGroup.length === 0 ? (
+          <PanelHeader
+            title="By asset type"
+            help="The same cases, split by the type of the asset that had the problem."
+          />
+          {f.byAssetType.length === 0 ? (
             <EmptyBlock>No case in this period.</EmptyBlock>
           ) : (
-            <BarList
+            <PieChart
               unit="cases"
-              rows={f.byGroup.map((g) => ({ key: g.group, label: g.group, value: g.cases }))}
+              slices={f.byAssetType.map((g) => ({ key: g.group, label: g.group, value: g.cases }))}
             />
           )}
         </Card>
       </div>
       <Card>
-        <CardHeader title="Problem assets" aside="most repaired first" />
+        <PanelHeader title="Problem assets" subtitle="Most repaired first" />
         {f.problemAssets.length === 0 ? (
           <EmptyBlock>No asset was repaired in this period.</EmptyBlock>
         ) : (
@@ -547,10 +785,7 @@ function FailuresTab({ filters }: { filters: AnalyticsFilters }) {
                   </td>
                   <td className="py-2.5 pr-4 text-right">{a.repairs}</td>
                   <td className="py-2.5 pr-4 text-right">{a.repairsLast30Days}</td>
-                  <td className="hidden py-2.5 pr-4 text-right md:table-cell">
-                    {a.ageYears}
-                    {a.expectedLifeYears ? ` / ${a.expectedLifeYears}` : ''} y
-                  </td>
+                  <td className="hidden py-2.5 pr-4 text-right md:table-cell">{a.ageYears} y</td>
                   <td className="hidden py-2.5 text-right md:table-cell">
                     {a.underWarranty ? 'yes' : 'no'}
                   </td>
@@ -560,70 +795,6 @@ function FailuresTab({ filters }: { filters: AnalyticsFilters }) {
           </table>
         )}
       </Card>
-    </div>
-  )
-}
-
-// ----- ANA-04 -----
-
-const REPORTS: { report: ExportReport; title: string; text: string; managerOnly?: boolean }[] = [
-  {
-    report: 'cases',
-    title: 'Case summary',
-    text: 'Every case reported in the period, with its deadline and result.',
-  },
-  {
-    report: 'assets',
-    title: 'Asset failures',
-    text: 'The most repaired assets, their age and warranty.',
-  },
-  {
-    report: 'preventive',
-    title: 'Preventive compliance',
-    text: 'Work orders due in the period: on time, failed items.',
-  },
-  {
-    report: 'technicians',
-    title: 'Technician performance',
-    text: 'Completed, on time, reopened, rating, labour, declines.',
-    managerOnly: true,
-  },
-]
-
-function ReportsTab({ filters, isManager }: { filters: AnalyticsFilters; isManager: boolean }) {
-  const download = useExport()
-  return (
-    <div className="flex flex-col gap-3">
-      <p className="text-muted text-sm">
-        CSV files open in Excel. For a PDF, open a tab and use Print / PDF.
-      </p>
-      <div className="grid gap-3 md:grid-cols-2">
-        {REPORTS.filter((r) => !r.managerOnly || isManager).map((r) => (
-          <Card key={r.report} className="flex items-start justify-between gap-4">
-            <div>
-              <div className="font-medium">{r.title}</div>
-              <p className="text-muted mt-0.5 text-sm">{r.text}</p>
-            </div>
-            <Button
-              variant="secondary"
-              loading={download.isPending && download.variables?.report === r.report}
-              onClick={() => download.mutate({ report: r.report, filters })}
-            >
-              Download CSV
-            </Button>
-          </Card>
-        ))}
-      </div>
-      {download.error && <Alert>{download.error.message}</Alert>}
-    </div>
-  )
-}
-
-function Row({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex items-baseline justify-between gap-3">
-      <dt className="text-muted">{label}</dt>
-      <dd className="text-right tabular-nums">{children}</dd>
     </div>
   )
 }

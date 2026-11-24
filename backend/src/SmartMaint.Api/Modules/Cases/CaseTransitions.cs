@@ -18,21 +18,33 @@ public enum CaseAction
     Rate,
 
     /// <summary>
-    /// Meeting 07/11: the staff's one "Edit" (the work order form). Replaces assign, reassign, change urgency,
-    /// "let technician continue", close and reopen.
+    /// Meeting 07/11: the staff's one "Edit" (the work order form). Replaces change urgency, "let technician continue",
+    /// close and reopen.
     /// </summary>
     Edit,
+
+    /// <summary>Meeting note 18/11: a button of its own, so the followers are easy to find.</summary>
+    ManageFollowers,
+
+    /// <summary>Meeting note 18/11: the technician is no longer a field of Edit.</summary>
+    Reassign,
 
     // Part 4 (02/11): the deadline, the customer's "not fixed" report, cost lines
     ExtendDue,
     ReportNotFixed,
     AcceptNotFixed,
     DeclineNotFixed,
+
+    /// <summary>Meeting note 18/11: a closed case is read only; reopening it is the one thing the staff may still do.</summary>
+    Reopen,
     UpdateCosts,
 
     // Meeting 07/11, the technician: work hours (clock or typed) and the costs they paid, with a receipt
     LogHours,
     AddCost,
+
+    /// <summary>Meeting note 18/11: the technician corrects a cost line they added themselves.</summary>
+    EditOwnCost,
 
     // Tasks (F2 checklist items; meeting 07/11: every case has tasks)
     UpdateTask,
@@ -41,7 +53,6 @@ public enum CaseAction
     // Part 6 (F4): emergency. Meeting 07/11: no merge (a repeat is rejected as a duplicate), no separate downgrade (Edit).
     Acknowledge,
     AddLog,
-    MarkSafe,
     WriteIncidentReport,
 
     // Part 7 (F5). Meeting 07/11: the staff only records the hand-over to an outside party (no quote, no refusal);
@@ -86,9 +97,13 @@ internal static class CaseTransitions
         new(CaseAction.Rate, UserRole.Customer, [CaseStatus.Closed], null),
 
         // The staff's one Edit: the status it moves to (continue / close / reopen) comes from the request.
-        new(CaseAction.Edit, UserRole.Staff, [.. Handling, CaseStatus.Completed, CaseStatus.Closed], null),
+        // Meeting note 18/11: a closed case is only read (and reopened, below).
+        new(CaseAction.Edit, UserRole.Staff, [.. Handling, CaseStatus.Completed], null),
+        new(CaseAction.ManageFollowers, UserRole.Staff, [.. Handling, CaseStatus.Completed], null),
+        new(CaseAction.Reassign, UserRole.Staff, Handling, null),
         new(CaseAction.ExtendDue, UserRole.Staff, [.. Taken, CaseStatus.Reopened], null),
-        new(CaseAction.UpdateCosts, UserRole.Staff, [.. Handling, CaseStatus.Completed, CaseStatus.Closed], null),
+        new(CaseAction.UpdateCosts, UserRole.Staff, [.. Handling, CaseStatus.Completed], null),
+        new(CaseAction.Reopen, UserRole.Staff, [CaseStatus.Closed], CaseStatus.Reopened),
 
         // Customer: "not fixed" within 7 days of closing; the staff member reopens or declines it
         new(CaseAction.ReportNotFixed, UserRole.Customer, [CaseStatus.Closed], null),
@@ -98,6 +113,7 @@ internal static class CaseTransitions
         // Meeting 07/11: the technician keeps the work hours and records the costs they paid.
         new(CaseAction.LogHours, UserRole.Technician, [CaseStatus.Accepted, CaseStatus.InProgress, CaseStatus.OnHold], null),
         new(CaseAction.AddCost, UserRole.Technician, [CaseStatus.Accepted, CaseStatus.InProgress, CaseStatus.OnHold, CaseStatus.Completed], null),
+        new(CaseAction.EditOwnCost, UserRole.Technician, Taken, null),
 
         // Tasks: the technician marks them; the staff marks the ones an outside party did.
         new(CaseAction.UpdateTask, UserRole.Technician, [CaseStatus.InProgress, CaseStatus.OnHold], null),
@@ -107,7 +123,6 @@ internal static class CaseTransitions
         // CaseService.IsAllowed keeps these to emergency cases.
         new(CaseAction.Acknowledge, UserRole.Staff, Handling, null),
         new(CaseAction.AddLog, UserRole.Staff, [.. Handling, CaseStatus.Completed], null),
-        new(CaseAction.MarkSafe, UserRole.Technician, [CaseStatus.InProgress, CaseStatus.OnHold], null),
         new(CaseAction.WriteIncidentReport, UserRole.Staff, [CaseStatus.Closed], null),
 
         // F5: the technician asks the staff (assessment), the staff hands the job to an outside party.

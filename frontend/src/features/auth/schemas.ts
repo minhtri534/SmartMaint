@@ -2,7 +2,8 @@ import { z } from 'zod'
 
 /** Client-side checks mirror the backend validators (LoginRequestValidator, PasswordRules). */
 export const loginSchema = z.object({
-  username: z.string().trim().min(1, 'Enter your username.').max(50),
+  // Meeting note 18/11: the e-mail address or the phone number, no longer the username.
+  login: z.string().trim().min(1, 'Enter your e-mail or phone number.').max(254),
   password: z.string().min(1, 'Enter your password.'),
 })
 

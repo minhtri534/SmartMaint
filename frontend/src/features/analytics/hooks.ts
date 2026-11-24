@@ -1,6 +1,6 @@
 import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
 import { analyticsApi, analyticsKeys } from './api'
-import type { AnalyticsFilters, ExportReport } from './types'
+import type { AnalyticsFilters, ChartQuery, ExportQuery } from './types'
 
 export function useOverview(filters: AnalyticsFilters) {
   return useQuery({
@@ -36,9 +36,14 @@ export function useAttention() {
   })
 }
 
-export function useExport() {
-  return useMutation({
-    mutationFn: ({ report, filters }: { report: ExportReport; filters: AnalyticsFilters }) =>
-      analyticsApi.download(report, filters),
+export function useChart(query: ChartQuery) {
+  return useQuery({
+    queryKey: analyticsKeys.chart(query),
+    queryFn: () => analyticsApi.chart(query),
+    placeholderData: keepPreviousData,
   })
+}
+
+export function useExport() {
+  return useMutation({ mutationFn: (query: ExportQuery) => analyticsApi.download(query) })
 }

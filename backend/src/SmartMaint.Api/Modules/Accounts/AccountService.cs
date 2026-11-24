@@ -9,6 +9,8 @@ using SmartMaint.Api.Entities.Core;
 using SmartMaint.Api.Modules.Accounts.Dtos;
 using SmartMaint.Api.Modules.Audit;
 using SmartMaint.Api.Modules.Audit.Dtos;
+using SmartMaint.Api.Modules.Notifications;
+using Microsoft.Extensions.Options;
 
 namespace SmartMaint.Api.Modules.Accounts;
 
@@ -17,6 +19,8 @@ internal sealed class AccountService(
     ICurrentUser currentUser,
     IPasswordHasher passwordHasher,
     IAuditService audit,
+    IEmailSender email,
+    IOptions<EmailOptions> emailOptions,
     TimeProvider clock) : IAccountService
 {
     /// <summary>Statuses where a technician is still holding the case.</summary>
@@ -67,13 +71,19 @@ internal sealed class AccountService(
         {
             var term = query.Search.Trim().ToLower();
             rows = rows.Where(a =>
-                a.Username.Contains(term) || a.FullName.ToLower().Contains(term) || (a.Email != null && a.Email.Contains(term)));
+                a.Username.Contains(term) || a.FullName.ToLower().Contains(term) || (a.Email != null && a.Email.Contains(term))
+                || (a.PhoneNumber != null && a.PhoneNumber.Contains(term)));
         }
 
         var now = clock.GetUtcNow();
         var total = await rows.CountAsync(cancellationToken);
-        var items = await rows
-            .OrderBy(a => a.Role).ThenBy(a => a.FullName).ThenBy(a => a.Id)
+        var sorted = query.LastSignIn?.ToLowerInvariant() switch
+        {
+            "desc" => rows.OrderBy(a => a.LastLoginAt == null).ThenByDescending(a => a.LastLoginAt),
+            "asc" => rows.OrderBy(a => a.LastLoginAt == null).ThenBy(a => a.LastLoginAt),
+            _ => rows.OrderBy(a => a.Role),
+        };
+        var items = await sorted.ThenBy(a => a.FullName).ThenBy(a => a.Id)
             .Skip(query.Skip).Take(query.PageSize)
             .Select(a => new AccountSummaryResponse(
                 a.Id, a.Username, a.FullName, a.Email, a.PhoneNumber, a.Role, a.Status,
@@ -94,24 +104,17 @@ internal sealed class AccountService(
 
     public async Task<AccountWithPasswordResponse> CreateAsync(CreateAccountRequest request, CancellationToken cancellationToken)
     {
-        var username = Account.NormalizeUsername(request.Username);
-        if (await db.Accounts.AnyAsync(a => a.Username == username, cancellationToken))
-        {
-            throw AccountErrors.UsernameTaken();
-        }
-
-        var email = NormalizeEmail(request.Email);
+        var email = NormalizeEmail(request.Email)!;
         await EnsureEmailFreeAsync(email, exceptId: null, cancellationToken);
-        if (request.Role == UserRole.Customer)
-        {
-            await EnsureRentableRoomAsync(request.RoomId, cancellationToken);
-        }
+        var phone = NormalizePhone(request.PhoneNumber);
+        await EnsurePhoneFreeAsync(phone, exceptId: null, cancellationToken);
 
         var temporaryPassword = TemporaryPassword.Generate();
         var account = Account.New(
-            request.Role, username, request.FullName, passwordHasher.Hash(temporaryPassword), mustChangePassword: true, request.RoomId);
+            request.Role, await NewUsernameAsync(email, cancellationToken), request.FullName,
+            passwordHasher.Hash(temporaryPassword), mustChangePassword: true);
         account.Email = email;
-        account.PhoneNumber = Blank(request.PhoneNumber);
+        account.PhoneNumber = phone;
         db.Accounts.Add(account);
         await ApplyRoleDetailsAsync(account, request, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
@@ -119,7 +122,9 @@ internal sealed class AccountService(
         audit.Record(AuditTarget.Account, AuditOperation.Create, null, await SnapshotAsync(account.Id, cancellationToken));
         await db.SaveChangesAsync(cancellationToken);
 
-        return new AccountWithPasswordResponse(await GetAsync(account.Id, cancellationToken), temporaryPassword);
+        // The e-mail is the check that the address is right: signing in with this password proves it (Leader 24/11).
+        var sent = await SendPasswordAsync(account, temporaryPassword, isNew: true, cancellationToken);
+        return new AccountWithPasswordResponse(await GetAsync(account.Id, cancellationToken), sent, sent ? null : temporaryPassword);
     }
 
     public async Task<AccountDetailResponse> UpdateAsync(long id, UpdateAccountRequest request, CancellationToken cancellationToken)
@@ -129,65 +134,19 @@ internal sealed class AccountService(
 
         var email = NormalizeEmail(request.Email);
         await EnsureEmailFreeAsync(email, exceptId: id, cancellationToken);
-        if (account is Customer)
-        {
-            await EnsureRentableRoomAsync(request.RoomId, cancellationToken);
-        }
+        var phone = NormalizePhone(request.PhoneNumber);
+        await EnsurePhoneFreeAsync(phone, exceptId: id, cancellationToken);
 
         var before = await SnapshotAsync(id, cancellationToken);
         account.FullName = request.FullName.Trim();
         account.Email = email;
-        account.PhoneNumber = Blank(request.PhoneNumber);
+        account.PhoneNumber = phone;
         await ApplyRoleDetailsAsync(account, request, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
 
         audit.Record(AuditTarget.Account, AuditOperation.Update, before, await SnapshotAsync(id, cancellationToken));
         await db.SaveChangesAsync(cancellationToken);
         return await GetAsync(id, cancellationToken);
-    }
-
-    public async Task<AccountDetailResponse> ChangeRoleAsync(long id, ChangeRoleRequest request, CancellationToken cancellationToken)
-    {
-        var old = await FindAsync(id, cancellationToken);
-        if (await HasHistoryAsync(id, cancellationToken))
-        {
-            throw AccountErrors.HasHistory();
-        }
-
-        await EnsureAllowedAsync(old, AccountAction.ChangeRole, cancellationToken);
-        if (request.Role == old.Role)
-        {
-            throw AccountErrors.ActionNotAllowed();
-        }
-
-        if (request.Role == UserRole.Customer)
-        {
-            await EnsureRentableRoomAsync(request.RoomId, cancellationToken);
-        }
-
-        var before = await SnapshotAsync(id, cancellationToken);
-
-        // The ERD keeps one table per role and EF cannot move a row between them, so the account is made again:
-        // remove the old one (with its building assignments) and add the new one with the same username and password.
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        db.StaffBuildingAssignments.RemoveRange(db.StaffBuildingAssignments.Where(a => a.StaffId == id));
-        db.ManagerBuildingAssignments.RemoveRange(db.ManagerBuildingAssignments.Where(a => a.ManagerId == id));
-        db.Accounts.Remove(old);
-        await db.SaveChangesAsync(cancellationToken);
-
-        var account = Account.New(request.Role, old.Username, old.FullName, old.PasswordHash, old.MustChangePassword, request.RoomId);
-        account.Email = old.Email;
-        account.PhoneNumber = old.PhoneNumber;
-        account.Status = old.Status;
-        db.Accounts.Add(account);
-        await ApplyRoleDetailsAsync(account, request, cancellationToken);
-        await db.SaveChangesAsync(cancellationToken);
-
-        audit.Record(AuditTarget.Account, AuditOperation.ChangeRole, before, await SnapshotAsync(account.Id, cancellationToken));
-        await db.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-
-        return await GetAsync(account.Id, cancellationToken);
     }
 
     // ----- DLG-16 actions ---------------------------------------------------------------------------------------
@@ -220,7 +179,8 @@ internal sealed class AccountService(
             account.ResetPassword(passwordHasher.Hash(temporaryPassword));
             return Task.CompletedTask;
         }, cancellationToken);
-        return new TemporaryPasswordResponse(temporaryPassword);
+        var sent = await SendPasswordAsync(await FindAsync(id, cancellationToken), temporaryPassword, isNew: false, cancellationToken);
+        return new TemporaryPasswordResponse(sent, sent ? null : temporaryPassword);
     }
 
     public Task<AccountDetailResponse> UnlockAsync(long id, CancellationToken cancellationToken) =>
@@ -229,6 +189,51 @@ internal sealed class AccountService(
             account.Unlock();
             return Task.CompletedTask;
         }, cancellationToken);
+
+    public async Task DeleteAsync(long id, CancellationToken cancellationToken)
+    {
+        var account = await FindAsync(id, cancellationToken);
+        await EnsureAllowedAsync(account, AccountAction.Delete, cancellationToken);
+        var before = await SnapshotAsync(id, cancellationToken);
+
+        // Its settings go with it: specialties, buildings, the notifications it received.
+        db.TechnicianSpecialties.RemoveRange(db.TechnicianSpecialties.Where(t => t.TechnicianId == id));
+        db.StaffBuildingAssignments.RemoveRange(db.StaffBuildingAssignments.Where(a => a.StaffId == id));
+        db.ManagerBuildingAssignments.RemoveRange(db.ManagerBuildingAssignments.Where(a => a.ManagerId == id));
+        db.Notifications.RemoveRange(db.Notifications.Where(n => n.UserId == id));
+        db.Accounts.Remove(account);
+        audit.Record(AuditTarget.Account, AuditOperation.Delete, before, null);
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// The temporary password by e-mail (meeting note 18/11). False when e-mail is not set up or the server refused:
+    /// the Administrator then gets the password on screen, as before.
+    /// </summary>
+    private async Task<bool> SendPasswordAsync(Account account, string password, bool isNew, CancellationToken cancellationToken)
+    {
+        if (account.Email is null) return false;
+        var signIn = emailOptions.Value.WebUrl is { Length: > 0 } url ? $"{url.TrimEnd('/')}/login" : "the SmartMaint sign-in page";
+        var ways = account.PhoneNumber is null ? account.Email : $"{account.Email} or {account.PhoneNumber}";
+        var intro = isNew
+            ? "An account was made for you in SmartMaint."
+            : "Your SmartMaint password was reset by an administrator.";
+        var body = string.Join("\n",
+            $"Hello {account.FullName},",
+            "",
+            intro,
+            "",
+            $"Sign in at {signIn} with {ways} and this temporary password:",
+            "",
+            $"    {password}",
+            "",
+            "You will choose your own password right after signing in.",
+            "If you did not expect this e-mail, tell your building's facility office.",
+            "",
+            "SmartMaint");
+        return await email.SendAsync(
+            account.Email, isNew ? "Your SmartMaint account" : "Your new SmartMaint password", body, cancellationToken);
+    }
 
     /// <summary>Check the action, change the account, write the audit row (old / new) in the same save.</summary>
     private async Task<AccountDetailResponse> ActAsync(
@@ -247,7 +252,7 @@ internal sealed class AccountService(
     // ----- rules ------------------------------------------------------------------------------------------------
 
     private async Task<IReadOnlyList<AccountAction>> AllowedActionsAsync(
-        Account account, bool hasHistory, CancellationToken cancellationToken)
+        Account account, CancellationToken cancellationToken)
     {
         var self = account.Id == currentUser.Id;
         var active = account.Status == UserStatus.Active;
@@ -255,18 +260,17 @@ internal sealed class AccountService(
             a => a.Role == UserRole.Admin && a.Status == UserStatus.Active && a.Id != account.Id, cancellationToken);
 
         var actions = new List<AccountAction> { AccountAction.Edit };
-        if (!hasHistory && !self) actions.Add(AccountAction.ChangeRole);
         if (active && !self && !lastAdmin) actions.Add(AccountAction.Deactivate);
         if (!active) actions.Add(AccountAction.Reactivate);
         if (active && !self) actions.Add(AccountAction.ResetPassword);
         if (account.IsLockedOut(clock.GetUtcNow())) actions.Add(AccountAction.Unlock);
+        if (!self && !lastAdmin && !await HasHistoryAsync(account.Id, cancellationToken)) actions.Add(AccountAction.Delete);
         return actions;
     }
 
     private async Task EnsureAllowedAsync(Account account, AccountAction action, CancellationToken cancellationToken)
     {
-        var hasHistory = action == AccountAction.ChangeRole && await HasHistoryAsync(account.Id, cancellationToken);
-        if ((await AllowedActionsAsync(account, hasHistory, cancellationToken)).Contains(action))
+        if ((await AllowedActionsAsync(account, cancellationToken)).Contains(action))
         {
             return;
         }
@@ -277,24 +281,26 @@ internal sealed class AccountService(
     }
 
     /// <summary>
-    /// Has this account left a trace in its role? Then its role can no longer change (the history points at the role's table).
+    /// Has this account left a trace in the system?
     /// </summary>
     private async Task<bool> HasHistoryAsync(long id, CancellationToken cancellationToken) =>
         await db.CaseStatusHistory.AnyAsync(h => h.ChangedById == id, cancellationToken)
         || await db.Cases.AnyAsync(
             c => c.RequestingCustomerId == id || c.StaffId == id || c.AssignedTechnicianId == id, cancellationToken)
         || await db.TechnicianRejections.AnyAsync(r => r.TechnicianId == id, cancellationToken)
-        || await db.AuditLogs.AnyAsync(a => a.AdminId == id, cancellationToken);
+        || await db.AuditLogs.AnyAsync(a => a.AdminId == id, cancellationToken)
+        // meeting note 18/11: "data" also means a cost line, a followed case, a plan, a change list or an assistant chat
+        || await db.Costs.AnyAsync(c => c.AddedById == id, cancellationToken)
+        || await db.CaseFollowers.AnyAsync(f => f.CustomerId == id, cancellationToken)
+        || await db.MaintenanceTriggers.AnyAsync(p => p.StaffId == id || p.ApprovingManagerId == id, cancellationToken)
+        || await db.AssetChangeLists.AnyAsync(l => l.StaffId == id || l.ReviewerId == id, cancellationToken)
+        || await db.AiConversations.AnyAsync(c => c.UserId == id, cancellationToken);
 
-    /// <summary>Customer room, technician rate + specialties, staff / manager buildings — only those of the account's role.</summary>
+    /// <summary>Technician rate + specialties, staff / manager buildings: only those of the account's role.</summary>
     private async Task ApplyRoleDetailsAsync(Account account, IRoleDetails details, CancellationToken cancellationToken)
     {
         switch (account)
         {
-            case Customer customer:
-                customer.RoomId = details.RoomId!.Value;
-                break;
-
             case Technician technician:
                 technician.HourlyRate = details.HourlyRate;
                 await SetSpecialtiesAsync(technician, details.SpecialtyIds ?? [], cancellationToken);
@@ -379,16 +385,6 @@ internal sealed class AccountService(
         return list;
     }
 
-    private async Task EnsureRentableRoomAsync(long? roomId, CancellationToken cancellationToken)
-    {
-        var room = await db.Rooms.AsNoTracking().SingleOrDefaultAsync(r => r.Id == roomId, cancellationToken)
-            ?? throw AccountErrors.UnknownRoom();
-        if (room.IsCommonArea)
-        {
-            throw AccountErrors.CommonAreaRoom();
-        }
-    }
-
     private async Task EnsureEmailFreeAsync(string? email, long? exceptId, CancellationToken cancellationToken)
     {
         if (email is not null && await db.Accounts.AnyAsync(a => a.Email == email && a.Id != exceptId, cancellationToken))
@@ -402,6 +398,36 @@ internal sealed class AccountService(
 
     private static string? NormalizeEmail(string? email) => string.IsNullOrWhiteSpace(email) ? null : email.Trim().ToLowerInvariant();
 
+    /// <summary>Stored as digits (a leading + kept), so a sign-in with spaces or dashes still matches.</summary>
+    private static string? NormalizePhone(string? phone) =>
+        string.IsNullOrWhiteSpace(phone) ? null : PhoneNumbers.Normalize(phone);
+
+    /// <summary>A phone number signs in (meeting note 18/11), so two accounts cannot share one.</summary>
+    private async Task EnsurePhoneFreeAsync(string? phone, long? exceptId, CancellationToken cancellationToken)
+    {
+        if (phone is null) return;
+        var others = await db.Accounts.Where(a => a.PhoneNumber != null && a.Id != exceptId)
+            .Select(a => a.PhoneNumber!).ToListAsync(cancellationToken);
+        if (others.Any(p => PhoneNumbers.Normalize(p) == phone)) throw AccountErrors.PhoneTaken();
+    }
+
+    /// <summary>
+    /// The ERD's username column stays (unique, not null) but nobody types it any more: made from the e-mail, with a
+    /// number added when taken ("lan", "lan2").
+    /// </summary>
+    private async Task<string> NewUsernameAsync(string email, CancellationToken cancellationToken)
+    {
+        var local = new string(email.Split('@')[0].ToLowerInvariant().Where(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-').ToArray());
+        var stem = local.Length >= 3 ? local[..Math.Min(local.Length, 40)] : $"user{local}";
+        var candidate = stem;
+        for (var n = 2; await db.Accounts.AnyAsync(a => a.Username == candidate, cancellationToken); n++)
+        {
+            candidate = $"{stem}{n}";
+        }
+
+        return candidate;
+    }
+
     private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     // ----- mapping ----------------------------------------------------------------------------------------------
@@ -409,13 +435,6 @@ internal sealed class AccountService(
     private async Task<AccountDetailResponse> ToDetailAsync(Account a, CancellationToken cancellationToken)
     {
         var id = a.Id;
-        RoomRefResponse? room = a is Customer customer
-            ? await db.Rooms.AsNoTracking()
-                .Where(r => r.Id == customer.RoomId)
-                .Select(r => new RoomRefResponse(r.Id, r.Floor.Building.Name, "Floor " + r.Floor.FloorNumber, r.RoomNumber))
-                .SingleOrDefaultAsync(cancellationToken)
-            : null;
-
         var specialties = await db.TechnicianSpecialties.AsNoTracking()
             .Where(t => t.TechnicianId == id)
             .OrderBy(t => t.Specialty.Name)
@@ -436,9 +455,9 @@ internal sealed class AccountService(
         var now = clock.GetUtcNow();
         return new AccountDetailResponse(
             a.Id, a.Username, a.FullName, a.Email, a.PhoneNumber, a.Role, a.Status, a.IsLockedOut(now), a.LastLoginAt,
-            a.CreatedAt, a.MustChangePassword, a.IsLockedOut(now) ? a.LockedUntil : null, room,
+            a.CreatedAt, a.MustChangePassword, a.IsLockedOut(now) ? a.LockedUntil : null,
             (a as Technician)?.HourlyRate, specialties, buildings.OrderBy(b => b.BuildingName).ToList(), hasHistory,
-            await AllowedActionsAsync(a, hasHistory, cancellationToken));
+            await AllowedActionsAsync(a, cancellationToken));
     }
 
     /// <summary>What the audit log keeps of an account (never the password hash).</summary>
@@ -452,7 +471,6 @@ internal sealed class AccountService(
         UserStatus Status,
         bool MustChangePassword,
         bool Locked,
-        long? RoomId,
         decimal? HourlyRate,
         IReadOnlyList<long> SpecialtyIds,
         IReadOnlyList<long> BuildingIds);
@@ -462,7 +480,7 @@ internal sealed class AccountService(
         var detail = await GetAsync(id, cancellationToken);
         return new AccountSnapshot(
             detail.Id, detail.Username, detail.FullName, detail.Email, detail.PhoneNumber, detail.Role, detail.Status,
-            detail.MustChangePassword, detail.IsLocked, detail.Room?.Id, detail.HourlyRate,
+            detail.MustChangePassword, detail.IsLocked, detail.HourlyRate,
             detail.Specialties.Select(s => s.Id).ToList(), detail.Buildings.Select(b => b.BuildingId).ToList());
     }
 

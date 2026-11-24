@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
-import { useParams } from 'react-router'
-import { accountChangeRolePath, accountEditPath, paths } from '@/app/paths'
+import { useNavigate, useParams } from 'react-router'
+import { accountEditPath, paths } from '@/app/paths'
 import { ROLE_LABELS } from '@/shared/types/role'
 import {
   Button,
@@ -36,7 +36,10 @@ export function AccountDetailPage() {
   return <AccountView a={account.data} />
 }
 
-type Confirm = Extract<AccountAction, 'deactivate' | 'reactivate' | 'reset_password' | 'unlock'>
+type Confirm = Extract<
+  AccountAction,
+  'deactivate' | 'reactivate' | 'reset_password' | 'unlock' | 'delete'
+>
 
 const CONFIRMS: Record<Confirm, { title: string; text: string; label: string }> = {
   deactivate: {
@@ -59,16 +62,23 @@ const CONFIRMS: Record<Confirm, { title: string; text: string; label: string }> 
     text: 'Ends the lock after too many wrong passwords, so the user can try again now.',
     label: 'Unlock',
   },
+  delete: {
+    title: 'Delete account',
+    text: 'The account has no data yet (no case, cost, plan or chat), so it can go for good, e.g. one made by mistake.',
+    label: 'Delete',
+  },
 }
 
 function AccountView({ a }: { a: AccountDetail }) {
   const [confirm, setConfirm] = useState<Confirm | null>(null)
-  const [password, setPassword] = useState<string | null>(null)
+  const navigate = useNavigate()
+  const [sent, setSent] = useState<{ password: string | null } | null>(null)
   const deactivate = useAccountMutation(accountsApi.deactivate)
   const reactivate = useAccountMutation(accountsApi.reactivate)
   const unlock = useAccountMutation(accountsApi.unlock)
   const reset = useAccountMutation(accountsApi.resetPassword)
-  const mutations = { deactivate, reactivate, unlock, reset_password: reset }
+  const remove = useAccountMutation(accountsApi.remove, { deletes: true })
+  const mutations = { deactivate, reactivate, unlock, reset_password: reset, delete: remove }
   const can = (action: AccountAction) => a.allowedActions.includes(action)
 
   const run = () => {
@@ -76,7 +86,12 @@ function AccountView({ a }: { a: AccountDetail }) {
     if (confirm === 'reset_password') {
       reset.mutate(
         { id: a.id },
-        { onSuccess: (r) => (setConfirm(null), setPassword(r.temporaryPassword)) },
+        { onSuccess: (r) => (setConfirm(null), setSent({ password: r.temporaryPassword })) },
+      )
+    } else if (confirm === 'delete') {
+      remove.mutate(
+        { id: a.id },
+        { onSuccess: () => void navigate(paths.accounts, { replace: true }) },
       )
     } else {
       mutations[confirm].mutate({ id: a.id }, { onSuccess: () => setConfirm(null) })
@@ -120,6 +135,11 @@ function AccountView({ a }: { a: AccountDetail }) {
                 Reactivate
               </Button>
             )}
+            {can('delete') && (
+              <Button variant="danger" onClick={() => open('delete')}>
+                Delete
+              </Button>
+            )}
             {can('deactivate') && (
               <Button variant="danger" onClick={() => open('deactivate')}>
                 Deactivate
@@ -138,9 +158,7 @@ function AccountView({ a }: { a: AccountDetail }) {
         <Card>
           <CardHeader title="Account" aside={<AccountStatusBadge account={a} />} />
           <dl className="flex flex-col gap-3 text-sm">
-            <Row label="Username">
-              <span className="font-mono text-xs">{a.username}</span>
-            </Row>
+            {/* Meeting note 18/11: the e-mail or the phone number signs in (the username stays inside). */}
             <Row label="E-mail">{a.email ?? <Dash />}</Row>
             <Row label="Phone">{a.phoneNumber ?? <Dash />}</Row>
             <Row label="Created">{formatDateTime(a.createdAt)}</Row>
@@ -148,23 +166,8 @@ function AccountView({ a }: { a: AccountDetail }) {
         </Card>
 
         <Card>
-          <CardHeader
-            title={ROLE_LABELS[a.role]}
-            aside={
-              can('change_role') ? (
-                <LinkButton variant="ghost" to={accountChangeRolePath(a.id)}>
-                  Change role
-                </LinkButton>
-              ) : undefined
-            }
-          />
+          <CardHeader title={ROLE_LABELS[a.role]} />
           <RoleFacts a={a} />
-          {a.hasHistory && (
-            <p className="text-muted mt-3 text-xs">
-              This account already has history, so its role is fixed. To move the person to another
-              role, deactivate it and create a new account.
-            </p>
-          )}
         </Card>
       </div>
 
@@ -180,12 +183,12 @@ function AccountView({ a }: { a: AccountDetail }) {
           error={mutations[confirm].error?.message}
         />
       )}
-      {password && (
+      {sent && (
         <TemporaryPasswordDialog
-          open
-          username={a.username}
-          password={password}
-          onClose={() => setPassword(null)}
+          name={a.fullName}
+          email={a.email}
+          password={sent.password}
+          onClose={() => setSent(null)}
         />
       )}
     </div>
@@ -197,14 +200,8 @@ function RoleFacts({ a }: { a: AccountDetail }) {
     return (
       <p className="text-muted text-sm">Manages accounts and settings. Never sees case content.</p>
     )
-  if (a.role === 'customer') {
-    return (
-      <dl className="flex flex-col gap-3 text-sm">
-        <Row label="Building">{a.room?.buildingName ?? <Dash />}</Row>
-        <Row label="Room">{a.room ? `${a.room.floorName} · ${a.room.roomName}` : <Dash />}</Row>
-      </dl>
-    )
-  }
+  if (a.role === 'customer')
+    return <p className="text-muted text-sm">Reports problems with any asset, in any building.</p>
   if (a.role === 'technician') {
     return (
       <dl className="flex flex-col gap-3 text-sm">

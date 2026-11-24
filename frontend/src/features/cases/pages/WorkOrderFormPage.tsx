@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useFieldArray, useForm, useWatch } from 'react-hook-form'
 import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import { caseDetailPath } from '@/app/paths'
@@ -20,14 +20,9 @@ import {
 import { formatAssetCode } from '@/shared/utils/asset-code'
 import { formatDateTime } from '@/shared/utils/format'
 import { casesApi } from '../api'
+import { ReassignDialog } from '../components/dialogs/ReassignDialog'
 import { TechnicianPicker } from '../components/TechnicianPicker'
-import {
-  useCase,
-  useCaseMutation,
-  useFollowerOptions,
-  useServiceTypes,
-  useTechnicians,
-} from '../hooks'
+import { useCase, useCaseMutation, useServiceTypes, useTechnicians } from '../hooks'
 import { workOrderSchema, type WorkOrderFormValues } from '../schemas'
 import {
   DONE_BY_LABELS,
@@ -37,29 +32,22 @@ import {
   URGENCIES,
   URGENCY_LABELS,
   type CaseDetail,
-  type CaseStatus,
-  type PersonRef,
   type ServiceType,
   type TaskLine,
   type TechnicianOption,
 } from '../types'
 
-/** The technician already took the job: a new one means a new case (meeting 07/11, Leader 09/11). */
-const TAKEN: readonly CaseStatus[] = ['accepted', 'in_progress', 'on_hold']
-
 /**
  * The staff's work order form (meeting 07/11), at /cases/:id/approve and /cases/:id/edit. It looks like the customer's
- * request form, plus the staff's fields: technician (with their schedule and specialties), planned start / end and
- * the tasks. Edit also has the followers and the status change (continue / close / reopen), which replace the old
- * separate buttons.
+ * request form, plus the staff's fields: planned start / end and the tasks. Approve chooses the technician; Edit shows
+ * who has the case with a Reassign button (meeting note 18/11), and the status change (continue / close / reopen).
  */
 export function WorkOrderFormPage() {
   const id = Number(useParams().id)
   const mode = useLocation().pathname.endsWith('/approve') ? 'approve' : 'edit'
   const query = useCase(id)
   const serviceTypes = useServiceTypes()
-  const technicians = useTechnicians(true)
-  const followers = useFollowerOptions(id, mode === 'edit')
+  const technicians = useTechnicians(mode === 'approve', id)
 
   const above = (
     <Link to={caseDetailPath(id)} className="hover:text-ink inline-flex items-center gap-1">
@@ -69,7 +57,7 @@ export function WorkOrderFormPage() {
   )
   const title = mode === 'approve' ? 'Approve and assign' : 'Edit case'
 
-  const failed = query.error ?? serviceTypes.error ?? technicians.error ?? followers.error
+  const failed = query.error ?? serviceTypes.error ?? technicians.error
   if (failed) {
     return (
       <div className="flex flex-col gap-5">
@@ -78,12 +66,7 @@ export function WorkOrderFormPage() {
       </div>
     )
   }
-  if (
-    !query.data ||
-    !serviceTypes.data ||
-    !technicians.data ||
-    (mode === 'edit' && !followers.data)
-  ) {
+  if (!query.data || !serviceTypes.data || (mode === 'approve' && !technicians.data)) {
     return (
       <div className="flex flex-col gap-5">
         <PageHeader above={above} title={title} />
@@ -113,8 +96,7 @@ export function WorkOrderFormPage() {
       caseDetail={c}
       above={above}
       serviceTypes={serviceTypes.data}
-      technicians={technicians.data}
-      followerOptions={followers.data ?? []}
+      technicians={technicians.data ?? []}
     />
   )
 }
@@ -125,23 +107,19 @@ interface FormProps {
   above: ReactNode
   serviceTypes: ServiceType[]
   technicians: TechnicianOption[]
-  followerOptions: PersonRef[]
 }
 
-function WorkOrderForm({
-  mode,
-  caseDetail: c,
-  above,
-  serviceTypes,
-  technicians,
-  followerOptions,
-}: FormProps) {
+function WorkOrderForm({ mode, caseDetail: c, above, serviceTypes, technicians }: FormProps) {
   const navigate = useNavigate()
   const approve = useCaseMutation(casesApi.approve)
   const edit = useCaseMutation(casesApi.edit)
   const saving = approve.isPending || edit.isPending
   const error = approve.error ?? edit.error
-  const current = serviceTypes.find((s) => s.id === c.serviceTypeId)
+  // The faults of this asset's type and the general ones; an archived fault stays while the case has it.
+  const faults = serviceTypes.filter(
+    (s) => !c.asset || s.assetTypeId === null || s.assetTypeId === c.asset.typeId,
+  )
+  const keepsArchived = !faults.some((s) => s.id === c.serviceTypeId)
   const finished = new Map(
     c.tasks.filter((t) => t.status !== 'pending' || t.doneBy).map((t) => [t.id, t]),
   )
@@ -158,8 +136,7 @@ function WorkOrderForm({
     defaultValues: {
       title: c.title,
       description: c.description,
-      serviceGroup: current?.groupName ?? '',
-      serviceTypeId: current ? String(current.id) : '',
+      serviceTypeId: String(c.serviceTypeId),
       urgency: c.urgency,
       technicianId: c.technician ? String(c.technician.id) : '',
       plannedStartAt: toLocalInput(c.plannedStartAt),
@@ -169,28 +146,26 @@ function WorkOrderForm({
         name: t.name,
         description: t.description ?? '',
       })),
-      followerIds: c.followers.map((f) => String(f.id)),
       statusChange: '',
       reason: '',
     },
   })
   // keyName 'key': the rows have their own "id" (the task id).
   const tasks = useFieldArray({ control, name: 'tasks', keyName: 'key' })
-  const [group, serviceTypeId, urgency, technicianId, statusChange] = useWatch({
+  const [urgency, technicianId, statusChange] = useWatch({
     control,
-    name: ['serviceGroup', 'serviceTypeId', 'urgency', 'technicianId', 'statusChange'],
+    name: ['urgency', 'technicianId', 'statusChange'],
   })
-  const groups = [...new Set(serviceTypes.map((s) => s.groupName))]
-  const taken = TAKEN.includes(c.status)
-  const newCase = mode === 'edit' && taken && technicianId !== String(c.technician?.id ?? '')
+  const [reassigning, setReassigning] = useState(false)
 
   const onSubmit = handleSubmit((v) => {
     if (mode === 'approve' && !v.technicianId) {
       setError('technicianId', { message: 'Choose a technician.' })
       return
     }
-    if (taken && !v.technicianId) {
-      setError('technicianId', { message: 'The job was taken: choose who continues it.' })
+    // The expected due time is counted from the planned start until the work starts (meeting note 18/11).
+    if (!c.dueAt && v.urgency !== 'emergency' && !v.plannedStartAt) {
+      setError('plannedStartAt', { message: 'Choose the planned start.' })
       return
     }
     const body = {
@@ -207,24 +182,23 @@ function WorkOrderForm({
         description: t.description || null,
       })),
     }
+    // mutateAsync, not mutate's onSuccess: the refreshed case can unmount this form before such a callback runs.
+    // A failure is shown from the mutation's error below.
     if (mode === 'approve') {
-      approve.mutate(
-        { ...body, technicianId: Number(v.technicianId) },
-        { onSuccess: () => navigate(caseDetailPath(c.id), { replace: true }) },
-      )
+      approve
+        .mutateAsync({ ...body, technicianId: Number(v.technicianId) })
+        .then(() => navigate(caseDetailPath(c.id), { replace: true }))
+        .catch(() => undefined)
       return
     }
-    edit.mutate(
-      {
+    edit
+      .mutateAsync({
         ...body,
-        technicianId: v.technicianId ? Number(v.technicianId) : null,
-        followerIds: v.followerIds.map(Number),
         statusChange: v.statusChange || null,
         reason: v.reason || null,
-      },
-      // A new technician on taken work opens the case that continues this one.
-      { onSuccess: (r) => navigate(caseDetailPath(r.nextCase?.id ?? c.id), { replace: true }) },
-    )
+      })
+      .then(() => navigate(caseDetailPath(c.id), { replace: true }))
+      .catch(() => undefined)
   })
 
   return (
@@ -253,36 +227,19 @@ function WorkOrderForm({
               error={errors.description?.message}
               {...register('description')}
             />
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Select
-                label="Category"
-                placeholder="Choose…"
-                error={errors.serviceGroup?.message}
-                {...register('serviceGroup', { onChange: () => setValue('serviceTypeId', '') })}
-              >
-                {groups.map((g) => (
-                  <option key={g} value={g}>
-                    {g}
-                  </option>
-                ))}
-              </Select>
-              <Select
-                label="Problem"
-                placeholder="Choose…"
-                disabled={!group}
-                error={errors.serviceTypeId?.message}
-                {...register('serviceTypeId')}
-                value={serviceTypeId}
-              >
-                {serviceTypes
-                  .filter((s) => s.groupName === group)
-                  .map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-              </Select>
-            </div>
+            <Select
+              label="Fault category"
+              placeholder="Choose…"
+              error={errors.serviceTypeId?.message}
+              {...register('serviceTypeId')}
+            >
+              {keepsArchived && <option value={c.serviceTypeId}>{c.serviceTypeName}</option>}
+              {faults.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </Select>
             <Select
               label="Urgency"
               hint={
@@ -302,10 +259,7 @@ function WorkOrderForm({
               </Alert>
             )}
             {urgency !== 'emergency' && c.isEmergencyFlow && (
-              <Alert tone="info">
-                Not an emergency: the case goes back to the normal flow; the deadline starts with
-                the work.
-              </Alert>
+              <Alert tone="info">Not an emergency: the case goes back to the normal flow.</Alert>
             )}
             <dl className="border-rule grid gap-3 border-t pt-4 text-sm sm:grid-cols-2">
               <div>
@@ -337,37 +291,46 @@ function WorkOrderForm({
           </Section>
 
           <Section title="Who and when">
-            <TechnicianPicker
-              technicians={technicians}
-              value={technicianId}
-              onChange={(id) =>
-                setValue('technicianId', id, { shouldValidate: !!errors.technicianId })
-              }
-              caseId={c.id}
-              error={errors.technicianId?.message}
-              allowNone={mode === 'edit' && !taken}
-            />
-            {newCase && (
-              <Alert tone="notice">
-                {c.technician?.fullName} already took this job. Saving opens a new case for the new
-                technician with the unfinished tasks; this case closes with the tasks{' '}
-                {c.technician?.fullName} finished.
-              </Alert>
+            {mode === 'approve' ? (
+              <TechnicianPicker
+                technicians={technicians}
+                value={technicianId}
+                onChange={(id) =>
+                  setValue('technicianId', id, { shouldValidate: !!errors.technicianId })
+                }
+                caseId={c.id}
+                error={errors.technicianId?.message}
+              />
+            ) : (
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="text-sm">
+                  <div className="text-muted text-xs">Technician</div>
+                  {c.technician?.fullName ?? <span className="text-muted">Not assigned</span>}
+                </div>
+                {c.allowedActions.includes('reassign') && (
+                  <Button variant="secondary" onClick={() => setReassigning(true)}>
+                    {c.technician ? 'Reassign' : 'Assign a technician'}
+                  </Button>
+                )}
+              </div>
             )}
             <div className="grid gap-4 sm:grid-cols-2">
               <TextField
                 label="Planned start"
                 type="datetime-local"
-                hint="Optional. Shown in the technician's schedule."
+                hint={
+                  errors.plannedStartAt
+                    ? undefined
+                    : 'The expected due time is this plus the SLA hours of the urgency.'
+                }
+                error={errors.plannedStartAt?.message}
                 {...register('plannedStartAt')}
               />
               <TextField
                 label="Planned end"
                 type="datetime-local"
                 error={errors.plannedEndAt?.message}
-                hint={
-                  errors.plannedEndAt ? undefined : 'Not the deadline: that starts with the work.'
-                }
+                hint={errors.plannedEndAt ? undefined : 'Optional.'}
                 {...register('plannedEndAt')}
               />
             </div>
@@ -431,32 +394,6 @@ function WorkOrderForm({
             </div>
           </Section>
 
-          {mode === 'edit' && (
-            <Section title="Followers">
-              <p className="text-muted -mt-2 text-sm">
-                Other customers of the building who follow this case. They see it and are told about
-                it, but cannot act on it.
-              </p>
-              {followerOptions.length === 0 ? (
-                <p className="text-muted text-sm">No other customer in this building.</p>
-              ) : (
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {followerOptions.map((p) => (
-                    <label key={p.id} className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        value={String(p.id)}
-                        className="accent-primary size-4"
-                        {...register('followerIds')}
-                      />
-                      {p.fullName}
-                    </label>
-                  ))}
-                </div>
-              )}
-            </Section>
-          )}
-
           {mode === 'edit' && c.statusChanges.length > 0 && (
             <Section title="Status">
               <fieldset className="flex flex-col gap-2">
@@ -510,11 +447,7 @@ function WorkOrderForm({
               Cancel
             </LinkButton>
             <Button type="submit" variant="primary" loading={saving}>
-              {mode === 'approve'
-                ? 'Approve and assign'
-                : newCase
-                  ? 'Save and continue in a new case'
-                  : 'Save changes'}
+              {mode === 'approve' ? 'Approve and assign' : 'Save changes'}
             </Button>
           </div>
         </Card>
@@ -545,12 +478,13 @@ function WorkOrderForm({
             <CardHeader title="What happens next" />
             <p className="text-muted text-sm">
               {mode === 'approve'
-                ? 'The technician is told and accepts or declines the job. The deadline starts when the work starts.'
-                : 'The technician is told about the changes. A new technician on a job that was already taken continues it in a new case linked to this one.'}
+                ? 'The technician is told and accepts or declines the job.'
+                : 'The technician is told about the changes. Reassigning a job that was already accepted continues it in a new case linked to this one.'}
             </p>
           </Card>
         </div>
       </form>
+      <ReassignDialog caseDetail={c} open={reassigning} onClose={() => setReassigning(false)} />
     </div>
   )
 }

@@ -1,75 +1,140 @@
-import { zodResolver } from '@hookform/resolvers/zod'
-import { useState } from 'react'
-import { useForm } from 'react-hook-form'
-import { Link } from 'react-router'
-import { paths } from '@/app/paths'
+import { useState, type ReactNode } from 'react'
+import { Link, useSearchParams } from 'react-router'
+import { assetChangeDraftPath, paths } from '@/app/paths'
 import { useAuth } from '@/features/auth'
 import {
-  Alert,
-  Button,
-  Card,
-  ConfirmDialog,
-  Dialog,
-  DialogActions,
   EmptyBlock,
   ErrorBlock,
+  Icon,
+  LinkButton,
   LoadingBlock,
   PageHeader,
-  TextField,
+  SearchInput,
+  SortHeader,
+  sortRows,
+  useTableSort,
+  type SortState,
 } from '@/shared/ui'
-import { facilitiesApi } from '../api'
-import { useFacilityMutation, useFacilityTree } from '../hooks'
-import {
-  buildingSchema,
-  floorSchema,
-  roomSchema,
-  type BuildingFormValues,
-  type FloorFormValues,
-  type RoomFormValues,
-} from '../schemas'
-import type { BuildingNode, FloorNode, RoomNode } from '../types'
+import { useFacilityTree } from '../hooks'
+import type { BuildingNode, RoomNode } from '../types'
 
-/** What the open dialog edits. "parentId" = the building of a new floor / the floor of a new room. */
-type Editing =
-  | { kind: 'building'; item?: BuildingNode }
-  | { kind: 'floor'; parentId: number; item?: FloorNode }
-  | { kind: 'room'; parentId: number; item?: RoomNode }
-  | { kind: 'delete'; what: 'building' | 'floor' | 'room'; id: number; label: string }
+const roomsOf = (b: BuildingNode) => b.floors.flatMap((f) => f.rooms)
+const assetsIn = (rooms: RoomNode[]) => rooms.reduce((n, r) => n + r.assetCount, 0)
+const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`
 
 /**
- * AST-01 Facility tree: building -> floor -> room (three levels, Screen Catalog rule 15). Staff and managers read
- * their own buildings; only the Administrator adds, renames and deletes. A place that still holds something is never
- * deleted (BR-10).
+ * AST-01 Buildings, one level at a time (meeting note 18/11): the buildings, then the floors of the chosen building,
+ * then the rooms of the chosen floor. The level is in the URL, so Back and a reload keep it. Read only: staff and
+ * managers see their own buildings, the Administrator all. Buildings, floors, rooms and assets change only through a
+ * staff change list a manager approves (meeting note 18/11, tree version 24/11): the staff get "Propose changes".
  */
 export function FacilityTreePage() {
   const { user } = useAuth()
   const tree = useFacilityTree()
-  const [editing, setEditing] = useState<Editing | null>(null)
-  const isAdmin = user?.role === 'admin'
-  const close = () => setEditing(null)
+  const [params] = useSearchParams()
+  const [search, setSearch] = useState('')
+  const { sort, toggle } = useTableSort<'name'>()
+  const isStaff = user?.role === 'staff'
 
   const buildings = tree.data ?? []
-  const rooms = buildings.flatMap((b) => b.floors.flatMap((f) => f.rooms))
-  const assets = rooms.reduce((n, r) => n + r.assetCount, 0)
-  const vacant = rooms.filter((r) => !r.isCommonArea && r.tenants.length === 0).length
+  const building = buildings.find((b) => String(b.id) === params.get('building'))
+  const floor = building?.floors.find((f) => String(f.id) === params.get('floor'))
+
+  // The search and the order apply to the level on screen.
+  const level = floor?.id ?? building?.id ?? 0
+  const [seenLevel, setSeenLevel] = useState(level)
+  if (seenLevel !== level) {
+    setSeenLevel(level)
+    setSearch('')
+  }
+  const words = search.trim().toLowerCase()
+  const pick = <T,>(rows: readonly T[], name: (row: T) => string) =>
+    sortRows(
+      rows.filter((r) => !words || name(r).toLowerCase().includes(words)),
+      sort,
+      { name },
+    )
+  const shownRooms = pick(floor?.rooms ?? [], (r) => r.roomNumber)
+  const shownFloors = pick(building?.floors ?? [], (f) => f.name)
+  const shownBuildings = pick(buildings, (b) => b.name)
+  const noMatch = <EmptyBlock>{`Nothing matches “${search}”.`}</EmptyBlock>
+  const tableSort = { sort, onSort: toggle }
+
+  const crumbs = building && (
+    <nav aria-label="Location" className="flex flex-wrap items-center gap-1">
+      <Link to={paths.facilities} className="hover:text-ink">
+        Buildings
+      </Link>
+      {floor && (
+        <>
+          <Icon name="back" className="size-3.5 rotate-180" />
+          <Link to={`${paths.facilities}?building=${building.id}`} className="hover:text-ink">
+            {building.name}
+          </Link>
+        </>
+      )}
+    </nav>
+  )
+
+  const header = floor ? (
+    <PageHeader
+      above={crumbs}
+      title={floor.name}
+      description={`${building!.name}, ${count(floor.rooms.length, 'room')}, ${count(assetsIn(floor.rooms), 'asset')} in service`}
+      actions={
+        isStaff && (
+          <LinkButton
+            variant="primary"
+            to={assetChangeDraftPath({ buildingId: building!.id, floorId: floor.id })}
+          >
+            Propose changes
+          </LinkButton>
+        )
+      }
+    />
+  ) : building ? (
+    <PageHeader
+      above={crumbs}
+      title={building.name}
+      description={`${building.address ?? 'No address'}, ${count(building.floors.length, 'floor')}, ${count(roomsOf(building).length, 'room')}`}
+      actions={
+        isStaff && (
+          <LinkButton variant="primary" to={assetChangeDraftPath({ buildingId: building.id })}>
+            Propose changes
+          </LinkButton>
+        )
+      }
+    />
+  ) : (
+    <PageHeader
+      title="Buildings"
+      description={
+        tree.data
+          ? `${count(buildings.length, 'building')}, ${count(buildings.flatMap(roomsOf).length, 'room')}, ${count(assetsIn(buildings.flatMap(roomsOf)), 'asset')} in service`
+          : undefined
+      }
+      actions={
+        isStaff && (
+          <LinkButton variant="primary" to={assetChangeDraftPath()}>
+            Propose changes
+          </LinkButton>
+        )
+      }
+    />
+  )
 
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader
-        title="Buildings"
-        description={
-          tree.data
-            ? `${buildings.length} ${buildings.length === 1 ? 'building' : 'buildings'}, ${rooms.length} rooms, ${assets} assets in service, ${vacant} ${vacant === 1 ? 'room' : 'rooms'} without a tenant`
-            : undefined
-        }
-        actions={
-          isAdmin && (
-            <Button variant="primary" onClick={() => setEditing({ kind: 'building' })}>
-              New building
-            </Button>
-          )
-        }
-      />
+      {header}
+
+      {tree.data && buildings.length > 0 && (
+        <SearchInput
+          label={`Search ${floor ? 'rooms' : building ? 'floors' : 'buildings'}`}
+          placeholder={`Search ${floor ? 'rooms' : building ? 'floors' : 'buildings'}`}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      )}
 
       {tree.isPending ? (
         <LoadingBlock rows={6} />
@@ -79,315 +144,111 @@ export function FacilityTreePage() {
           message={tree.error.message}
           onRetry={() => void tree.refetch()}
         />
+      ) : floor ? (
+        floor.rooms.length === 0 ? (
+          <EmptyBlock>No room on this floor yet.</EmptyBlock>
+        ) : shownRooms.length === 0 ? (
+          noMatch
+        ) : (
+          <LevelTable heads={['Room', 'Assets']} actions={false} {...tableSort}>
+            {shownRooms.map((r) => (
+              <tr key={r.id} className="border-rule border-b last:border-0">
+                <td className="py-3 pr-4 font-medium">{r.roomNumber}</td>
+                <td className="py-3 pr-4 text-right tabular-nums">
+                  <Link
+                    to={`${paths.assets}?roomId=${r.id}`}
+                    className="text-muted underline-offset-2 hover:underline"
+                  >
+                    {count(r.assetCount, 'asset')}
+                  </Link>
+                </td>
+              </tr>
+            ))}
+          </LevelTable>
+        )
+      ) : building ? (
+        building.floors.length === 0 ? (
+          <EmptyBlock>No floor in this building yet.</EmptyBlock>
+        ) : shownFloors.length === 0 ? (
+          noMatch
+        ) : (
+          <LevelTable heads={['Floor', 'Rooms and assets']} actions={false} {...tableSort}>
+            {shownFloors.map((f) => (
+              <tr key={f.id} className="border-rule border-b last:border-0">
+                <td className="py-3 pr-4">
+                  <Link
+                    to={`${paths.facilities}?building=${building.id}&floor=${f.id}`}
+                    className="text-ink font-medium underline-offset-2 hover:underline"
+                  >
+                    {f.name}
+                  </Link>
+                </td>
+                <td className="text-muted py-3 pr-4 text-right tabular-nums">
+                  {count(f.rooms.length, 'room')}, {count(assetsIn(f.rooms), 'asset')}
+                </td>
+              </tr>
+            ))}
+          </LevelTable>
+        )
       ) : buildings.length === 0 ? (
         <EmptyBlock>
-          {isAdmin ? 'No building yet. Add the first one.' : 'No building is assigned to you.'}
+          {user?.role === 'admin'
+            ? 'No building yet: the staff add them in a change list.'
+            : 'No building is assigned to you.'}
         </EmptyBlock>
+      ) : shownBuildings.length === 0 ? (
+        noMatch
       ) : (
-        buildings.map((b) => (
-          <Card key={b.id} padding="none">
-            <div className="border-rule flex flex-wrap items-start justify-between gap-3 border-b px-5 py-4">
-              <div>
-                <h2 className="text-section font-semibold">{b.name}</h2>
-                <p className="text-muted text-[13px]">{b.address ?? 'No address'}</p>
-              </div>
-              {isAdmin && (
-                <div className="flex gap-1">
-                  <Button
-                    variant="ghost"
-                    onClick={() => setEditing({ kind: 'floor', parentId: b.id })}
-                  >
-                    Add floor
-                  </Button>
-                  <Button variant="ghost" onClick={() => setEditing({ kind: 'building', item: b })}>
-                    Edit
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    onClick={() =>
-                      setEditing({ kind: 'delete', what: 'building', id: b.id, label: b.name })
-                    }
-                  >
-                    Delete
-                  </Button>
-                </div>
-              )}
-            </div>
-            {b.floors.length === 0 ? (
-              <p className="text-muted px-5 py-4 text-sm">No floor yet.</p>
-            ) : (
-              b.floors.map((f) => (
-                <section key={f.id} className="border-rule border-b px-5 py-3 last:border-0">
-                  <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-sm font-medium">{f.name}</h3>
-                    {isAdmin && (
-                      <div className="flex gap-1">
-                        <Button
-                          variant="ghost"
-                          onClick={() => setEditing({ kind: 'room', parentId: f.id })}
-                        >
-                          Add room
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          onClick={() => setEditing({ kind: 'floor', parentId: b.id, item: f })}
-                        >
-                          Rename
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          onClick={() =>
-                            setEditing({ kind: 'delete', what: 'floor', id: f.id, label: f.name })
-                          }
-                        >
-                          Delete
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                  {f.rooms.length === 0 ? (
-                    <p className="text-muted py-2 text-sm">No room yet.</p>
-                  ) : (
-                    <ul className="flex flex-col">
-                      {f.rooms.map((r) => (
-                        <li
-                          key={r.id}
-                          className="flex flex-wrap items-center justify-between gap-2 py-1.5 text-sm"
-                        >
-                          <span className="min-w-0">
-                            <span className="font-medium">{r.roomNumber}</span>
-                            <span className="text-muted">
-                              {' · '}
-                              {r.isCommonArea
-                                ? 'Common area'
-                                : r.tenants.length > 0
-                                  ? r.tenants.join(', ')
-                                  : 'No tenant'}
-                            </span>
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Link
-                              to={`${paths.assets}?roomId=${r.id}`}
-                              className="text-muted px-2 tabular-nums underline-offset-2 hover:underline"
-                            >
-                              {r.assetCount} {r.assetCount === 1 ? 'asset' : 'assets'}
-                            </Link>
-                            {isAdmin && (
-                              <>
-                                <Button
-                                  variant="ghost"
-                                  className="text-muted! hover:text-ink!"
-                                  onClick={() =>
-                                    setEditing({ kind: 'room', parentId: f.id, item: r })
-                                  }
-                                >
-                                  Edit
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  className="text-muted! hover:text-negative!"
-                                  onClick={() =>
-                                    setEditing({
-                                      kind: 'delete',
-                                      what: 'room',
-                                      id: r.id,
-                                      label: r.roomNumber,
-                                    })
-                                  }
-                                >
-                                  Delete
-                                </Button>
-                              </>
-                            )}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </section>
-              ))
-            )}
-          </Card>
-        ))
-      )}
-
-      {editing?.kind === 'building' && <BuildingDialog item={editing.item} onClose={close} />}
-      {editing?.kind === 'floor' && (
-        <FloorDialog buildingId={editing.parentId} item={editing.item} onClose={close} />
-      )}
-      {editing?.kind === 'room' && (
-        <RoomDialog floorId={editing.parentId} item={editing.item} onClose={close} />
-      )}
-      {editing?.kind === 'delete' && (
-        <DeleteDialog what={editing.what} id={editing.id} label={editing.label} onClose={close} />
+        <LevelTable heads={['Building', 'Floors, rooms and assets']} actions={false} {...tableSort}>
+          {shownBuildings.map((b) => (
+            <tr key={b.id} className="border-rule border-b last:border-0">
+              <td className="py-3 pr-4">
+                <Link
+                  to={`${paths.facilities}?building=${b.id}`}
+                  className="text-ink font-medium underline-offset-2 hover:underline"
+                >
+                  {b.name}
+                </Link>
+                <div className="text-muted mt-0.5 text-[13px]">{b.address ?? 'No address'}</div>
+              </td>
+              <td className="text-muted py-3 pr-4 text-right tabular-nums">
+                {count(b.floors.length, 'floor')}, {count(roomsOf(b).length, 'room')},{' '}
+                {count(assetsIn(roomsOf(b)), 'asset')}
+              </td>
+            </tr>
+          ))}
+        </LevelTable>
       )}
     </div>
   )
 }
 
-function BuildingDialog({ item, onClose }: { item?: BuildingNode; onClose: () => void }) {
-  const save = useFacilityMutation((v: BuildingFormValues) =>
-    item
-      ? facilitiesApi.updateBuilding({ id: item.id, name: v.name, address: v.address || null })
-      : facilitiesApi.createBuilding({ name: v.name, address: v.address || null }),
-  )
-  const { register, handleSubmit, formState } = useForm<BuildingFormValues>({
-    resolver: zodResolver(buildingSchema),
-    defaultValues: { name: item?.name ?? '', address: item?.address ?? '' },
-  })
-  return (
-    <Dialog open onClose={onClose} title={item ? 'Edit building' : 'New building'}>
-      <form
-        onSubmit={handleSubmit((v) => save.mutate(v, { onSuccess: onClose }))}
-        noValidate
-        className="flex flex-col gap-4"
-      >
-        <TextField label="Name" error={formState.errors.name?.message} {...register('name')} />
-        <TextField
-          label="Address"
-          hint="Optional"
-          error={formState.errors.address?.message}
-          {...register('address')}
-        />
-        {save.error && <Alert>{save.error.message}</Alert>}
-        <DialogActions>
-          <Button variant="ghost" onClick={onClose}>
-            Back
-          </Button>
-          <Button type="submit" variant="primary" loading={save.isPending}>
-            Save
-          </Button>
-        </DialogActions>
-      </form>
-    </Dialog>
-  )
-}
-
-function FloorDialog({
-  buildingId,
-  item,
-  onClose,
+/** The same table at each of the three levels: a name, what it holds, the Administrator's building actions. */
+function LevelTable({
+  heads,
+  actions,
+  sort,
+  onSort,
+  children,
 }: {
-  buildingId: number
-  item?: FloorNode
-  onClose: () => void
+  heads: [string, string]
+  actions: boolean
+  sort: SortState<'name'> | null
+  onSort: (key: 'name') => void
+  children: ReactNode
 }) {
-  const save = useFacilityMutation((v: FloorFormValues) =>
-    item
-      ? facilitiesApi.updateFloor({ id: item.id, buildingId, floorNumber: v.floorNumber })
-      : facilitiesApi.createFloor({ buildingId, floorNumber: v.floorNumber }),
-  )
-  const { register, handleSubmit, formState } = useForm<FloorFormValues>({
-    resolver: zodResolver(floorSchema),
-    defaultValues: { floorNumber: item?.floorNumber ?? '' },
-  })
   return (
-    <Dialog open onClose={onClose} title={item ? 'Rename floor' : 'New floor'}>
-      <form
-        onSubmit={handleSubmit((v) => save.mutate(v, { onSuccess: onClose }))}
-        noValidate
-        className="flex flex-col gap-4"
-      >
-        <TextField
-          label="Floor number"
-          hint="G for ground, B1 for the first basement, then 1, 2, 3..."
-          error={formState.errors.floorNumber?.message}
-          {...register('floorNumber')}
-        />
-        {save.error && <Alert>{save.error.message}</Alert>}
-        <DialogActions>
-          <Button variant="ghost" onClick={onClose}>
-            Back
-          </Button>
-          <Button type="submit" variant="primary" loading={save.isPending}>
-            Save
-          </Button>
-        </DialogActions>
-      </form>
-    </Dialog>
-  )
-}
-
-function RoomDialog({
-  floorId,
-  item,
-  onClose,
-}: {
-  floorId: number
-  item?: RoomNode
-  onClose: () => void
-}) {
-  const save = useFacilityMutation((v: RoomFormValues) =>
-    item
-      ? facilitiesApi.updateRoom({ id: item.id, floorId, ...v })
-      : facilitiesApi.createRoom({ floorId, ...v }),
-  )
-  const { register, handleSubmit, formState } = useForm<RoomFormValues>({
-    resolver: zodResolver(roomSchema),
-    defaultValues: {
-      roomNumber: item?.roomNumber ?? '',
-      isCommonArea: item?.isCommonArea ?? false,
-    },
-  })
-  return (
-    <Dialog open onClose={onClose} title={item ? 'Edit room' : 'New room'}>
-      <form
-        onSubmit={handleSubmit((v) => save.mutate(v, { onSuccess: onClose }))}
-        noValidate
-        className="flex flex-col gap-4"
-      >
-        <TextField
-          label="Room number or name"
-          hint="501 for a rented room, Lobby or Restroom G for a common area"
-          error={formState.errors.roomNumber?.message}
-          {...register('roomNumber')}
-        />
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" className="accent-primary size-4" {...register('isCommonArea')} />
-          Common area (every tenant of the building may report problems here)
-        </label>
-        {save.error && <Alert>{save.error.message}</Alert>}
-        <DialogActions>
-          <Button variant="ghost" onClick={onClose}>
-            Back
-          </Button>
-          <Button type="submit" variant="primary" loading={save.isPending}>
-            Save
-          </Button>
-        </DialogActions>
-      </form>
-    </Dialog>
-  )
-}
-
-const DELETE_API = {
-  building: facilitiesApi.deleteBuilding,
-  floor: facilitiesApi.deleteFloor,
-  room: facilitiesApi.deleteRoom,
-}
-
-function DeleteDialog({
-  what,
-  id,
-  label,
-  onClose,
-}: {
-  what: 'building' | 'floor' | 'room'
-  id: number
-  label: string
-  onClose: () => void
-}) {
-  const remove = useFacilityMutation(DELETE_API[what])
-  return (
-    <ConfirmDialog
-      open
-      onClose={onClose}
-      title={`Delete ${what}`}
-      description={`Delete ${label}? Only an empty ${what} can be deleted.`}
-      confirmLabel="Delete"
-      onConfirm={() => remove.mutate({ id }, { onSuccess: onClose })}
-      loading={remove.isPending}
-      error={remove.error?.message}
-    />
+    <table className="w-full text-left text-sm">
+      <thead>
+        <tr className="border-border text-muted border-b text-xs">
+          <SortHeader sortKey="name" sort={sort} onSort={onSort}>
+            {heads[0]}
+          </SortHeader>
+          <th className="h-9 pr-4 text-right font-normal">{heads[1]}</th>
+          {actions && <th className="h-9" />}
+        </tr>
+      </thead>
+      <tbody>{children}</tbody>
+    </table>
   )
 }

@@ -11,7 +11,13 @@ export const STATUS_LABELS: Record<AccountStatus, string> = {
 
 /** DLG-16 actions; the server says which ones the Administrator may use on this account. */
 export type AccountAction =
-  'edit' | 'change_role' | 'deactivate' | 'reactivate' | 'reset_password' | 'unlock'
+  | 'edit'
+  | 'deactivate'
+  | 'reactivate'
+  | 'reset_password'
+  | 'unlock'
+  /** Only an account with no data (meeting note 18/11). */
+  | 'delete'
 
 /** ADM-02 row. ERD: Account (+ NOT IN ERD v5: fullName, email, status, lock fields). */
 export interface AccountSummary {
@@ -25,13 +31,6 @@ export interface AccountSummary {
   isLocked: boolean
   lastLoginAt: string | null
   createdAt: string
-}
-
-export interface RoomRef {
-  id: number
-  buildingName: string
-  floorName: string
-  roomName: string
 }
 
 export interface SpecialtyRef {
@@ -49,8 +48,6 @@ export interface AssignedBuilding {
 export interface AccountDetail extends AccountSummary {
   mustChangePassword: boolean
   lockedUntil: string | null
-  /** Customer only. ERD: Customers + NOT IN ERD v5 RoomId. */
-  room: RoomRef | null
   /** Technician only. ERD: Technicians.HourlyRate */
   hourlyRate: number | null
   /** Technician only. ERD: TechnicianSpecialty */
@@ -73,6 +70,8 @@ export interface AccountListFilters {
   role?: Role
   status?: AccountStatus
   search?: string
+  /** Newest or oldest sign-in first; accounts that never signed in come last. */
+  lastSignIn?: 'asc' | 'desc'
   page: number
 }
 
@@ -83,14 +82,13 @@ export interface BuildingAssignmentRequest {
 
 /** Only the fields of the account's role are used by the server. */
 export interface RoleDetailsRequest {
-  roomId: number | null
   hourlyRate: number | null
   specialtyIds: number[]
   buildings: BuildingAssignmentRequest[]
 }
 
+/** Meeting note 18/11: no username to type (the server makes one from the e-mail). */
 export interface CreateAccountRequest extends RoleDetailsRequest {
-  username: string
   fullName: string
   email: string | null
   phoneNumber: string | null
@@ -103,14 +101,17 @@ export interface UpdateAccountRequest extends RoleDetailsRequest {
   phoneNumber: string | null
 }
 
-export interface ChangeRoleRequest extends RoleDetailsRequest {
-  role: Role
-}
-
+/** Create: the temporary password goes by e-mail; it is here only when the e-mail could not be sent. */
 export interface AccountWithPassword {
   account: AccountDetail
-  /** Shown once, never stored readable by the server. */
-  temporaryPassword: string
+  emailSent: boolean
+  temporaryPassword: string | null
+}
+
+/** Reset password: the same rule. */
+export interface TemporaryPasswordResult {
+  emailSent: boolean
+  temporaryPassword: string | null
 }
 
 export interface RoleCount {
@@ -137,9 +138,4 @@ export interface AdminOverview {
 export interface BuildingOption {
   id: number
   name: string
-  floors: {
-    id: number
-    name: string
-    rooms: { id: number; name: string; isCommonArea: boolean }[]
-  }[]
 }

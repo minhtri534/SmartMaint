@@ -12,7 +12,22 @@ public sealed class CaseValidatorTests
     private static readonly IReadOnlyList<string> Photo = ["data:image/jpeg;base64,AAAA"];
 
     private static CreateCaseRequest Create(string title = "Air conditioner is warm", string? description = null, IReadOnlyList<string>? photos = null) =>
-        new(title, description ?? new string('d', 20), 1, 1, null, photos);
+        new(title, description ?? new string('d', 20), 1, 1, 1, photos);
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Abnormal)]
+    public void CreateCase_WithoutAnAsset_IsInvalid() =>
+        Assert.False(new CreateCaseRequestValidator().Validate(Create() with { AssetId = null }).IsValid);
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Abnormal)]
+    public void ApproveCase_WithoutAPlannedStart_IsInvalid() =>
+        Assert.False(new ApproveCaseRequestValidator().Validate(new ApproveCaseRequest(CasePriority.Normal, 1)).IsValid);
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Boundary)]
+    public void ApproveCase_EmergencyWithoutAPlannedStart_IsValid() =>
+        Assert.True(new ApproveCaseRequestValidator().Validate(new ApproveCaseRequest(CasePriority.Emergency, 1)).IsValid);
 
     [Theory]
     [Trait(TestType.Key, TestType.Boundary)]
@@ -55,7 +70,7 @@ public sealed class CaseValidatorTests
     {
         var validator = new ApproveCaseRequestValidator();
         Assert.False(validator.Validate(new ApproveCaseRequest(CasePriority.Normal, 1, ServiceTypeId: 0)).IsValid);
-        Assert.True(validator.Validate(new ApproveCaseRequest(CasePriority.Normal, 1)).IsValid);
+        Assert.True(validator.Validate(new ApproveCaseRequest(CasePriority.Normal, 1, PlannedStartAt: Clock.GetUtcNow())).IsValid);
     }
 
     [Fact]
@@ -79,7 +94,7 @@ public sealed class CaseValidatorTests
     {
         var validator = new ApproveCaseRequestValidator();
         Assert.False(validator.Validate(new ApproveCaseRequest(CasePriority.Normal, 1, Tasks: [new TaskLineRequest(null, "x", null)])).IsValid);
-        Assert.True(validator.Validate(new ApproveCaseRequest(CasePriority.Normal, 1, Tasks: [new TaskLineRequest(null, "xy", null)])).IsValid);
+        Assert.True(validator.Validate(new ApproveCaseRequest(CasePriority.Normal, 1, PlannedStartAt: Clock.GetUtcNow(), Tasks: [new TaskLineRequest(null, "xy", null)])).IsValid);
         Assert.False(validator.Validate(new ApproveCaseRequest(CasePriority.Normal, 1, Tasks: [new TaskLineRequest(null, new string('t', 201), null)])).IsValid);
     }
 
@@ -87,7 +102,7 @@ public sealed class CaseValidatorTests
     [Trait(TestType.Key, TestType.Abnormal)]
     public void EditCase_ReopenWithoutReason_IsInvalid()
     {
-        var edit = new EditCaseRequest(CasePriority.Normal, 1, 1, null, null, [], "Air conditioner is warm",
+        var edit = new EditCaseRequest(CasePriority.Normal, 1, null, null, [], "Air conditioner is warm",
             "The AC blows warm air since this morning.", StatusChange: EditStatusChange.Reopen);
         var validator = new EditCaseRequestValidator();
         Assert.False(validator.Validate(edit).IsValid);

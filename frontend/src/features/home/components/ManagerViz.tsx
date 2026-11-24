@@ -11,7 +11,7 @@ import { Link } from 'react-router'
 /*
  * Manager home pieces (17/11): a manager reads the whole picture, read only (BR-12). Throughput shows whether the
  * team keeps up (cases in vs cases done, 12 weeks, as two areas); the league ranks the buildings; the emergency
- * strip shows how fast the team reacts at each of the three F4 milestones.
+ * strip shows how fast the team reacts at each F4 milestone.
  */
 
 /** Catmull-Rom through the points, as a smooth SVG path (x, y in 0..100). */
@@ -228,7 +228,6 @@ export function EmergencyResponse({ e }: { e: Overview['emergency'] }) {
   const reduce = useReducedMotion()
   const steps: { icon: IconName; label: string; value: string }[] = [
     { icon: 'bell', label: 'Acknowledged', value: minutes(e.avgAcknowledgeMinutes) },
-    { icon: 'shield', label: 'Made safe', value: minutes(e.avgMadeSafeMinutes) },
     {
       icon: 'checklist',
       label: 'Fixed',
@@ -240,19 +239,19 @@ export function EmergencyResponse({ e }: { e: Overview['emergency'] }) {
       <div className="flex items-baseline justify-between">
         <span className="text-[26px] leading-8 font-semibold tabular-nums">{e.count}</span>
         <span className="text-muted text-xs">
-          emergencies · {e.downgraded} downgraded · {e.merged} merged
+          emergencies · {e.downgraded} lowered to normal urgency · {e.merged} duplicates
         </span>
       </div>
       <div className="relative">
-        <div className="bg-rule absolute top-5 right-[16%] left-[16%] h-1 rounded-full" />
+        <div className="bg-rule absolute top-5 right-1/4 left-1/4 h-1 rounded-full" />
         <motion.div
-          className="bg-negative absolute top-5 left-[16%] h-1 origin-left rounded-full"
-          style={{ width: '68%' }}
+          className="bg-negative absolute top-5 left-1/4 h-1 origin-left rounded-full"
+          style={{ width: '50%' }}
           initial={reduce ? false : { scaleX: 0 }}
           animate={{ scaleX: 1 }}
           transition={{ duration: 1, ease: EASE_SNAP, delay: 0.3 }}
         />
-        <ol className="relative grid grid-cols-3">
+        <ol className="relative grid grid-cols-2">
           {steps.map((s, i) => (
             <motion.li
               key={s.label}

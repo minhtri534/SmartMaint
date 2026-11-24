@@ -99,11 +99,10 @@ public abstract class Account : AuditableEntity
     /// <paramref name="roomId"/> is required for a customer and ignored for the other roles.
     /// </summary>
     public static Account New(
-        UserRole role, string username, string fullName, string passwordHash, bool mustChangePassword, long? roomId) =>
+        UserRole role, string username, string fullName, string passwordHash, bool mustChangePassword) =>
         role switch
         {
-            UserRole.Customer => new Customer(username, fullName, passwordHash, mustChangePassword,
-                roomId ?? throw new ArgumentException("A customer needs a room.", nameof(roomId))),
+            UserRole.Customer => new Customer(username, fullName, passwordHash, mustChangePassword),
             UserRole.Staff => new Staff(username, fullName, passwordHash, mustChangePassword),
             UserRole.Technician => new Technician(username, fullName, passwordHash, mustChangePassword),
             UserRole.Manager => new Manager(username, fullName, passwordHash, mustChangePassword),

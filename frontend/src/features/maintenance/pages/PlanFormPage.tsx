@@ -1,5 +1,12 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useForm, useWatch } from 'react-hook-form'
+import {
+  useFieldArray,
+  useForm,
+  useWatch,
+  type Control,
+  type FieldErrors,
+  type UseFormRegister,
+} from 'react-hook-form'
 import { Link, useNavigate, useParams } from 'react-router'
 import { paths, planDetailPath } from '@/app/paths'
 import {
@@ -13,6 +20,7 @@ import {
   LoadingBlock,
   PageHeader,
   Select,
+  TextArea,
   TextField,
 } from '@/shared/ui'
 import { maintenanceApi } from '../api'
@@ -23,7 +31,7 @@ import {
   usePlanAssets,
   useTechnicianOptions,
 } from '../hooks'
-import { planSchema, type PlanFormValues } from '../schemas'
+import { planSchema, type PlanFormValues, type TriggerFormValues } from '../schemas'
 import {
   FREQUENCY_LABELS,
   FREQUENCY_UNITS,
@@ -40,10 +48,21 @@ const URGENCIES = [
   ['low', 'Low'],
 ] as const
 
+const NEW_TRIGGER: TriggerFormValues = {
+  triggerId: '',
+  frequency: '1',
+  frequencyType: 'month',
+  leadDays: '3',
+  startDate: '',
+  endDate: '',
+  technicianId: '',
+  assetIds: [],
+}
+
 /**
- * PM-02 New / edit maintenance plan (Staff). One checklist on assets of one building; every asset gets the same
- * technician and first due day here. Saving sends the plan to the building manager for approval (E10), also after an
- * edit of a running plan.
+ * PM-02 New / edit maintenance plan (Staff), like UpKeep (meeting note 18/11): one work order template, then one or
+ * more triggers, each with its schedule, its end day and its assets (one building per plan). Saving sends the plan to
+ * the building manager for approval (E10); on a running plan, moving only end days keeps it running (extending it).
  */
 export function PlanFormPage() {
   const id = useParams().id
@@ -87,7 +106,7 @@ function PlanForm({
   const save = useMaintenanceMutation(({ id, ...body }: { id: number | null } & PlanRequest) =>
     id === null ? maintenanceApi.createPlan(body) : maintenanceApi.updatePlan({ id, ...body }),
   )
-  const first = plan?.assets[0]
+  const approved = plan?.status === 'active' || plan?.status === 'paused'
 
   const {
     register,
@@ -97,37 +116,43 @@ function PlanForm({
   } = useForm<PlanFormValues>({
     resolver: zodResolver(planSchema),
     defaultValues: {
-      frequency: String(plan?.frequency ?? 1),
-      frequencyType: plan?.frequencyType ?? 'month',
-      leadDays: String(plan?.leadDays ?? 3),
+      name: plan?.name ?? '',
+      description: plan?.description ?? '',
       checklistId: plan ? String(plan.checklistId) : '',
       estimatedHours: plan?.estimatedHours ? String(plan.estimatedHours) : '',
       priority: plan?.priority ?? 'normal',
-      startDate: first?.startDate ?? '',
-      endDate: first?.endDate ?? '',
-      technicianId: first?.technician ? String(first.technician.id) : '',
-      assetIds: plan?.assets.map((a) => String(a.assetId)) ?? [],
+      triggers: plan?.triggers.map((t) => ({
+        triggerId: String(t.id),
+        frequency: String(t.frequency),
+        frequencyType: t.frequencyType,
+        leadDays: String(t.leadDays),
+        startDate: t.startDate,
+        endDate: t.endDate ?? '',
+        technicianId: t.assets[0]?.technician ? String(t.assets[0].technician.id) : '',
+        assetIds: t.assets.map((a) => String(a.assetId)),
+      })) ?? [NEW_TRIGGER],
     },
   })
-
-  const picked = useWatch({ control, name: 'assetIds' })
-  const options = assets.data ?? []
-  const pickedBuilding = options.find((a) => picked.includes(String(a.id)))?.location.buildingId
-  const byBuilding = groupByBuilding(options)
+  const triggers = useFieldArray({ control, name: 'triggers' })
 
   const onSubmit = handleSubmit((v) => {
-    const body = {
-      frequency: Number(v.frequency),
-      frequencyType: v.frequencyType,
-      leadDays: Number(v.leadDays),
+    const body: PlanRequest = {
+      name: v.name.trim(),
+      description: v.description.trim() === '' ? null : v.description.trim(),
       checklistId: Number(v.checklistId),
       estimatedHours: v.estimatedHours === '' ? null : Number(v.estimatedHours),
       priority: v.priority,
-      assets: v.assetIds.map((assetId) => ({
-        assetId: Number(assetId),
-        technicianId: v.technicianId === '' ? null : Number(v.technicianId),
-        startDate: v.startDate,
-        endDate: v.endDate === '' ? null : v.endDate,
+      triggers: v.triggers.map((t) => ({
+        id: t.triggerId === '' ? null : Number(t.triggerId),
+        frequency: Number(t.frequency),
+        frequencyType: t.frequencyType,
+        leadDays: Number(t.leadDays),
+        startDate: t.startDate,
+        endDate: t.endDate === '' ? null : t.endDate,
+        assets: t.assetIds.map((assetId) => ({
+          assetId: Number(assetId),
+          technicianId: t.technicianId === '' ? null : Number(t.technicianId),
+        })),
       })),
     }
     save.mutate(
@@ -149,53 +174,46 @@ function PlanForm({
             {plan ? plan.name : 'Maintenance plans'}
           </Link>
         }
-        title={plan ? 'Edit plan' : 'New maintenance plan'}
-        description="The building manager approves it before any work order is made."
+        title={plan ? (plan.expired ? 'Extend or edit plan' : 'Edit plan') : 'New maintenance plan'}
+        description={
+          approved
+            ? 'Moving only end days keeps the plan running. Any other change sends it back to the building manager.'
+            : 'The building manager approves it before any work order is made.'
+        }
       />
 
       <FormSection
-        title="What and how often"
-        description="Which checklist the technician follows, and when a work order is made for each asset."
+        title="Work order"
+        description="What every work order of this plan gets, whichever trigger makes it."
       >
         <div className="flex flex-col gap-4">
-          <Select
-            label="Checklist *"
-            placeholder="Choose…"
-            error={errors.checklistId?.message}
-            {...register('checklistId')}
-          >
-            {checklists.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name} ({c.tasks.length} items)
-              </option>
-            ))}
-          </Select>
-          <div className="grid gap-4 sm:grid-cols-4">
-            <TextField
-              label="Every *"
-              type="number"
-              min="1"
-              max="365"
-              inputMode="numeric"
-              error={errors.frequency?.message}
-              {...register('frequency')}
-            />
-            <Select label="Unit" {...register('frequencyType')}>
-              {FREQUENCY_UNITS.map((u) => (
-                <option key={u} value={u}>
-                  {FREQUENCY_LABELS[u]}
+          <TextField
+            label="Plan name *"
+            placeholder="e.g. Split AC service · Tower A"
+            hint="Work orders are titled “Preventive: name”."
+            error={errors.name?.message}
+            {...register('name')}
+          />
+          <TextArea
+            label="Note for the technician"
+            placeholder="e.g. Ask the tenant before entering; bring spare filters."
+            rows={2}
+            error={errors.description?.message}
+            {...register('description')}
+          />
+          <div className="grid gap-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
+            <Select
+              label="Checklist *"
+              placeholder="Choose…"
+              error={errors.checklistId?.message}
+              {...register('checklistId')}
+            >
+              {checklists.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} ({c.tasks.length} items)
                 </option>
               ))}
             </Select>
-            <TextField
-              label="Make it ahead (days)"
-              type="number"
-              min="0"
-              max="30"
-              inputMode="numeric"
-              error={errors.leadDays?.message}
-              {...register('leadDays')}
-            />
             <Select label="Urgency" {...register('priority')}>
               {URGENCIES.map(([value, label]) => (
                 <option key={value} value={value}>
@@ -203,20 +221,6 @@ function PlanForm({
                 </option>
               ))}
             </Select>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-4">
-            <TextField
-              label="First due day *"
-              type="date"
-              error={errors.startDate?.message}
-              {...register('startDate')}
-            />
-            <TextField
-              label="Last day"
-              type="date"
-              hint="Empty: no end."
-              {...register('endDate')}
-            />
             <TextField
               label="Hours per asset"
               type="number"
@@ -226,87 +230,220 @@ function PlanForm({
               error={errors.estimatedHours?.message}
               {...register('estimatedHours')}
             />
-            <Select
-              label="Technician"
-              hint="Empty: you assign each work order."
-              {...register('technicianId')}
-            >
-              <option value="">I assign each time</option>
-              {technicians.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.fullName} ({t.openCases} open)
-                </option>
-              ))}
-            </Select>
           </div>
         </div>
       </FormSection>
 
-      <FormSection
-        title="Assets *"
-        aside={`${picked.length} chosen`}
-        description="One work order per asset at each due day. A plan covers one building."
-      >
-        <div className="flex flex-col gap-4">
-          {assets.isPending ? (
-            <LoadingBlock rows={4} />
-          ) : assets.error ? (
-            <ErrorBlock
-              what="the assets"
-              message={assets.error.message}
-              onRetry={() => void assets.refetch()}
-            />
-          ) : (
-            byBuilding.map(([building, rows]) => {
-              const other =
-                pickedBuilding !== undefined && rows[0]?.location.buildingId !== pickedBuilding
-              return (
-                <fieldset key={building} disabled={other} className="flex flex-col gap-1.5">
-                  <legend className="text-muted mb-1 text-xs">
-                    {building}
-                    {other && ' · one building per plan'}
-                  </legend>
-                  <div className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
-                    {rows.map((a) => (
-                      <label
-                        key={a.id}
-                        className="flex items-center gap-2 text-sm has-disabled:opacity-50"
-                      >
-                        <input
-                          type="checkbox"
-                          value={a.id}
-                          className="accent-primary size-4"
-                          {...register('assetIds')}
-                        />
-                        <span className="min-w-0 truncate">
-                          {a.name}
-                          <span className="text-muted">
-                            {' '}
-                            · {a.location.floorName}, {a.location.roomName}
-                          </span>
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </fieldset>
-              )
-            })
-          )}
-          {errors.assetIds?.message && (
-            <p className="text-negative text-xs">{errors.assetIds.message}</p>
-          )}
-        </div>
-      </FormSection>
+      {triggers.fields.map((field, index) => (
+        <TriggerSection
+          key={field.id}
+          index={index}
+          saved={field.triggerId !== ''}
+          control={control}
+          register={register}
+          errors={errors.triggers?.[index]}
+          assets={assets.data}
+          assetsState={assets}
+          technicians={technicians}
+          onRemove={triggers.fields.length > 1 ? () => triggers.remove(index) : undefined}
+        />
+      ))}
+
+      <div className="lg:pl-[280px]">
+        <Button
+          variant="secondary"
+          onClick={() => triggers.append(NEW_TRIGGER)}
+          disabled={triggers.fields.length >= 10}
+        >
+          <Icon name="plus" className="size-4" />
+          Add trigger
+        </Button>
+        {errors.triggers?.message && (
+          <p className="text-negative mt-2 text-xs">{errors.triggers.message}</p>
+        )}
+      </div>
 
       <FormActions error={save.error && <Alert>{save.error.message}</Alert>}>
         <LinkButton variant="ghost" to={plan ? planDetailPath(plan.id) : paths.plans}>
           Back
         </LinkButton>
         <Button type="submit" variant="primary" loading={save.isPending}>
-          Send for approval
+          {approved ? 'Save' : 'Send for approval'}
         </Button>
       </FormActions>
     </form>
+  )
+}
+
+function TriggerSection({
+  index,
+  saved,
+  control,
+  register,
+  errors,
+  assets,
+  assetsState,
+  technicians,
+  onRemove,
+}: {
+  index: number
+  saved: boolean | undefined
+  control: Control<PlanFormValues>
+  register: UseFormRegister<PlanFormValues>
+  errors: FieldErrors<TriggerFormValues> | undefined
+  assets: AssetOption[] | undefined
+  assetsState: { isPending: boolean; error: Error | null; refetch: () => unknown }
+  technicians: TechnicianOption[]
+  onRemove: (() => void) | undefined
+}) {
+  const all = useWatch({ control, name: 'triggers' })
+  const picked = all[index]?.assetIds ?? []
+  // An asset belongs to one trigger of the plan; the plan covers one building.
+  const elsewhere = new Set(all.flatMap((t, i) => (i === index ? [] : t.assetIds)))
+  const options = assets ?? []
+  const allPicked = all.flatMap((t) => t.assetIds)
+  const pickedBuilding = options.find((a) => allPicked.includes(String(a.id)))?.location.buildingId
+  const name = `triggers.${index}` as const
+
+  return (
+    <FormSection
+      title={`Trigger ${index + 1}`}
+      aside={`${picked.length} ${picked.length === 1 ? 'asset' : 'assets'}`}
+      description={
+        <>
+          When work orders are made: one per asset at each due day, until the end day.
+          {onRemove && (
+            <button
+              type="button"
+              onClick={onRemove}
+              className="text-negative mt-2 flex items-center gap-1 text-xs font-medium hover:underline"
+            >
+              <Icon name="close" className="size-3.5" />
+              Remove this trigger
+              {saved && ' (only if it made no work order)'}
+            </button>
+          )}
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <div className="grid gap-4 sm:grid-cols-3">
+          <TextField
+            label="Every *"
+            type="number"
+            min="1"
+            max="365"
+            inputMode="numeric"
+            error={errors?.frequency?.message}
+            {...register(`${name}.frequency`)}
+          />
+          <Select label="Unit" {...register(`${name}.frequencyType`)}>
+            {FREQUENCY_UNITS.map((u) => (
+              <option key={u} value={u}>
+                {FREQUENCY_LABELS[u]}
+              </option>
+            ))}
+          </Select>
+          <TextField
+            label="Make it ahead (days)"
+            type="number"
+            min="0"
+            max="30"
+            inputMode="numeric"
+            error={errors?.leadDays?.message}
+            {...register(`${name}.leadDays`)}
+          />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <TextField
+            label="First due day *"
+            type="date"
+            error={errors?.startDate?.message}
+            {...register(`${name}.startDate`)}
+          />
+          <TextField
+            label="End day"
+            type="date"
+            hint="Empty: no end. Move it later to extend."
+            error={errors?.endDate?.message}
+            {...register(`${name}.endDate`)}
+          />
+          <Select
+            label="Technician"
+            hint="Empty: you assign each work order."
+            {...register(`${name}.technicianId`)}
+          >
+            <option value="">I assign each time</option>
+            {technicians.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.fullName} ({t.openCases} open)
+              </option>
+            ))}
+          </Select>
+        </div>
+
+        <div className="border-rule flex flex-col gap-4 border-t pt-4">
+          <div className="text-muted text-xs">Assets *</div>
+          {assetsState.isPending ? (
+            <LoadingBlock rows={3} />
+          ) : assetsState.error ? (
+            <ErrorBlock
+              what="the assets"
+              message={assetsState.error.message}
+              onRetry={() => void assetsState.refetch()}
+            />
+          ) : (
+            groupByBuilding(options).map(([building, rows]) => {
+              const other =
+                pickedBuilding !== undefined && rows[0]?.location.buildingId !== pickedBuilding
+              return (
+                <fieldset
+                  key={building}
+                  disabled={other}
+                  // a fieldset is min-content wide by default: let the long asset names truncate instead
+                  className="flex min-w-0 flex-col gap-1.5"
+                >
+                  <legend className="text-muted mb-1 text-xs">
+                    {building}
+                    {other && ' · one building per plan'}
+                  </legend>
+                  <div className="grid grid-cols-[minmax(0,1fr)] gap-x-6 gap-y-1.5 sm:grid-cols-2">
+                    {rows.map((a) => {
+                      const taken = elsewhere.has(String(a.id))
+                      return (
+                        <label
+                          key={a.id}
+                          className="flex items-center gap-2 text-sm has-disabled:opacity-50"
+                        >
+                          <input
+                            type="checkbox"
+                            value={a.id}
+                            disabled={taken}
+                            className="accent-primary size-4"
+                            {...register(`${name}.assetIds`)}
+                          />
+                          <span className="min-w-0 truncate">
+                            {a.name}
+                            <span className="text-muted">
+                              {' '}
+                              · {a.location.floorName}, {a.location.roomName}
+                              {taken && ' · in another trigger'}
+                            </span>
+                          </span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                </fieldset>
+              )
+            })
+          )}
+          {errors?.assetIds?.message && (
+            <p className="text-negative text-xs">{errors.assetIds.message}</p>
+          )}
+        </div>
+      </div>
+    </FormSection>
   )
 }
 

@@ -59,3 +59,16 @@ public sealed class FakeAiGateway : SmartMaint.Api.Common.Ai.IAiGateway
         return Task.FromResult(Reply);
     }
 }
+
+/// <summary>Keeps the e-mails instead of sending them; Works = false plays a server that is not set up.</summary>
+public sealed class FakeEmailSender : SmartMaint.Api.Modules.Notifications.IEmailSender
+{
+    public bool Works { get; set; } = true;
+    public List<(string To, string Subject, string Body)> Sent { get; } = [];
+
+    public Task<bool> SendAsync(string to, string subject, string body, CancellationToken cancellationToken)
+    {
+        if (Works) Sent.Add((to, subject, body));
+        return Task.FromResult(Works);
+    }
+}

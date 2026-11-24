@@ -19,6 +19,21 @@ public sealed record RequestSuggestionResponse(
     public static RequestSuggestionResponse Unavailable { get; } = new(false, null, null, []);
 }
 
+/// <summary>The staff asks who should take this case (meeting note 18/11).</summary>
+public sealed record TechnicianSuggestionRequest(long CaseId);
+
+public enum SuggestionSource
+{
+    /// <summary>The AI answered.</summary>
+    Ai,
+
+    /// <summary>The AI is off or failed: the first of the ranked list.</summary>
+    Rules,
+}
+
+/// <summary>Only a suggestion: nothing changes until the staff member chooses. TechnicianId is empty when nobody is active.</summary>
+public sealed record TechnicianSuggestionResponse(long? TechnicianId, string Reason, SuggestionSource Source);
+
 /// <summary>
 /// One chat message to the assistant (Leader 16/11: every role but Admin, on every page).
 /// ConversationId = null starts a new conversation. CaseId = the case open on the screen, if any (read only when the

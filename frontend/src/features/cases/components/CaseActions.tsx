@@ -10,6 +10,7 @@ import { AddCostDialog } from './dialogs/AddCostDialog'
 import { CostsDialog } from './dialogs/CostsDialog'
 import { EmergencyLogDialog } from './dialogs/EmergencyLogDialog'
 import { ExtendDueDialog } from './dialogs/ExtendDueDialog'
+import { FollowersDialog } from './dialogs/FollowersDialog'
 import { IncidentReportDialog } from './dialogs/IncidentReportDialog'
 import { RateDialog } from './dialogs/RateDialog'
 import { ReasonDialog } from './dialogs/ReasonDialog'
@@ -22,8 +23,8 @@ import { WorkHoursDialog } from './dialogs/WorkHoursDialog'
 
 /**
  * Button text and style per action, in display order: secondary actions first so the main one ends up on the right.
- * Meeting 07/11: the staff's assign / reassign / change urgency / let continue / close / reopen are one "Edit" (the
- * work order form, with the status change in it); merge, downgrade and the quote steps are gone. The technician's
+ * Meeting 07/11: the staff's change urgency / let continue / close / reopen are one "Edit" (the work order form, with
+ * the status change in it; Reassign is inside it); merge, downgrade and the quote steps are gone. The technician's
  * start / hold / resume / complete are one status dropdown (StatusMenu); "Start work on site" is gone.
  */
 const BUTTONS: Partial<
@@ -36,14 +37,15 @@ const BUTTONS: Partial<
   log_hours: { label: 'Work hours', variant: 'secondary' },
   add_cost: { label: 'Add cost', variant: 'secondary' },
   extend_due: { label: 'Move deadline', variant: 'secondary' },
-  update_costs: { label: 'Costs', variant: 'secondary' },
+  update_costs: { label: 'Enter costs', variant: 'secondary' },
+  manage_followers: { label: 'Followers', variant: 'secondary' },
   outsource: { label: 'Hand to outside party', variant: 'secondary' },
   add_log: { label: 'Add to log', variant: 'secondary' },
-  mark_safe: { label: 'Made safe', variant: 'secondary' },
   write_incident_report: { label: 'Post-incident report', variant: 'secondary' },
   report_not_fixed: { label: 'Still not fixed', variant: 'secondary' },
   decline_not_fixed: { label: 'Decline report', variant: 'secondary' },
   edit: { label: 'Edit', variant: 'secondary' },
+  reopen: { label: 'Reopen', variant: 'secondary' },
   approve: { label: 'Approve and assign', variant: 'primary' },
   acknowledge: { label: 'Acknowledge', variant: 'primary' },
   accept: { label: 'Accept job', variant: 'primary' },
@@ -63,7 +65,6 @@ export function CaseActions({ caseDetail }: { caseDetail: CaseDetail }) {
   const accept = useCaseMutation(casesApi.accept)
   const acceptNotFixed = useCaseMutation(casesApi.acceptNotFixed)
   const acknowledge = useCaseMutation(casesApi.acknowledge)
-  const markSafe = useCaseMutation(casesApi.markSafe)
   const outsource = useCaseMutation(casesApi.outsource)
 
   const actions = ORDER.filter((a) => caseDetail.allowedActions.includes(a))
@@ -80,16 +81,14 @@ export function CaseActions({ caseDetail }: { caseDetail: CaseDetail }) {
   const direct: Partial<Record<CaseAction, () => void>> = {
     accept: () => accept.mutate({ id }),
     acknowledge: () => acknowledge.mutate({ id }),
-    mark_safe: () => markSafe.mutate({ id }),
     approve: () => navigate(caseApprovePath(id)),
     edit: () => navigate(caseEditPath(id)),
   }
   const pending: Partial<Record<CaseAction, boolean>> = {
     accept: accept.isPending,
     acknowledge: acknowledge.isPending,
-    mark_safe: markSafe.isPending,
   }
-  const directError = accept.error ?? acknowledge.error ?? markSafe.error
+  const directError = accept.error ?? acknowledge.error
   // One primary at a time: an unacknowledged emergency is acknowledged first; a completed case is checked with Edit.
   const variant = (action: CaseAction) =>
     action === 'edit' && caseDetail.status === 'completed' && !actions.includes('acknowledge')
@@ -118,6 +117,11 @@ export function CaseActions({ caseDetail }: { caseDetail: CaseDetail }) {
             onClick={direct[action] ?? (() => setOpen(action))}
           >
             {label(action)}
+            {action === 'manage_followers' && caseDetail.followers.length > 0 && (
+              <span className="text-muted ml-1 text-xs tabular-nums">
+                {caseDetail.followers.length}
+              </span>
+            )}
           </Button>
         ))}
       </div>
@@ -131,6 +135,11 @@ export function CaseActions({ caseDetail }: { caseDetail: CaseDetail }) {
       <RateDialog caseId={id} open={open === 'rate'} onClose={onClose} />
       <ExtendDueDialog caseDetail={caseDetail} open={open === 'extend_due'} onClose={onClose} />
       <CostsDialog caseDetail={caseDetail} open={open === 'update_costs'} onClose={onClose} />
+      <FollowersDialog
+        caseDetail={caseDetail}
+        open={open === 'manage_followers'}
+        onClose={onClose}
+      />
       <EmergencyLogDialog caseId={id} open={open === 'add_log'} onClose={onClose} />
       <IncidentReportDialog
         caseDetail={caseDetail}
@@ -188,6 +197,17 @@ export function CaseActions({ caseDetail }: { caseDetail: CaseDetail }) {
         placeholder="e.g. The AC blows warm air again since this morning."
         confirmLabel="Send"
         action={casesApi.reportNotFixed}
+      />
+      <ReasonDialog
+        caseId={id}
+        open={open === 'reopen'}
+        onClose={onClose}
+        title="Reopen the case"
+        description="The same technician gets it back and must accept it again. The deadline starts over when work restarts."
+        label="Why is it reopened?"
+        placeholder="e.g. The customer says the AC blows warm air again."
+        confirmLabel="Reopen"
+        action={casesApi.reopen}
       />
       <ReasonDialog
         caseId={id}

@@ -1,22 +1,26 @@
 using Microsoft.EntityFrameworkCore;
 using SmartMaint.Api.Data;
 using SmartMaint.Api.Entities.Buildings;
+using SmartMaint.Api.Entities.Cases;
 using SmartMaint.Api.Entities.Core;
 using SmartMaint.Api.Modules.Audit;
 using SmartMaint.Api.Modules.Facilities.Dtos;
 
 namespace SmartMaint.Api.Modules.Facilities;
 
-internal sealed class FacilityService(AppDbContext db, IBuildingScope scope, IAuditService audit) : IFacilityService
+internal sealed class FacilityService(AppDbContext db, IBuildingScope scope, IAuditService audit, TimeProvider clock)
+    : IFacilityService
 {
+    private static readonly CaseStatus[] Finished = [CaseStatus.Closed, CaseStatus.Rejected, CaseStatus.Cancelled];
+
     // ----- read -------------------------------------------------------------------------------------------------
 
     public async Task<IReadOnlyList<BuildingNodeResponse>> GetTreeAsync(CancellationToken cancellationToken)
     {
         var buildingIds = await scope.GetBuildingIdsAsync(cancellationToken);
         var buildings = await db.Buildings.AsNoTracking()
-            .Where(b => buildingIds == null || buildingIds.Contains(b.Id))
-            .Include(b => b.Floors).ThenInclude(f => f.Rooms)
+            .Where(b => b.DeletedAt == null && (buildingIds == null || buildingIds.Contains(b.Id)))
+            .Include(b => b.Floors.Where(f => f.DeletedAt == null)).ThenInclude(f => f.Rooms.Where(r => r.DeletedAt == null))
             .OrderBy(b => b.Name)
             .ToListAsync(cancellationToken);
 
@@ -26,13 +30,8 @@ internal sealed class FacilityService(AppDbContext db, IBuildingScope scope, IAu
             .GroupBy(a => a.RoomId)
             .Select(g => new { RoomId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.RoomId, x => x.Count, cancellationToken);
-        var tenants = (await db.Customers.AsNoTracking()
-                .Where(c => roomIds.Contains(c.RoomId))
-                .Select(c => new { c.RoomId, c.FullName })
-                .ToListAsync(cancellationToken))
-            .ToLookup(c => c.RoomId, c => c.FullName);
 
-        return buildings.Select(b => ToNode(b, assetCounts, tenants)).ToList();
+        return buildings.Select(b => ToNode(b, assetCounts)).ToList();
     }
 
     // ----- buildings --------------------------------------------------------------------------------------------
@@ -64,18 +63,19 @@ internal sealed class FacilityService(AppDbContext db, IBuildingScope scope, IAu
         return await NodeAsync(id, cancellationToken);
     }
 
+    /// <summary>Marks it deleted (meeting note 18/11): only once its floors are gone and no case of it is open.</summary>
     public async Task DeleteBuildingAsync(long id, CancellationToken cancellationToken)
     {
-        var building = await db.Buildings.SingleOrDefaultAsync(b => b.Id == id, cancellationToken) ?? throw FacilityErrors.NotFound();
-        var inUse = await db.Floors.AnyAsync(f => f.BuildingId == id, cancellationToken)
-                    || await db.StaffBuildingAssignments.AnyAsync(a => a.BuildingId == id, cancellationToken)
-                    || await db.ManagerBuildingAssignments.AnyAsync(a => a.BuildingId == id, cancellationToken);
+        var building = await db.Buildings.SingleOrDefaultAsync(b => b.Id == id && b.DeletedAt == null, cancellationToken)
+            ?? throw FacilityErrors.NotFound();
+        var inUse = await db.Floors.AnyAsync(f => f.BuildingId == id && f.DeletedAt == null, cancellationToken)
+                    || await db.Cases.AnyAsync(c => c.Room.Floor.BuildingId == id && !Finished.Contains(c.Status), cancellationToken);
         if (inUse)
         {
             throw FacilityErrors.NotEmpty("building");
         }
 
-        db.Buildings.Remove(building);
+        building.DeletedAt = clock.GetUtcNow();
         audit.Record(AuditTarget.Building, AuditOperation.Delete, Snapshot(building), null);
         await db.SaveChangesAsync(cancellationToken);
     }
@@ -113,15 +113,17 @@ internal sealed class FacilityService(AppDbContext db, IBuildingScope scope, IAu
         return (await NodeAsync(floor.BuildingId, cancellationToken)).Floors.Single(f => f.Id == id);
     }
 
+    /// <summary>Marks it deleted, once its rooms are gone.</summary>
     public async Task DeleteFloorAsync(long id, CancellationToken cancellationToken)
     {
-        var floor = await db.Floors.SingleOrDefaultAsync(f => f.Id == id, cancellationToken) ?? throw FacilityErrors.NotFound();
-        if (await db.Rooms.AnyAsync(r => r.FloorId == id, cancellationToken))
+        var floor = await db.Floors.SingleOrDefaultAsync(f => f.Id == id && f.DeletedAt == null, cancellationToken)
+            ?? throw FacilityErrors.NotFound();
+        if (await db.Rooms.AnyAsync(r => r.FloorId == id && r.DeletedAt == null, cancellationToken))
         {
             throw FacilityErrors.NotEmpty("floor");
         }
 
-        db.Floors.Remove(floor);
+        floor.DeletedAt = clock.GetUtcNow();
         audit.Record(AuditTarget.Floor, AuditOperation.Delete, Snapshot(floor), null);
         await db.SaveChangesAsync(cancellationToken);
     }
@@ -137,13 +139,13 @@ internal sealed class FacilityService(AppDbContext db, IBuildingScope scope, IAu
 
         var number = request.RoomNumber.Trim();
         await EnsureRoomFreeAsync(request.FloorId, number, null, cancellationToken);
-        var room = new Room { FloorId = request.FloorId, RoomNumber = number, IsCommonArea = request.IsCommonArea };
+        var room = new Room { FloorId = request.FloorId, RoomNumber = number };
         db.Rooms.Add(room);
         await db.SaveChangesAsync(cancellationToken);
 
         audit.Record(AuditTarget.Room, AuditOperation.Create, null, Snapshot(room));
         await db.SaveChangesAsync(cancellationToken);
-        return new RoomNodeResponse(room.Id, room.RoomNumber, room.IsCommonArea, 0, []);
+        return new RoomNodeResponse(room.Id, room.RoomNumber, 0);
     }
 
     public async Task<RoomNodeResponse> UpdateRoomAsync(long id, RoomRequest request, CancellationToken cancellationToken)
@@ -152,32 +154,34 @@ internal sealed class FacilityService(AppDbContext db, IBuildingScope scope, IAu
             ?? throw FacilityErrors.NotFound();
         var number = request.RoomNumber.Trim();
         await EnsureRoomFreeAsync(room.FloorId, number, id, cancellationToken);
-        if (request.IsCommonArea && !room.IsCommonArea && await db.Customers.AnyAsync(c => c.RoomId == id, cancellationToken))
-        {
-            throw FacilityErrors.RoomRented();
-        }
 
         var before = Snapshot(room);
         room.RoomNumber = number;
-        room.IsCommonArea = request.IsCommonArea;
         audit.Record(AuditTarget.Room, AuditOperation.Update, before, Snapshot(room));
         await db.SaveChangesAsync(cancellationToken);
         return (await NodeAsync(room.Floor.BuildingId, cancellationToken))
             .Floors.SelectMany(f => f.Rooms).Single(r => r.Id == id);
     }
 
+    /// <summary>Marks it deleted, once every asset in it is retired or moved out and no case of it is open.</summary>
     public async Task DeleteRoomAsync(long id, CancellationToken cancellationToken)
     {
-        var room = await db.Rooms.SingleOrDefaultAsync(r => r.Id == id, cancellationToken) ?? throw FacilityErrors.NotFound();
-        var inUse = await db.Assets.AnyAsync(a => a.RoomId == id, cancellationToken)
-                    || await db.Customers.AnyAsync(c => c.RoomId == id, cancellationToken)
-                    || await db.Cases.AnyAsync(c => c.RoomId == id, cancellationToken);
+        var room = await db.Rooms.SingleOrDefaultAsync(r => r.Id == id && r.DeletedAt == null, cancellationToken)
+            ?? throw FacilityErrors.NotFound();
+        var inUse = await db.Assets.AnyAsync(a => a.RoomId == id && a.RetiredAt == null, cancellationToken)
+                    || await db.Cases.AnyAsync(c => c.RoomId == id && !Finished.Contains(c.Status), cancellationToken);
         if (inUse)
         {
             throw FacilityErrors.NotEmpty("room");
         }
 
-        db.Rooms.Remove(room);
+        // Older customer accounts may still point here; a customer no longer belongs to a room (meeting note 18/11).
+        foreach (var customer in await db.Customers.Where(c => c.RoomId == id).ToListAsync(cancellationToken))
+        {
+            customer.RoomId = null;
+        }
+
+        room.DeletedAt = clock.GetUtcNow();
         audit.Record(AuditTarget.Room, AuditOperation.Delete, Snapshot(room), null);
         await db.SaveChangesAsync(cancellationToken);
     }
@@ -215,7 +219,7 @@ internal sealed class FacilityService(AppDbContext db, IBuildingScope scope, IAu
     private async Task<BuildingNodeResponse> NodeAsync(long buildingId, CancellationToken cancellationToken) =>
         (await GetTreeAsync(cancellationToken)).Single(b => b.Id == buildingId);
 
-    private static BuildingNodeResponse ToNode(Building b, IReadOnlyDictionary<long, int> assetCounts, ILookup<long, string> tenants) =>
+    private static BuildingNodeResponse ToNode(Building b, IReadOnlyDictionary<long, int> assetCounts) =>
         new(
             b.Id,
             b.Name,
@@ -227,9 +231,8 @@ internal sealed class FacilityService(AppDbContext db, IBuildingScope scope, IAu
                     f.FloorNumber,
                     f.DisplayName,
                     f.Rooms
-                        .OrderBy(r => r.IsCommonArea).ThenBy(r => r.RoomNumber)
-                        .Select(r => new RoomNodeResponse(
-                            r.Id, r.RoomNumber, r.IsCommonArea, assetCounts.GetValueOrDefault(r.Id), tenants[r.Id].Order().ToList()))
+                        .OrderBy(r => r.RoomNumber)
+                        .Select(r => new RoomNodeResponse(r.Id, r.RoomNumber, assetCounts.GetValueOrDefault(r.Id)))
                         .ToList()))
                 .ToList());
 
@@ -246,5 +249,5 @@ internal sealed class FacilityService(AppDbContext db, IBuildingScope scope, IAu
 
     private static object Snapshot(Building b) => new { b.Id, b.Name, b.Address };
     private static object Snapshot(Floor f) => new { f.Id, f.BuildingId, f.FloorNumber };
-    private static object Snapshot(Room r) => new { r.Id, r.FloorId, r.RoomNumber, r.IsCommonArea };
+    private static object Snapshot(Room r) => new { r.Id, r.FloorId, r.RoomNumber };
 }

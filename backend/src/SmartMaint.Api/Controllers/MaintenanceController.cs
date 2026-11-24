@@ -38,7 +38,7 @@ public sealed class MaintenanceController(IChecklistService checklists, IMainten
     [AuthorizeRoles(UserRole.Admin, UserRole.Staff)]
     public Task DeleteChecklist(long id, CancellationToken ct) => checklists.DeleteAsync(id, ct);
 
-    // ----- plans (PM-01..03) -----
+    // ----- plans (PM-01..03; meeting note 18/11: triggers, a work orders tab, archive) -----
 
     [HttpGet("plans")]
     [AuthorizeRoles(UserRole.Staff, UserRole.Manager)]
@@ -47,6 +47,11 @@ public sealed class MaintenanceController(IChecklistService checklists, IMainten
     [HttpGet("plans/{id:long}")]
     [AuthorizeRoles(UserRole.Staff, UserRole.Manager)]
     public Task<PlanDetailResponse> Plan(long id, CancellationToken ct) => plans.GetAsync(id, ct);
+
+    [HttpGet("plans/{id:long}/work-orders")]
+    [AuthorizeRoles(UserRole.Staff, UserRole.Manager)]
+    public Task<IReadOnlyList<PlanWorkOrderResponse>> PlanWorkOrders(long id, CancellationToken ct) =>
+        plans.WorkOrdersAsync(id, ct);
 
     [HttpPost("plans")]
     [AuthorizeRoles(UserRole.Staff)]
@@ -74,7 +79,7 @@ public sealed class MaintenanceController(IChecklistService checklists, IMainten
     [AuthorizeRoles(UserRole.Staff)]
     public Task<PlanDetailResponse> Resume(long id, CancellationToken ct) => plans.ResumeAsync(id, ct);
 
-    [HttpPost("plans/{id:long}/end")]
+    [HttpPost("plans/{id:long}/archive")]
     [AuthorizeRoles(UserRole.Staff)]
-    public Task<PlanDetailResponse> End(long id, CancellationToken ct) => plans.EndAsync(id, ct);
+    public Task<PlanDetailResponse> Archive(long id, CancellationToken ct) => plans.ArchiveAsync(id, ct);
 }

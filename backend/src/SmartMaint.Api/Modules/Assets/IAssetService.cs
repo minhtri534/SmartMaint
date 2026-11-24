@@ -4,8 +4,9 @@ using SmartMaint.Api.Modules.Assets.Dtos;
 namespace SmartMaint.Api.Modules.Assets;
 
 /// <summary>
-/// F1 (Huy) — assets. Staff and managers read the assets of their buildings, the Administrator all of them and is the
-/// only one who changes them (Leader 02/11). An asset with history is retired, never deleted (BR-10).
+/// F1 (Huy) — assets. Staff and managers read the assets of their buildings, the Administrator all of them. Since the
+/// meeting note of 18/11 nobody changes them directly: the writes below run when a manager approves a staff change list
+/// (Modules/AssetChanges). An asset with history is retired, never deleted (BR-10).
 /// </summary>
 public interface IAssetService
 {
@@ -25,9 +26,6 @@ public interface IAssetService
 
     /// <summary>Only for an asset that never had a case (a mistake when creating it).</summary>
     Task DeleteAsync(long id, CancellationToken cancellationToken);
-
-    /// <summary>AST-05: check (DryRun) or import a CSV, all rows or none.</summary>
-    Task<ImportAssetsResponse> ImportAsync(ImportAssetsRequest request, CancellationToken cancellationToken);
 
     /// <summary>AST-07: any signed-in role scans a label; says whether the caller can report on it or open it.</summary>
     Task<QrTargetResponse> GetQrTargetAsync(long id, CancellationToken cancellationToken);

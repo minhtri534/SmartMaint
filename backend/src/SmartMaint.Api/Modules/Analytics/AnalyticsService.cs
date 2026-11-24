@@ -1,5 +1,3 @@
-using System.Globalization;
-using System.Text;
 using Microsoft.EntityFrameworkCore;
 using SmartMaint.Api.Common.Security;
 using SmartMaint.Api.Data;
@@ -16,14 +14,13 @@ namespace SmartMaint.Api.Modules.Analytics;
 /// <summary>
 /// F6 numbers (ANA-01..04, MGR-01, OFF-01), one definition for every screen. Computed on request from the cases of
 /// the caller's buildings: the data of a building team is small. Move to SQL views if it grows.
-/// Not counted in the KPIs (N5): reports merged into another case, surveys (F5 way 2); rejected and cancelled cases
+/// Not counted in the KPIs (N5): duplicates (merged into another case), surveys (F5 way 2); rejected and cancelled cases
 /// are only counted. Preventive work orders (F2) have their own block.
 /// </summary>
-internal sealed class AnalyticsService(AppDbContext db, ICurrentUser currentUser, IBuildingScope scope, TimeProvider clock)
+internal sealed partial class AnalyticsService(AppDbContext db, ICurrentUser currentUser, IBuildingScope scope, TimeProvider clock)
     : IAnalyticsService
 {
     private static readonly TimeSpan Vietnam = TimeSpan.FromHours(7);
-    private const int DefaultDays = 30;
     private const int FewCases = 5;
 
     private static readonly CaseStatus[] Open =
@@ -39,8 +36,6 @@ internal sealed class AnalyticsService(AppDbContext db, ICurrentUser currentUser
     public async Task<OverviewResponse> OverviewAsync(AnalyticsQuery query, CancellationToken cancellationToken)
     {
         var (period, from, to) = Resolve(query);
-        var days = period.To.DayNumber - period.From.DayNumber + 1;
-        var previous = new PeriodResponse(period.From.AddDays(-days), period.From.AddDays(-1));
         var cases = await LoadAsync(query.BuildingId, cancellationToken);
         var now = clock.GetUtcNow();
         var incidents = cases.Where(IsIncident).ToList();
@@ -50,7 +45,6 @@ internal sealed class AnalyticsService(AppDbContext db, ICurrentUser currentUser
         var emergency = new EmergencyStats(
             counted.Count,
             Average(counted.Where(c => c.AcknowledgedAt != null).Select(c => (c.AcknowledgedAt!.Value - c.EmergencyAt!.Value).TotalMinutes)),
-            Average(counted.Where(c => c.MadeSafeAt != null).Select(c => (c.MadeSafeAt!.Value - c.EmergencyAt!.Value).TotalMinutes)),
             Average(counted.Where(c => c.CompletedAt != null).Select(c => (c.CompletedAt!.Value - c.EmergencyAt!.Value).TotalHours)),
             cases.Sum(c => c.History.Count(h => In(h.ChangedAt, from, to) && Starts(h.Reason, CaseHistoryTags.NotAnEmergency))),
             emergencies.Count(c => c.MergedIntoCaseId != null));
@@ -90,9 +84,7 @@ internal sealed class AnalyticsService(AppDbContext db, ICurrentUser currentUser
 
         return new OverviewResponse(
             period,
-            previous,
             Kpis(incidents, from, to, now),
-            Kpis(incidents, Start(previous.From), Start(previous.To.AddDays(1)), now),
             emergency,
             preventive,
             HoldTime(cases, from, to, now),
@@ -115,15 +107,19 @@ internal sealed class AnalyticsService(AppDbContext db, ICurrentUser currentUser
             reported.Count(c => c.Status == CaseStatus.Cancelled),
             done.Count,
             Average(reported.Select(FirstResponseMinutes).Where(m => m != null).Select(m => m!.Value)),
-            Average(done.Select(c => (c.CompletedAt!.Value - c.SubmittedAt).TotalHours)),
+            Average(done.Where(c => WorkStart(c) != null).Select(c => (c.CompletedAt!.Value - WorkStart(c)!.Value).TotalHours)),
             OnTime(incidents, from, to, now, c => c.DueAt),
             OnTime(incidents, from, to, now, OriginalDue),
             moves.Distinct().Count(),
             moves.Count,
             Rate(done.Count(c => c.History.Any(h => h.NewStatus == CaseStatus.Reopened)), done.Count),
             currentUser.Role == UserRole.Manager ? Average(rated.Select(c => (double)c.RatingStars!.Value)) : null,
+            currentUser.Role == UserRole.Manager ? rated.Count : 0,
             incidents.Sum(c => c.Rejections.Count(r => In(r.RejectedAt, from, to))));
     }
+
+    /// <summary>Where the resolution time starts: the start of work, or when the case became an emergency (the SLA clock).</summary>
+    private static DateTimeOffset? WorkStart(Case c) => c.EmergencyAt ?? c.StartedAt;
 
     /// <summary>F3: report → the staff's first decision (approve / reject). F4: the emergency clock → acknowledged.</summary>
     private static double? FirstResponseMinutes(Case c)
@@ -281,9 +277,12 @@ internal sealed class AnalyticsService(AppDbContext db, ICurrentUser currentUser
         var byType = reported.GroupBy(c => c.CategoryId)
             .Select(g => new ServiceTypeRow(
                 g.Key, CaseMapper.ServiceTypeName(g.First().Category), g.Count(),
-                Average(g.Where(c => c.CompletedAt != null).Select(c => (c.CompletedAt!.Value - c.SubmittedAt).TotalHours))))
+                Average(g.Where(c => c.CompletedAt != null && WorkStart(c) != null)
+                    .Select(c => (c.CompletedAt!.Value - WorkStart(c)!.Value).TotalHours))))
             .OrderByDescending(r => r.Cases).ToList();
         var byGroup = reported.GroupBy(c => c.Category.GroupName)
+            .Select(g => new GroupRow(g.Key, g.Count())).OrderByDescending(r => r.Cases).ToList();
+        var byAssetType = reported.GroupBy(c => c.Asset?.Type.Name ?? "No asset")
             .Select(g => new GroupRow(g.Key, g.Count())).OrderByDescending(r => r.Cases).ToList();
 
         var last30 = now.AddDays(-30);
@@ -304,7 +303,7 @@ internal sealed class AnalyticsService(AppDbContext db, ICurrentUser currentUser
             .Take(10)
             .ToList();
 
-        return new FailuresResponse(period, byType, byGroup, assets);
+        return new FailuresResponse(period, byType, byGroup, byAssetType, assets);
     }
 
     // ----- "Needs attention" (F6 step ④) -----------------------------------------------------------------------
@@ -324,10 +323,25 @@ internal sealed class AnalyticsService(AppDbContext db, ICurrentUser currentUser
                     $"Preventive work order {code} \"{c.Title}\" is past its due day.",
                     c.Id, code, c.AssetId, c.TriggerWorkOrder?.TriggerId, null, c.DueAt));
             }
-            else if (c.DueAt is { } due && due < now.AddHours(-24))
+            else if (c.DueAt is { } due && due < now)
             {
+                var late = now - due;
                 items.Add(new AttentionItem(AttentionKind.OverdueCase,
-                    $"{code} \"{c.Title}\" is overdue by {(int)(now - due).TotalHours} h.", c.Id, code, c.AssetId, null, null, due));
+                    $"{code} \"{c.Title}\" is overdue by {(late.TotalHours < 1 ? $"{(int)late.TotalMinutes} min" : $"{(int)late.TotalHours} h")}.",
+                    c.Id, code, c.AssetId, null, null, due));
+            }
+
+            if (c.Status == CaseStatus.Approved && c.AssignedTechnicianId == null && c.Rejections.Count > 0)
+            {
+                var declined = c.Rejections.Max(r => r.RejectedAt);
+                items.Add(new AttentionItem(AttentionKind.NoTechnician,
+                    $"{code} \"{c.Title}\" has no technician since it was declined.", c.Id, code, c.AssetId, null, null, declined));
+            }
+
+            if (c.EmergencyAt is { } emergency && c.AcknowledgedAt == null)
+            {
+                items.Add(new AttentionItem(AttentionKind.EmergencyNotAcknowledged,
+                    $"Emergency {code} \"{c.Title}\" is not acknowledged yet.", c.Id, code, c.AssetId, null, null, emergency));
             }
 
             if (c.Status == CaseStatus.OnHold && HoldSince(c) is { } since && since < now.AddDays(-3))
@@ -340,8 +354,16 @@ internal sealed class AnalyticsService(AppDbContext db, ICurrentUser currentUser
             if (moves >= 2)
             {
                 items.Add(new AttentionItem(AttentionKind.ExtendedTwice,
-                    $"The deadline of {code} \"{c.Title}\" moved {moves} times.", c.Id, code, c.AssetId, null, null, null));
+                    $"The deadline of {code} \"{c.Title}\" moved {moves} times.", c.Id, code, c.AssetId, null, null,
+                    c.History.Where(h => Starts(h.Reason, CaseHistoryTags.DeadlineMoved)).Max(h => h.ChangedAt)));
             }
+        }
+
+        foreach (var c in cases.Where(c => c.Status == CaseStatus.Closed && c.NotFixedAt != null))
+        {
+            var code = Case.CodeOf(c.Id);
+            items.Add(new AttentionItem(AttentionKind.NotFixedReport,
+                $"The customer says {code} \"{c.Title}\" is still not fixed.", c.Id, code, c.AssetId, null, null, c.NotFixedAt));
         }
 
         var month = now.AddDays(-30);
@@ -350,7 +372,8 @@ internal sealed class AnalyticsService(AppDbContext db, ICurrentUser currentUser
                      .GroupBy(c => c.AssetId!.Value).Where(g => g.Count() >= AssetRepairStats.FrequentFailureThreshold))
         {
             items.Add(new AttentionItem(AttentionKind.FrequentFailure,
-                $"\"{g.First().Asset!.Name}\" was repaired {g.Count()} times in 30 days.", null, null, g.Key, null, null, null));
+                $"\"{g.First().Asset!.Name}\" was repaired {g.Count()} times in 30 days.", null, null, g.Key, null, null,
+                g.Max(c => c.SubmittedAt)));
         }
 
         var week = now.AddDays(-7);
@@ -358,10 +381,12 @@ internal sealed class AnalyticsService(AppDbContext db, ICurrentUser currentUser
                      .GroupBy(r => r.TechnicianId).Where(g => g.Count() >= 3))
         {
             items.Add(new AttentionItem(AttentionKind.TechnicianDeclines,
-                $"{g.First().Technician.FullName} declined {g.Count()} jobs in 7 days.", null, null, null, null, g.Key, null));
+                $"{g.First().Technician.FullName} declined {g.Count()} jobs in 7 days.", null, null, null, null, g.Key,
+                g.Max(r => r.RejectedAt)));
         }
 
-        return items.OrderBy(i => i.Kind).ThenBy(i => i.Since).ToList();
+        // Meeting note 18/11: the newest problem first, so the home's first lines are the latest.
+        return items.OrderByDescending(i => i.Since ?? DateTimeOffset.MinValue).ThenBy(i => i.Kind).ToList();
     }
 
     /// <summary>When the current hold started: the first On Hold row after the last row with another status.</summary>
@@ -372,79 +397,6 @@ internal sealed class AnalyticsService(AppDbContext db, ICurrentUser currentUser
         return history.Skip(lastOther + 1).FirstOrDefault(h => h.NewStatus == CaseStatus.OnHold)?.ChangedAt;
     }
 
-    // ----- ANA-04 -----------------------------------------------------------------------------------------------
-
-    public async Task<(string FileName, byte[] Content)> ExportAsync(
-        ExportReport report, AnalyticsQuery query, CancellationToken cancellationToken)
-    {
-        var (period, from, to) = Resolve(query);
-        var csv = new StringBuilder();
-        void Row(params object?[] cells) => csv.AppendLine(string.Join(',', cells.Select(Cell)));
-
-        switch (report)
-        {
-            case ExportReport.Cases:
-                {
-                    var cases = await LoadAsync(query.BuildingId, cancellationToken);
-                    Row("Code", "Title", "Kind", "Building", "Room", "Service type", "Urgency", "Status", "Reported", "Completed",
-                        "Deadline", "On time", "Technician", "Rating");
-                    foreach (var c in cases.Where(c => In(c.SubmittedAt, from, to)).OrderBy(c => c.SubmittedAt))
-                    {
-                        Row(Case.CodeOf(c.Id), c.Title,
-                            c.TriggerWorkOrderId != null ? "Preventive" : c.IsSurvey ? "Survey" : c.EmergencyAt != null ? "Emergency" : "Incident",
-                            c.Room.Floor.Building.Name, c.Room.RoomNumber, CaseMapper.ServiceTypeName(c.Category), c.Priority.Name,
-                            c.Status, Local(c.SubmittedAt), Local(c.CompletedAt), Local(c.DueAt),
-                            c.CompletedAt is null || c.DueAt is null ? null : c.CompletedAt <= c.DueAt ? "yes" : "no",
-                            c.Technician?.FullName, c.RatingStars);
-                    }
-
-                    break;
-                }
-
-            case ExportReport.Assets:
-                {
-                    var failures = await FailuresAsync(query, cancellationToken);
-                    Row("Asset", "Location", "Type", "Repairs in the period", "Repairs in 30 days", "Age (years)", "Normal life (years)", "Under warranty");
-                    foreach (var a in failures.ProblemAssets)
-                    {
-                        Row(a.Name, a.Location, a.TypeName, a.Repairs, a.RepairsLast30Days, a.AgeYears, a.ExpectedLifeYears, a.UnderWarranty ? "yes" : "no");
-                    }
-
-                    break;
-                }
-
-            case ExportReport.Preventive:
-                {
-                    var cases = await LoadAsync(query.BuildingId, cancellationToken);
-                    Row("Code", "Asset", "Building", "Due", "Completed", "On time", "Failed items", "Status");
-                    foreach (var c in cases.Where(c => c.TriggerWorkOrderId != null && c.DueAt >= from && c.DueAt < to).OrderBy(c => c.DueAt))
-                    {
-                        Row(Case.CodeOf(c.Id), c.Asset?.Name, c.Room.Floor.Building.Name, Local(c.DueAt), Local(c.CompletedAt),
-                            c.CompletedAt is null ? null : c.CompletedAt <= c.DueAt ? "yes" : "no",
-                            c.Tasks.Count(t => t.Status == CaseTaskStatus.Fail), c.Status);
-                    }
-
-                    break;
-                }
-
-            case ExportReport.Technicians:
-                {
-                    Row("Technician", "Completed", "Avg hours", "On time %", "Reopen %", "Avg rating", "Labour hours", "Open now", "Declines");
-                    foreach (var t in await TechniciansAsync(query, cancellationToken))
-                    {
-                        Row(t.Technician.FullName, t.Completed, t.AvgCompletionHours, Percent(t.OnTimeRate), Percent(t.ReopenRate),
-                            t.AvgRating, t.LaborHours, t.OpenNow, t.Declines);
-                    }
-
-                    break;
-                }
-        }
-
-        // UTF-8 with BOM so Excel shows Vietnamese names correctly.
-        var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(csv.ToString())).ToArray();
-        return ($"smartmaint-{report.ToString().ToLowerInvariant()}-{period.From:yyyyMMdd}-{period.To:yyyyMMdd}.csv", bytes);
-    }
-
     // ----- helpers ----------------------------------------------------------------------------------------------
 
     /// <summary>The period in local dates and its UTC bounds [from, to).</summary>
@@ -452,7 +404,7 @@ internal sealed class AnalyticsService(AppDbContext db, ICurrentUser currentUser
     {
         var today = DateOnly.FromDateTime(clock.GetUtcNow().ToOffset(Vietnam).DateTime);
         var to = query.To ?? today;
-        var from = query.From ?? to.AddDays(-(DefaultDays - 1));
+        var from = query.From ?? to.AddMonths(-1);
         return (new PeriodResponse(from, to), Start(from), Start(to.AddDays(1)));
     }
 
@@ -476,7 +428,8 @@ internal sealed class AnalyticsService(AppDbContext db, ICurrentUser currentUser
             .Include(c => c.Technician)
             .Include(c => c.Asset).ThenInclude(a => a!.Type)
             .Include(c => c.TriggerWorkOrder)
-            .Include(c => c.History)
+            .Include(c => c.History).ThenInclude(h => h.ChangedBy)
+            .Include(c => c.Costs)
             .Include(c => c.Rejections).ThenInclude(r => r.Technician)
             .Include(c => c.ThirdParties)
             .Include(c => c.Tasks)
@@ -498,18 +451,5 @@ internal sealed class AnalyticsService(AppDbContext db, ICurrentUser currentUser
 
     private static double? Rate(int part, int whole) => whole == 0 ? null : Math.Round((double)part / whole, 3);
 
-    private static string? Percent(double? rate) => rate is { } r ? (r * 100).ToString("0.#", CultureInfo.InvariantCulture) : null;
-
-    private static string? Local(DateTimeOffset? at) => at?.ToOffset(Vietnam).ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
-
-    private static string Cell(object? value)
-    {
-        var text = value switch
-        {
-            null => string.Empty,
-            IFormattable f => f.ToString(null, CultureInfo.InvariantCulture),
-            _ => value.ToString() ?? string.Empty,
-        };
-        return text.IndexOfAny([',', '"', '\n', '\r']) >= 0 ? $"\"{text.Replace("\"", "\"\"")}\"" : text;
-    }
+    private static DateTime? Local(DateTimeOffset? at) => at?.ToOffset(Vietnam).DateTime;
 }

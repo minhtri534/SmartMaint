@@ -38,12 +38,11 @@ internal static class AccountRules
             .WithMessage("8 to 20 digits, may start with +.");
 }
 
-/// <summary>The role-dependent fields, shared by create / edit / change role (IValidator is contravariant).</summary>
+/// <summary>The role-dependent fields, shared by create and edit (IValidator is contravariant).</summary>
 public sealed class RoleDetailsValidator : AbstractValidator<IRoleDetails>
 {
     public RoleDetailsValidator()
     {
-        RuleFor(x => x.RoomId).GreaterThan(0).When(x => x.RoomId is not null);
         RuleFor(x => x.HourlyRate).InclusiveBetween(0, AccountRules.MaxHourlyRate).When(x => x.HourlyRate is not null)
             .WithMessage($"Between 0 and {AccountRules.MaxHourlyRate:N0}.");
         RuleFor(x => x.SpecialtyIds)
@@ -70,12 +69,10 @@ public sealed class CreateAccountRequestValidator : AbstractValidator<CreateAcco
 {
     public CreateAccountRequestValidator()
     {
-        RuleFor(x => x.Username).ValidUsername();
         RuleFor(x => x.FullName).ValidFullName();
-        RuleFor(x => x.Email).ValidEmail();
+        RuleFor(x => x.Email).NotEmpty().WithMessage("Enter the e-mail: the temporary password is sent there.").ValidEmail();
         RuleFor(x => x.PhoneNumber).ValidPhone();
         RuleFor(x => x.Role).IsInEnum();
-        RuleFor(x => x.RoomId).NotNull().When(x => x.Role == UserRole.Customer).WithMessage("Choose the customer's room.");
         Include(new RoleDetailsValidator());
     }
 }
@@ -87,17 +84,7 @@ public sealed class UpdateAccountRequestValidator : AbstractValidator<UpdateAcco
         RuleFor(x => x.FullName).ValidFullName();
         RuleFor(x => x.Email).ValidEmail();
         RuleFor(x => x.PhoneNumber).ValidPhone();
-        // The role is not in the request: the service checks that a customer keeps a room.
         Include(new RoleDetailsValidator());
     }
 }
 
-public sealed class ChangeRoleRequestValidator : AbstractValidator<ChangeRoleRequest>
-{
-    public ChangeRoleRequestValidator()
-    {
-        RuleFor(x => x.Role).IsInEnum();
-        RuleFor(x => x.RoomId).NotNull().When(x => x.Role == UserRole.Customer).WithMessage("Choose the customer's room.");
-        Include(new RoleDetailsValidator());
-    }
-}

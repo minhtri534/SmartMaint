@@ -14,13 +14,13 @@ public sealed class CasePart4Tests : CaseTestBase
 
     [Fact]
     [Trait(TestType.Key, TestType.Normal)]
-    public async Task Edit_NewTechnicianWhileInProgress_ContinuesInANewCaseAndClosesTheOld()
+    public async Task Reassign_WhileInProgress_ContinuesInANewCaseAndClosesTheOld()
     {
         var id = await CaseAtAsync(CaseStatus.InProgress);
         var before = await Sut.GetAsync(id, default);
-        var edit = await EditOfAsync(id);
+        As(Staff);
 
-        var old = await Sut.EditAsync(id, edit with { TechnicianId = Technician2.Id }, default);
+        var old = await Sut.ReassignAsync(id, new ReassignRequest(Technician2.Id), default);
 
         Assert.Equal(CaseStatus.Closed, old.Status);
         Assert.StartsWith("Reassigned to tech2", old.History[^1].Reason);
@@ -37,7 +37,7 @@ public sealed class CasePart4Tests : CaseTestBase
 
     [Fact]
     [Trait(TestType.Key, TestType.Boundary)]
-    public async Task Edit_NewTechnician_FinishedTasksStayAndOpenOnesMove()
+    public async Task Reassign_OldCaseKeepsEveryTaskAndTheOpenOnesGoOnInTheNewCase()
     {
         var id = await CaseAtAsync(CaseStatus.InProgress);
         var edit = await EditOfAsync(id);
@@ -49,23 +49,90 @@ public sealed class CasePart4Tests : CaseTestBase
         await Sut.UpdateTaskAsync(id, withTwo.Tasks[0].Id,
             new UpdateTaskRequest(SmartMaint.Api.Entities.Maintenance.CaseTaskStatus.Pass, "Capacitor replaced", null, null, false), default);
 
-        var old = await Sut.EditAsync(id, await EditOfAsync(id) with { TechnicianId = Technician2.Id }, default);
+        As(Staff);
+        var old = await Sut.ReassignAsync(id, new ReassignRequest(Technician2.Id), default);
 
-        var kept = Assert.Single(old.Tasks);
-        Assert.Equal(SmartMaint.Api.Entities.Maintenance.TaskDoneBy.Technician, kept.DoneBy);
+        // meeting note 18/11: the old case keeps both tasks, the unfinished one marked Moved
+        Assert.Equal(2, old.Tasks.Count);
+        Assert.Equal(SmartMaint.Api.Entities.Maintenance.TaskDoneBy.Technician, old.Tasks[0].DoneBy);
+        Assert.Equal(SmartMaint.Api.Entities.Maintenance.CaseTaskStatus.Moved, old.Tasks[1].Status);
         var moved = Assert.Single((await Sut.GetAsync(old.NextCase!.Id, default)).Tasks);
         Assert.Equal("Check the drain pipe", moved.Name);
+        Assert.Equal(SmartMaint.Api.Entities.Maintenance.CaseTaskStatus.Pending, moved.Status);
     }
 
     [Fact]
     [Trait(TestType.Key, TestType.Abnormal)]
-    public async Task Edit_RemoveTheTechnicianOfTakenWork_Throws()
+    public async Task Reopen_CaseClosedByAReassign_IsNeverOffered()
     {
         var id = await CaseAtAsync(CaseStatus.InProgress);
-        var edit = await EditOfAsync(id);
+        As(Staff);
 
-        Assert.Equal("case.technician_required",
-            await ErrorCodeAsync(() => Sut.EditAsync(id, edit with { TechnicianId = null }, default)));
+        var old = await Sut.ReassignAsync(id, new ReassignRequest(Technician2.Id), default);
+
+        Assert.Equal(CaseStatus.Closed, old.Status);
+        Assert.DoesNotContain(CaseAction.Reopen, old.AllowedActions);
+        Assert.Equal("case.invalid_transition",
+            (await Assert.ThrowsAsync<SmartMaint.Api.Common.Errors.AppException>(() =>
+                Sut.ReopenAsync(id, new ReasonRequest("The customer says it is still broken"), default))).Code);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Abnormal)]
+    public async Task Reassign_ToTheSameTechnician_Throws()
+    {
+        var id = await CaseAtAsync(CaseStatus.InProgress);
+        As(Staff);
+
+        Assert.Equal("case.same_technician",
+            await ErrorCodeAsync(() => Sut.ReassignAsync(id, new ReassignRequest(Technician.Id), default)));
+    }
+
+    // ----- A technician edits the cost lines they added (meeting note 18/11) -----
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Normal)]
+    public async Task EditCost_OwnLine_ChangesItAndKeepsTheReceiptCode()
+    {
+        var id = await CaseAtAsync(CaseStatus.InProgress);
+        As(Technician);
+        var added = await Sut.AddCostAsync(id, new AddCostRequest("Capacitor", null, 100000m, "R-1", null), default);
+
+        var result = await Sut.EditCostAsync(id, added.Costs![0].Id, new EditCostRequest("Capacitor 35uF", "Bought nearby", 120000m, "R-1", null), default);
+
+        var line = Assert.Single(result.Costs!);
+        Assert.Equal("Capacitor 35uF", line.Name);
+        Assert.Equal(120000m, line.Amount);
+        Assert.Equal(Technician.Id, line.AddedById);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Abnormal)]
+    public async Task EditCost_LineTheStaffEntered_Throws()
+    {
+        var id = await CaseAtAsync(CaseStatus.InProgress);
+        As(Staff);
+        var staffLine = await Sut.UpdateCostsAsync(id, new UpdateCostsRequest([new CostLineRequest("Scaffold", null, 500000m)]), default);
+        As(Technician);
+
+        var code = await ErrorCodeAsync(() =>
+            Sut.EditCostAsync(id, staffLine.Costs![0].Id, new EditCostRequest("Scaffold", null, 1m, "R-2", null), default));
+
+        Assert.Equal("case.cost_not_yours", code);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Boundary)]
+    public async Task EditCost_RemovingTheOnlyReceipt_Throws()
+    {
+        var id = await CaseAtAsync(CaseStatus.InProgress);
+        As(Technician);
+        var added = await Sut.AddCostAsync(id, new AddCostRequest("Capacitor", null, 100000m, "R-1", null), default);
+
+        var code = await ErrorCodeAsync(() =>
+            Sut.EditCostAsync(id, added.Costs![0].Id, new EditCostRequest("Capacitor", null, 100000m, " ", null), default));
+
+        Assert.Equal("case.receipt_required", code);
     }
 
     // ----- The urgency, from Edit -----

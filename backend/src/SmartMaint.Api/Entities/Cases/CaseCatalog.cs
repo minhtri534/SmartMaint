@@ -1,3 +1,5 @@
+using SmartMaint.Api.Entities.Buildings;
+
 namespace SmartMaint.Api.Entities.Cases;
 
 /// <summary>
@@ -14,22 +16,27 @@ public class PriorityLevel : AuditableEntity
 }
 
 /// <summary>
-/// The service catalogue the customer picks from (N24): group "Water", type "Leaking pipe or tap".
-/// ERD: CaseCategories(Name, Description). GroupName, IsEmergency, DefaultPriority, PhotoRequired and
-/// DefaultCostBearer are NOT IN ERD v5.
+/// The fault categories the customer picks from. ERD: CaseCategories(Name, Description). NOT IN ERD v5: AssetTypeId,
+/// ArchivedAt, GroupName. Meeting note 18/11: IsEmergency, DefaultPriority and PhotoRequired no longer do anything; the
+/// columns stay until the old API is gone.
 /// </summary>
-public class CaseCategory : AuditableEntity
+public class CaseCategory : AuditableEntity, IArchivable
 {
     public string GroupName { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string? Description { get; set; }
 
-    /// <summary>In the emergency list: the case goes to F4 as soon as it is created (N26).</summary>
+    /// <summary>The asset type this fault belongs to; empty = every asset type.</summary>
+    public long? AssetTypeId { get; set; }
+    public AssetType? AssetType { get; set; }
+
+    /// <summary>Archived: not offered for new requests, kept on the cases that used it.</summary>
+    public DateTimeOffset? ArchivedAt { get; set; }
+
     public bool IsEmergency { get; set; }
 
     public long DefaultPriorityId { get; set; }
     public PriorityLevel DefaultPriority { get; set; } = null!;
 
-    /// <summary>E.g. a leak needs a photo, so fewer requests are rejected for missing information (O05).</summary>
     public bool PhotoRequired { get; set; }
 }

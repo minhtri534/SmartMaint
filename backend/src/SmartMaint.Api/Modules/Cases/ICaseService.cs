@@ -15,8 +15,20 @@ public interface ICaseService
 
     Task<CaseDetailResponse> GetAsync(long id, CancellationToken cancellationToken);
 
-    /// <summary>Staff: the customers of the case's building who may follow it (meeting 07/11).</summary>
-    Task<IReadOnlyList<PersonResponse>> GetFollowerOptionsAsync(long id, CancellationToken cancellationToken);
+    /// <summary>Staff: who follows the case now, and the customers whose username, e-mail or name matches the search.</summary>
+    Task<FollowerOptionsResponse> GetFollowerOptionsAsync(long id, string? search, CancellationToken cancellationToken);
+
+    /// <summary>Staff: the followers become exactly this list.</summary>
+    Task<CaseDetailResponse> SetFollowersAsync(long id, SetFollowersRequest request, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Staff: another technician. Nobody accepted yet: same case. Already accepted: a new case takes the unfinished tasks,
+    /// this one closes with the finished ones, and the two link to each other.
+    /// </summary>
+    Task<CaseDetailResponse> ReassignAsync(long id, ReassignRequest request, CancellationToken cancellationToken);
+
+    /// <summary>Technician: correct a cost line they added themselves.</summary>
+    Task<CaseDetailResponse> EditCostAsync(long id, long costId, EditCostRequest request, CancellationToken cancellationToken);
 
     /// <summary>Customer: a new request.</summary>
     Task<CaseDetailResponse> CreateAsync(CreateCaseRequest request, CancellationToken cancellationToken);
@@ -71,6 +83,9 @@ public interface ICaseService
     /// <summary>Staff agrees: Reopened, same technician.</summary>
     Task<CaseDetailResponse> AcceptNotFixedAsync(long id, CancellationToken cancellationToken);
 
+    /// <summary>Meeting note 18/11: the staff reopens a closed case (within 7 days, not one closed by a reassign).</summary>
+    Task<CaseDetailResponse> ReopenAsync(long id, ReasonRequest request, CancellationToken cancellationToken);
+
     /// <summary>Staff disagrees, with a reason the customer is told.</summary>
     Task<CaseDetailResponse> DeclineNotFixedAsync(long id, ReasonRequest request, CancellationToken cancellationToken);
 
@@ -90,9 +105,6 @@ public interface ICaseService
 
     /// <summary>Staff: a line of the emergency log (third party called, temporary measure, news for the customer).</summary>
     Task<CaseDetailResponse> AddLogAsync(long id, EmergencyLogRequest request, CancellationToken cancellationToken);
-
-    /// <summary>Technician, K06: the danger is under control (first milestone).</summary>
-    Task<CaseDetailResponse> MarkSafeAsync(long id, CancellationToken cancellationToken);
 
     /// <summary>Staff, K08: optional post-incident report of a closed emergency.</summary>
     Task<CaseDetailResponse> WriteIncidentReportAsync(long id, IncidentReportRequest request, CancellationToken cancellationToken);

@@ -11,13 +11,14 @@ interface AssetSearchProps {
   value: string
   onChange: (assetId: string) => void
   disabled?: boolean
+  error?: string
 }
 
 /**
  * Meeting 07/11: type a word, the assets of the room whose name or code contain it drop down, click one to choose it.
  * A combobox (input + listbox): arrows move, Enter chooses, Escape closes.
  */
-export function AssetSearch({ assets, value, onChange, disabled }: AssetSearchProps) {
+export function AssetSearch({ assets, value, onChange, disabled, error }: AssetSearchProps) {
   const listId = useId()
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
@@ -79,9 +80,10 @@ export function AssetSearch({ assets, value, onChange, disabled }: AssetSearchPr
         placeholder={disabled ? 'Choose the room first' : 'Type a word, e.g. air conditioner'}
         hint={
           assets && assets.length === 0
-            ? 'No registered asset in this room. Leave it empty.'
-            : 'Optional. Leave it empty if the problem is not about one asset.'
+            ? 'No registered asset in this room. Choose another room or ask the building staff.'
+            : undefined
         }
+        error={error}
         disabled={disabled}
         autoComplete="off"
         role="combobox"

@@ -30,11 +30,28 @@ public sealed class CasesController(ICaseService cases) : ControllerBase
     public Task<CaseDetailResponse> Get(long id, CancellationToken cancellationToken) =>
         cases.GetAsync(id, cancellationToken);
 
-    /// <summary>The customers of the building who may follow the case (Edit form).</summary>
+    /// <summary>The followers dialog: who follows the case now and the customers found by username or e-mail.</summary>
     [HttpGet("{id:long}/follower-options")]
     [AuthorizeRoles(UserRole.Staff)]
-    public Task<IReadOnlyList<PersonResponse>> FollowerOptions(long id, CancellationToken cancellationToken) =>
-        cases.GetFollowerOptionsAsync(id, cancellationToken);
+    public Task<FollowerOptionsResponse> FollowerOptions(long id, [FromQuery] string? search, CancellationToken cancellationToken) =>
+        cases.GetFollowerOptionsAsync(id, search, cancellationToken);
+
+    [HttpPut("{id:long}/followers")]
+    [AuthorizeRoles(UserRole.Staff)]
+    public Task<CaseDetailResponse> SetFollowers(long id, SetFollowersRequest request, CancellationToken cancellationToken) =>
+        cases.SetFollowersAsync(id, request, cancellationToken);
+
+    /// <summary>Another technician for the case (see ICaseService.ReassignAsync).</summary>
+    [HttpPost("{id:long}/reassign")]
+    [AuthorizeRoles(UserRole.Staff)]
+    public Task<CaseDetailResponse> Reassign(long id, ReassignRequest request, CancellationToken cancellationToken) =>
+        cases.ReassignAsync(id, request, cancellationToken);
+
+    /// <summary>The technician corrects a cost line they added.</summary>
+    [HttpPut("{id:long}/costs/{costId:long}")]
+    [AuthorizeRoles(UserRole.Technician)]
+    public Task<CaseDetailResponse> EditCost(long id, long costId, EditCostRequest request, CancellationToken cancellationToken) =>
+        cases.EditCostAsync(id, costId, request, cancellationToken);
 
     /// <summary>EMP-02: report a problem.</summary>
     [HttpPost]
@@ -110,7 +127,7 @@ public sealed class CasesController(ICaseService cases) : ControllerBase
     public Task<CaseDetailResponse> Resume(long id, CancellationToken cancellationToken) =>
         cases.ResumeAsync(id, cancellationToken);
 
-    /// <summary>Status → Completed (meeting 07/11: nothing else to fill in; body {} or the replacement model).</summary>
+    /// <summary>Status → Completed (meeting 07/11: nothing else to fill in; the body is {}).</summary>
     [HttpPost("{id:long}/complete")]
     [AuthorizeRoles(UserRole.Technician)]
     public Task<CaseDetailResponse> Complete(long id, CompleteWorkRequest request, CancellationToken cancellationToken) =>
@@ -136,6 +153,12 @@ public sealed class CasesController(ICaseService cases) : ControllerBase
     [AuthorizeRoles(UserRole.Staff)]
     public Task<CaseDetailResponse> AcceptNotFixed(long id, CancellationToken cancellationToken) =>
         cases.AcceptNotFixedAsync(id, cancellationToken);
+
+    /// <summary>Meeting note 18/11: a closed case is read only; reopening is the one action left.</summary>
+    [HttpPost("{id:long}/reopen")]
+    [AuthorizeRoles(UserRole.Staff)]
+    public Task<CaseDetailResponse> Reopen(long id, ReasonRequest request, CancellationToken cancellationToken) =>
+        cases.ReopenAsync(id, request, cancellationToken);
 
     [HttpPost("{id:long}/not-fixed/decline")]
     [AuthorizeRoles(UserRole.Staff)]
@@ -173,12 +196,6 @@ public sealed class CasesController(ICaseService cases) : ControllerBase
     [AuthorizeRoles(UserRole.Staff)]
     public Task<CaseDetailResponse> AddLog(long id, EmergencyLogRequest request, CancellationToken cancellationToken) =>
         cases.AddLogAsync(id, request, cancellationToken);
-
-    /// <summary>K06: the danger is under control.</summary>
-    [HttpPost("{id:long}/made-safe")]
-    [AuthorizeRoles(UserRole.Technician)]
-    public Task<CaseDetailResponse> MarkSafe(long id, CancellationToken cancellationToken) =>
-        cases.MarkSafeAsync(id, cancellationToken);
 
     /// <summary>K08: post-incident report of a closed emergency.</summary>
     [HttpPut("{id:long}/incident-report")]

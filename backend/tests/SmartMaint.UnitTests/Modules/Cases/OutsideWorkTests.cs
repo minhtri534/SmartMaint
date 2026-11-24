@@ -13,12 +13,10 @@ using SmartMaint.UnitTests.Common;
 namespace SmartMaint.UnitTests.Modules.Cases;
 
 /// <summary>
-/// F5: assessment, decision board, the hand-over to an outside party and its tasks (meeting 07/11), replacement, survey.
+/// F5: assessment, decision board, the hand-over to an outside party and its tasks (meeting 07/11), survey.
 /// </summary>
 public sealed class OutsideWorkTests : CaseTestBase
 {
-    private ReplacementService Replacements => new(Db, Me, new BuildingScope(Db, Me), new AuditService(Db, Me, Clock), Notifications, Clock);
-
     private bool Told(Account user, string text) => Db.Notifications.Any(n => n.UserId == user.Id && n.Details.Contains(text));
 
     private static RequestDecisionRequest Assessment() =>
@@ -219,74 +217,6 @@ public sealed class OutsideWorkTests : CaseTestBase
 
         Assert.Equal(CaseStatus.InProgress, result.Status);
         Assert.Null(result.HoldReason);
-    }
-
-    // ----- replacement (an outside party of the old flow replaced the asset) -----
-
-    /// <summary>The asset of an in-progress case was replaced by an outside party (a row of the old F5 flow).</summary>
-    private async Task<long> ReplacedByOutsidePartyAsync()
-    {
-        var id = await WaitingDecisionAsync();
-        Db.CaseThirdParties.Add(new CaseThirdParty
-        {
-            CaseId = id,
-            Kind = OutsideWorkKind.Contract,
-            Job = OutsideWorkJob.Replace,
-            Status = OutsideWorkStatus.Done,
-            CompanyName = "Cool Air Co.",
-            Contact = "Mr Minh 0901 234 567",
-            FinishedAt = Clock.Now,
-        });
-        await Db.SaveChangesAsync();
-        await Sut.EditAsync(id, await EditOfAsync(id) with { StatusChange = EditStatusChange.Continue }, default);
-        As(Technician);
-        return id;
-    }
-
-    [Fact]
-    [Trait(TestType.Key, TestType.Abnormal)]
-    public async Task Complete_AfterAReplacementWithoutTheNewModel_Throws()
-    {
-        var id = await ReplacedByOutsidePartyAsync();
-
-        Assert.Equal("case.replacement_model_required", await ErrorCodeAsync(() =>
-            Sut.CompleteAsync(id, new CompleteWorkRequest(), default)));
-    }
-
-    [Fact]
-    [Trait(TestType.Key, TestType.Normal)]
-    public async Task Replacement_ClosedCase_AdminRegistersTheNewAssetAndRetiresTheOld()
-    {
-        var id = await ReplacedByOutsidePartyAsync();
-        await Sut.CompleteAsync(id, new CompleteWorkRequest(
-            ReplacementModel: "Daikin FTKF35", ReplacementSerial: "SN-123"), default);
-        await Sut.EditAsync(id, await EditOfAsync(id) with { StatusChange = EditStatusChange.Close }, default);
-        As(Admin);
-        var request = Assert.Single(await Replacements.ListAsync(default));
-        Assert.Null(request.CaseId); // BR-11: no link into the case for the Administrator
-
-        var done = await Replacements.CompleteAsync(request.Id,
-            new CompleteReplacementRequest("AC 501 Daikin FTKF35", AcInRoomA.TypeId, null, false, null), default);
-
-        Assert.Equal(ReplacementStatus.Done, done.Status);
-        var created = Db.Assets.Single(a => a.Id == done.NewAsset!.Id);
-        Assert.Equal(AcInRoomA.Id, created.ReplacesAssetId);
-        Assert.NotNull(Db.Assets.Single(a => a.Id == AcInRoomA.Id).RetiredAt);
-        Assert.True(Told(Staff, "is registered in place of"));
-    }
-
-    [Fact]
-    [Trait(TestType.Key, TestType.Abnormal)]
-    public async Task ReplacementComplete_NameAlreadyInTheRoom_Throws()
-    {
-        var id = await ReplacedByOutsidePartyAsync();
-        await Sut.CompleteAsync(id, new CompleteWorkRequest(ReplacementModel: "Daikin"), default);
-        await Sut.EditAsync(id, await EditOfAsync(id) with { StatusChange = EditStatusChange.Close }, default);
-        As(Admin);
-        var request = (await Replacements.ListAsync(default)).Single();
-
-        Assert.Equal("asset.name_taken", await ErrorCodeAsync(() => Replacements.CompleteAsync(request.Id,
-            new CompleteReplacementRequest(AcInRoomA.Name, AcInRoomA.TypeId, null, false, null), default)));
     }
 
     // ----- survey (way 2) -----

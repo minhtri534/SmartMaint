@@ -92,8 +92,8 @@ public sealed class CaseDuplicateTests : CaseTestBase
     public async Task Follower_SeesTheCaseInTheirListAndHearsWhenItCloses()
     {
         var main = await CaseAtAsync(CaseStatus.Completed);
-        var edit = await EditOfAsync(main);
-        await Sut.EditAsync(main, edit with { FollowerIds = [Customer2.Id] }, default);
+        As(Staff);
+        await Sut.SetFollowersAsync(main, new SetFollowersRequest([Customer2.Id]), default);
         await Sut.EditAsync(main, await EditOfAsync(main) with { StatusChange = EditStatusChange.Close }, default);
         As(Customer2);
 
@@ -108,23 +108,38 @@ public sealed class CaseDuplicateTests : CaseTestBase
 
     [Fact]
     [Trait(TestType.Key, TestType.Abnormal)]
-    public async Task Edit_FollowerFromAnotherBuilding_Throws()
-    {
-        var main = await CaseAtAsync(CaseStatus.Approved);
-        var edit = await EditOfAsync(main);
-
-        Assert.Equal("case.invalid_follower", await ErrorCodeAsync(() => Sut.EditAsync(main, edit with { FollowerIds = [CustomerB.Id] }, default)));
-    }
-
-    [Fact]
-    [Trait(TestType.Key, TestType.Boundary)]
-    public async Task FollowerOptions_AreTheOtherCustomersOfTheBuilding()
+    public async Task SetFollowers_SomeoneWhoIsNotACustomer_Throws()
     {
         var main = await CaseAtAsync(CaseStatus.Approved);
         As(Staff);
 
-        var options = await Sut.GetFollowerOptionsAsync(main, default);
+        Assert.Equal("case.invalid_follower",
+            await ErrorCodeAsync(() => Sut.SetFollowersAsync(main, new SetFollowersRequest([Technician.Id]), default)));
+    }
 
-        Assert.Equal([Customer2.Id], options.Select(o => o.Id)); // not the requester, not building B
+    [Fact]
+    [Trait(TestType.Key, TestType.Boundary)]
+    public async Task FollowerOptions_SearchByUsername_FindsOnlyThatCustomerAndListsTheCurrentOnes()
+    {
+        var main = await CaseAtAsync(CaseStatus.Approved);
+        As(Staff);
+        await Sut.SetFollowersAsync(main, new SetFollowersRequest([Customer2.Id]), default);
+
+        var options = await Sut.GetFollowerOptionsAsync(main, "CUSTOMERB", default);
+
+        Assert.Equal(Customer2.Id, Assert.Single(options.Current).Id);
+        Assert.Equal(CustomerB.Id, Assert.Single(options.Matches).Id);
+    }
+
+    [Fact]
+    [Trait(TestType.Key, TestType.Boundary)]
+    public async Task FollowerOptions_AreAllTheOtherCustomers()
+    {
+        var main = await CaseAtAsync(CaseStatus.Approved);
+        As(Staff);
+
+        var options = await Sut.GetFollowerOptionsAsync(main, null, default);
+
+        Assert.Equal([Customer2.Id, CustomerB.Id], options.Matches.Select(o => o.Id).Order()); // everyone but the requester
     }
 }

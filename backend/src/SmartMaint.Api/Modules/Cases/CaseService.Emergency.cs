@@ -66,15 +66,6 @@ internal sealed partial class CaseService
             return Task.FromResult<string?>(line);
         }, cancellationToken);
 
-    /// <summary>F4 step ⑧ (K06): the danger is under control. The first milestone; the repair goes on.</summary>
-    public Task<CaseDetailResponse> MarkSafeAsync(long id, CancellationToken cancellationToken) =>
-        ActAsync(id, CaseAction.MarkSafe, (c, now) =>
-        {
-            c.MadeSafeAt = now;
-            var minutes = (int)Math.Round((now - (c.EmergencyAt ?? c.SubmittedAt)).TotalMinutes);
-            return Task.FromResult<string?>($"Made safe {minutes} min after the report.");
-        }, cancellationToken);
-
     /// <summary>F4 step ⑫ (K08): optional post-incident report after closing; may be rewritten.</summary>
     public Task<CaseDetailResponse> WriteIncidentReportAsync(
         long id, IncidentReportRequest request, CancellationToken cancellationToken) =>
@@ -90,15 +81,6 @@ internal sealed partial class CaseService
 
     // ----- notifications ----------------------------------------------------------------------------------------
 
-    /// <summary>
-    /// F4 page 1 (N11): the primary staff of the building first (every staff member if there is no primary; the watch
-    /// job brings the backup in after 10 minutes). The customer's safety advice is on their screen, not a notification.
-    /// </summary>
-    private async Task NotifyNewEmergencyAsync(Case c, long buildingId, string where, CancellationToken cancellationToken) =>
-        notifications.Send(
-            await PrimaryStaffAsync(buildingId, cancellationToken),
-            $"EMERGENCY {Case.CodeOf(c.Id)} \"{c.Title}\" in {where}. Acknowledge it now.");
-
     /// <summary>The primary staff of the building; every staff member when nobody is primary.</summary>
     internal static async Task<List<long>> PrimaryStaffAsync(Data.AppDbContext db, long buildingId, bool primary, CancellationToken cancellationToken)
     {
@@ -110,9 +92,6 @@ internal sealed partial class CaseService
         return wanted.Count > 0 || !primary ? wanted : staff.Select(a => a.StaffId).ToList();
     }
 
-    private Task<List<long>> PrimaryStaffAsync(long buildingId, CancellationToken cancellationToken) =>
-        PrimaryStaffAsync(db, buildingId, primary: true, cancellationToken);
-
     /// <summary>Who hears about the F4 steps (called from NotifyAsync for the actions it does not list; AddLog notifies itself).</summary>
     private void NotifyEmergency(Case c, CaseAction action, List<long> staffOfBuilding)
     {
@@ -122,9 +101,6 @@ internal sealed partial class CaseService
         {
             case CaseAction.Acknowledge:
                 notifications.Send(customer, $"{code}: {c.Staff?.FullName ?? "The building staff"} is handling your emergency.");
-                break;
-            case CaseAction.MarkSafe:
-                notifications.Send([.. staffOfBuilding, .. customer], $"{code} \"{c.Title}\": the danger is under control, the repair goes on.");
                 break;
         }
     }

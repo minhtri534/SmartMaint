@@ -5,6 +5,9 @@ namespace SmartMaint.Api.Modules.Assets.Dtos;
 
 // F1 assets. Names match frontend/src/features/assets/types.ts.
 
+/// <summary>A link to another asset ("replaces" / "replaced by", kept for assets replaced earlier).</summary>
+public sealed record AssetRefResponse(long Id, string Name);
+
 /// <summary>AST-02 filters.</summary>
 public sealed record AssetListQuery : PageRequest
 {
@@ -17,6 +20,19 @@ public sealed record AssetListQuery : PageRequest
     public string? Search { get; init; }
 
     public bool IncludeRetired { get; init; }
+
+    public AssetListStatus? Status { get; init; }
+
+    /// <summary>"name_asc", "name_desc", "warranty_asc" or "warranty_desc"; empty = by place.</summary>
+    public string? Sort { get; init; }
+}
+
+/// <summary>The status filter of the asset list: the same three states as the pill on each row.</summary>
+public enum AssetListStatus
+{
+    InService,
+    OpenCase,
+    Retired,
 }
 
 public sealed record AssetLocationResponse(long BuildingId, string BuildingName, string FloorName, long RoomId, string RoomName);
@@ -38,9 +54,8 @@ public record AssetSummaryResponse(
 
 public enum AssetAction
 {
-    Edit,
-    Retire,
-    Delete,
+    /// <summary>Staff of the building: put this asset in a change list (edit, retire or delete it there).</summary>
+    ProposeChange,
 
     /// <summary>Staff, F5 way 2: open a survey case (the asset fails often).</summary>
     OpenSurvey,
@@ -96,20 +111,11 @@ public sealed record AssetRequest(
     bool HasCopyright,
     DateOnly? WarrantyEndDate);
 
-/// <summary>
-/// AST-05. The web reads the CSV file and sends its text. DryRun = only check; otherwise the rows are imported
-/// all together, or none when any row has an error.
-/// </summary>
-public sealed record ImportAssetsRequest(string Csv, bool DryRun);
-
-public sealed record ImportRowResult(int Line, string Name, IReadOnlyList<string> Errors);
-
-public sealed record ImportAssetsResponse(int RowCount, int ErrorCount, bool Imported, IReadOnlyList<ImportRowResult> Rows);
-
 /// <summary>AST-07: where a scanned QR label should send the caller.</summary>
 public sealed record QrTargetResponse(
     long Id,
     string Name,
+    long TypeId,
     AssetLocationResponse Location,
     bool IsRetired,
     bool CanReport,

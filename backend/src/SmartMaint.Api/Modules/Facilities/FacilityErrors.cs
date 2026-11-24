@@ -18,8 +18,5 @@ internal static class FacilityErrors
         new(ErrorKind.Conflict, "facility.room_taken", "This floor already has a room with this number or name.");
 
     public static AppException NotEmpty(string what) =>
-        new(ErrorKind.Conflict, "facility.not_empty", $"This {what} still has {(what == "room" ? "assets, tenants or cases" : "content")}: it cannot be deleted.");
-
-    public static AppException RoomRented() =>
-        new(ErrorKind.Conflict, "facility.room_rented", "A customer rents this room, so it cannot become a common area.");
+        new(ErrorKind.Conflict, "facility.not_empty", $"This {what} still has {(what == "room" ? "assets or cases" : "content")}: it cannot be deleted.");
 }

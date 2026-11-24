@@ -11,7 +11,8 @@
 --   * One section per table, in FK order. Each flow owner appends the section for their own tables.
 --   * DEMO DATA ONLY — no real people, no real passwords.
 --
--- Demo accounts (sign in with the username) — all use the password:  Smartmaint@2026
+-- Demo accounts — sign in with the e-mail (<username>@smartmaint.test) or, for a few, the phone number below
+-- (meeting note 18/11; the username no longer signs in) — all use the password:  Smartmaint@2026
 --   admin        Administrator
 --   manager      Facility Manager (both buildings)
 --   staff        Facility Staff, primary for SmartMaint Tower A
@@ -94,6 +95,13 @@ FROM (VALUES
 ) AS a(username, full_name, email, role, must_change, hash)
 JOIN roles r ON r.name = a.role
 ON CONFLICT (username) DO NOTHING;
+
+-- Meeting note 18/11: a phone number signs in too (stored as digits). A few demo numbers:
+UPDATE accounts AS a
+SET phone_number = p.phone
+FROM (VALUES ('admin', '0900000001'), ('manager', '0900000002'), ('staff', '0900000003'),
+             ('technician', '0900000005'), ('customer', '0900000008')) AS p(username, phone)
+WHERE a.username = p.username AND a.phone_number IS NULL;
 
 INSERT INTO admins (id)
 SELECT a.id FROM accounts a JOIN roles r ON r.id = a.role_id WHERE r.name = 'admin'
@@ -242,6 +250,20 @@ FROM (VALUES
 ) AS c(grp, name, priority, is_emergency, photo)
 JOIN priority_levels p ON p.code = c.priority
 ON CONFLICT (group_name, name) DO NOTHING;
+
+-- Faults that belong to one asset type; the others apply to every asset type.
+UPDATE case_categories c
+SET asset_type_id = t.id
+FROM (VALUES
+    ('Air conditioning', 'Not cooling',              'AC-SPLIT'),
+    ('Air conditioning', 'Water dripping from unit', 'AC-SPLIT'),
+    ('Elevator',         'Person stuck in elevator', 'ELEVATOR'),
+    ('Elevator',         'Elevator out of service',  'ELEVATOR'),
+    ('Electrical',       'Light not working',        'LIGHT'),
+    ('Electrical',       'Breaker keeps tripping',   'DB')
+) AS m(grp, name, code)
+JOIN asset_types t ON t.code = m.code
+WHERE c.group_name = m.grp AND c.name = m.name AND c.asset_type_id IS NULL;
 
 -- ---------------------------------------------------------------------------
 -- cases, case_status_history, case_tasks  (owner: Trí — F3)
@@ -392,35 +414,88 @@ DECLARE
     plan_id bigint;
     det_id  bigint;
 BEGIN
-    -- Running plan: Tower A split ACs, every month, made 3 days before the due day.
+    -- Running plan with two triggers (meeting note 18/11, like UpKeep): one template (checklist, urgency, hours),
+    -- room 501's AC every month with no end, room 502's AC every 3 months for one year. Made 3 days ahead.
+    -- The plan's own frequency / lead days copy its first trigger (ERD columns kept for older code).
     IF NOT EXISTS (SELECT 1 FROM maintenance_work_order_details d JOIN case_checklists c ON c.id = d.checklist_id
                    WHERE c.name = 'Split AC monthly service') THEN
-        INSERT INTO maintenance_triggers (frequency, frequency_type_id, staff_id, approving_manager_id, status_id, lead_days)
-        VALUES (1, (SELECT id FROM frequency_types WHERE name = 'month'), stf, mgr,
+        INSERT INTO maintenance_triggers (name, description, frequency, frequency_type_id, staff_id, approving_manager_id,
+                                          status_id, lead_days)
+        VALUES ('Split AC service · Tower A', 'Ask the tenant before entering the office; bring spare filters.',
+                1, (SELECT id FROM frequency_types WHERE name = 'month'), stf, mgr,
                 (SELECT id FROM trigger_statuses WHERE name = 'active'), 3)
         RETURNING id INTO plan_id;
-        INSERT INTO maintenance_work_order_details (trigger_id, checklist_id, estimated_hours, priority_level_id)
+
+        INSERT INTO maintenance_work_order_details (trigger_id, checklist_id, estimated_hours, priority_level_id,
+                                                    frequency, frequency_type_id, lead_days, start_date, end_date)
         VALUES (plan_id, (SELECT id FROM case_checklists WHERE name = 'Split AC monthly service'), 1.5,
-                (SELECT id FROM priority_levels WHERE code = 'normal'))
+                (SELECT id FROM priority_levels WHERE code = 'normal'),
+                1, (SELECT id FROM frequency_types WHERE name = 'month'), 3, CURRENT_DATE + 2, NULL)
         RETURNING id INTO det_id;
         INSERT INTO maintenance_work_order_assets (work_order_detail_id, asset_id, technician_id, start_time, end_time)
-        SELECT det_id, a.id, tech, CURRENT_DATE + 2, NULL
-        FROM assets a WHERE a.name IN ('Split AC Daikin 2HP (#AC-501)', 'Split AC Panasonic 1.5HP (#AC-502)');
+        SELECT det_id, a.id, tech, CURRENT_DATE + 2, NULL FROM assets a WHERE a.name = 'Split AC Daikin 2HP (#AC-501)';
+
+        INSERT INTO maintenance_work_order_details (trigger_id, checklist_id, estimated_hours, priority_level_id,
+                                                    frequency, frequency_type_id, lead_days, start_date, end_date)
+        VALUES (plan_id, (SELECT id FROM case_checklists WHERE name = 'Split AC monthly service'), 1.5,
+                (SELECT id FROM priority_levels WHERE code = 'normal'),
+                3, (SELECT id FROM frequency_types WHERE name = 'month'), 3, CURRENT_DATE + 10, CURRENT_DATE + 365)
+        RETURNING id INTO det_id;
+        INSERT INTO maintenance_work_order_assets (work_order_detail_id, asset_id, technician_id, start_time, end_time)
+        SELECT det_id, a.id, tech, CURRENT_DATE + 10, CURRENT_DATE + 365
+        FROM assets a WHERE a.name = 'Split AC Panasonic 1.5HP (#AC-502)';
     END IF;
 
     -- Plan waiting for approval: the Restroom G water heater, every 3 months, no default technician.
     IF NOT EXISTS (SELECT 1 FROM maintenance_work_order_details d JOIN case_checklists c ON c.id = d.checklist_id
                    WHERE c.name = 'Water heater quarterly check') THEN
-        INSERT INTO maintenance_triggers (frequency, frequency_type_id, staff_id, status_id, lead_days)
-        VALUES (3, (SELECT id FROM frequency_types WHERE name = 'month'), stf,
+        INSERT INTO maintenance_triggers (name, frequency, frequency_type_id, staff_id, status_id, lead_days)
+        VALUES ('Water heater check · Restroom G', 3, (SELECT id FROM frequency_types WHERE name = 'month'), stf,
                 (SELECT id FROM trigger_statuses WHERE name = 'pending_approval'), 3)
         RETURNING id INTO plan_id;
-        INSERT INTO maintenance_work_order_details (trigger_id, checklist_id, estimated_hours, priority_level_id)
+        INSERT INTO maintenance_work_order_details (trigger_id, checklist_id, estimated_hours, priority_level_id,
+                                                    frequency, frequency_type_id, lead_days, start_date, end_date)
         VALUES (plan_id, (SELECT id FROM case_checklists WHERE name = 'Water heater quarterly check'), 1,
-                (SELECT id FROM priority_levels WHERE code = 'normal'))
+                (SELECT id FROM priority_levels WHERE code = 'normal'),
+                3, (SELECT id FROM frequency_types WHERE name = 'month'), 3, CURRENT_DATE + 7, NULL)
         RETURNING id INTO det_id;
         INSERT INTO maintenance_work_order_assets (work_order_detail_id, asset_id, technician_id, start_time, end_time)
         SELECT det_id, a.id, NULL, CURRENT_DATE + 7, NULL FROM assets a WHERE a.name = 'Water heater Ariston 30L (#WH-G1)';
+    END IF;
+END
+$$;
+
+-- ---------------------------------------------------------------------------
+-- asset_change_lists, asset_change_items  (meeting note 18/11: staff draft, manager approves)
+-- One list waiting for the Tower A manager: a new room 503 on floor 5 with a new AC in it (the AC line points at the
+-- room line by its key), and the warranty of the room 501 AC moved to 2028.
+-- ---------------------------------------------------------------------------
+DO $$
+DECLARE
+    list_id bigint;
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM asset_change_lists WHERE title = 'Fit-out of room 503') THEN
+        INSERT INTO asset_change_lists (building_id, title, note, status, staff_id, submitted_at)
+        VALUES ((SELECT id FROM buildings WHERE name = 'SmartMaint Tower A'), 'Fit-out of room 503',
+                'The tenant of 503 moved in; the 501 AC warranty was extended by Daikin.', 'pending',
+                (SELECT id FROM accounts WHERE username = 'staff'), now())
+        RETURNING id INTO list_id;
+
+        INSERT INTO asset_change_items (list_id, position, kind, key, parent_key, floor_id, room_id, asset_id, name,
+                                        type_id, manufacturer_id, has_copyright, warranty_end_date, target_label)
+        VALUES (list_id, 1, 'add_room', 'n1', NULL,
+                (SELECT f.id FROM floors f JOIN buildings b ON b.id = f.building_id
+                 WHERE b.name = 'SmartMaint Tower A' AND f.floor_number = '5'),
+                NULL, NULL, '503', NULL, NULL, NULL, NULL, NULL),
+               (list_id, 2, 'add_asset', 'n2', 'n1', NULL, NULL, NULL, 'Split AC Daikin 1.5HP (#AC-503)',
+                (SELECT id FROM asset_types WHERE code = 'AC-SPLIT'), (SELECT id FROM manufacturers WHERE name = 'Daikin'),
+                false, DATE '2028-11-30', NULL);
+
+        INSERT INTO asset_change_items (list_id, position, kind, key, room_id, asset_id, name, type_id, manufacturer_id,
+                                        has_copyright, warranty_end_date, target_label)
+        SELECT list_id, 3, 'edit_asset', 'n3', a.room_id, a.id, a.name, a.type_id, a.manufacturer_id, a.has_copyright,
+               DATE '2028-06-30', a.name || ' (Floor 5 · 501)'
+        FROM assets a WHERE a.name = 'Split AC Daikin 2HP (#AC-501)';
     END IF;
 END
 $$;

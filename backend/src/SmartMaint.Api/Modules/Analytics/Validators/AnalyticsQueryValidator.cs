@@ -17,3 +17,25 @@ public sealed class AnalyticsQueryValidator : AbstractValidator<AnalyticsQuery>
         RuleFor(x => x.BuildingId).GreaterThan(0).When(x => x.BuildingId is not null);
     }
 }
+
+public sealed class ChartQueryValidator : AbstractValidator<ChartQuery>
+{
+    public ChartQueryValidator()
+    {
+        Include(new AnalyticsQueryValidator());
+        RuleFor(x => x.Metric).IsInEnum();
+        RuleFor(x => x.Step).IsInEnum();
+    }
+}
+
+public sealed class ExportQueryValidator : AbstractValidator<ExportQuery>
+{
+    public ExportQueryValidator()
+    {
+        Include(new AnalyticsQueryValidator());
+        RuleFor(x => x.Tab).IsInEnum();
+        RuleFor(x => x.Metric).IsInEnum();
+        RuleFor(x => x.Step).IsInEnum();
+        RuleFor(x => x.Sort).MaximumLength(30);
+    }
+}

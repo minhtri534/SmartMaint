@@ -2030,3 +2030,513 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261118132008_IntakeRulesMeeting1811') THEN
+    ALTER TABLE specialties ADD archived_at timestamp with time zone;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261118132008_IntakeRulesMeeting1811') THEN
+    ALTER TABLE customers ALTER COLUMN room_id DROP NOT NULL;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261118132008_IntakeRulesMeeting1811') THEN
+    ALTER TABLE case_categories ADD archived_at timestamp with time zone;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261118132008_IntakeRulesMeeting1811') THEN
+    ALTER TABLE case_categories ADD asset_type_id bigint;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261118132008_IntakeRulesMeeting1811') THEN
+    CREATE INDEX ix_case_categories_asset_type_id ON case_categories (asset_type_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261118132008_IntakeRulesMeeting1811') THEN
+    ALTER TABLE case_categories ADD CONSTRAINT fk_case_categories_asset_types_asset_type_id FOREIGN KEY (asset_type_id) REFERENCES asset_types (id) ON DELETE RESTRICT;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261118132008_IntakeRulesMeeting1811') THEN
+    UPDATE case_categories c
+    SET asset_type_id = t.id
+    FROM (VALUES
+        ('Air conditioning', 'Not cooling',              'AC-SPLIT'),
+        ('Air conditioning', 'Water dripping from unit', 'AC-SPLIT'),
+        ('Elevator',         'Person stuck in elevator', 'ELEVATOR'),
+        ('Elevator',         'Elevator out of service',  'ELEVATOR'),
+        ('Electrical',       'Light not working',        'LIGHT'),
+        ('Electrical',       'Breaker keeps tripping',   'DB')
+    ) AS m(grp, name, code)
+    JOIN asset_types t ON t.code = m.code
+    WHERE c.group_name = m.grp AND c.name = m.name AND c.asset_type_id IS NULL;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261118132008_IntakeRulesMeeting1811') THEN
+    INSERT INTO __ef_migrations_history (migration_id, product_version)
+    VALUES ('20261118132008_IntakeRulesMeeting1811', '10.0.13');
+    END IF;
+END $EF$;
+COMMIT;
+
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261118135144_CaseScreensMeeting1811') THEN
+    ALTER TABLE costs ADD added_by_id bigint;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261118135144_CaseScreensMeeting1811') THEN
+    CREATE INDEX ix_costs_added_by_id ON costs (added_by_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261118135144_CaseScreensMeeting1811') THEN
+    ALTER TABLE costs ADD CONSTRAINT fk_costs_accounts_added_by_id FOREIGN KEY (added_by_id) REFERENCES accounts (id) ON DELETE SET NULL;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261118135144_CaseScreensMeeting1811') THEN
+    UPDATE cases AS c
+    SET merged_into_case_id = target.id
+    FROM case_status_history AS h
+    JOIN cases AS target ON target.id = substring(h.reason from '\(see CS-0*([0-9]+)\)$')::bigint
+    WHERE h.case_id = c.id
+      AND c.status_id = 10
+      AND c.merged_into_case_id IS NULL
+      AND h.reason LIKE 'A case for this problem already exists:%';
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261118135144_CaseScreensMeeting1811') THEN
+    INSERT INTO __ef_migrations_history (migration_id, product_version)
+    VALUES ('20261118135144_CaseScreensMeeting1811', '10.0.13');
+    END IF;
+END $EF$;
+COMMIT;
+
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261119084847_MaintenanceTriggersMeeting1811') THEN
+    ALTER TABLE maintenance_work_order_details ADD end_date date;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261119084847_MaintenanceTriggersMeeting1811') THEN
+    ALTER TABLE maintenance_work_order_details ADD frequency integer NOT NULL DEFAULT 1;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261119084847_MaintenanceTriggersMeeting1811') THEN
+    ALTER TABLE maintenance_work_order_details ADD frequency_type_id bigint NOT NULL DEFAULT 3;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261119084847_MaintenanceTriggersMeeting1811') THEN
+    ALTER TABLE maintenance_work_order_details ADD lead_days integer NOT NULL DEFAULT 3;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261119084847_MaintenanceTriggersMeeting1811') THEN
+    ALTER TABLE maintenance_work_order_details ADD start_date date NOT NULL DEFAULT (CURRENT_DATE);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261119084847_MaintenanceTriggersMeeting1811') THEN
+    ALTER TABLE maintenance_triggers ADD archived_at timestamp with time zone;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261119084847_MaintenanceTriggersMeeting1811') THEN
+    ALTER TABLE maintenance_triggers ADD description character varying(500);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261119084847_MaintenanceTriggersMeeting1811') THEN
+    ALTER TABLE maintenance_triggers ADD name character varying(120);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261119084847_MaintenanceTriggersMeeting1811') THEN
+    -- Each old plan had one trigger: it takes the plan's schedule and its assets' first and last days.
+    UPDATE maintenance_work_order_details AS d
+    SET frequency = t.frequency,
+        frequency_type_id = t.frequency_type_id,
+        lead_days = t.lead_days,
+        start_date = COALESCE((SELECT min(a.start_time) FROM maintenance_work_order_assets AS a
+                               WHERE a.work_order_detail_id = d.id), CURRENT_DATE),
+        end_date = (SELECT CASE WHEN count(*) = 0 OR bool_or(a.end_time IS NULL) THEN NULL ELSE max(a.end_time) END
+                    FROM maintenance_work_order_assets AS a WHERE a.work_order_detail_id = d.id)
+    FROM maintenance_triggers AS t
+    WHERE t.id = d.trigger_id;
+
+    -- Old plans were named "checklist · building" on screen: keep that as their name.
+    UPDATE maintenance_triggers AS t
+    SET name = left(x.checklist || ' · ' || x.building, 120)
+    FROM (SELECT DISTINCT ON (d.trigger_id) d.trigger_id, c.name AS checklist, b.name AS building
+          FROM maintenance_work_order_details AS d
+          JOIN case_checklists AS c ON c.id = d.checklist_id
+          JOIN maintenance_work_order_assets AS a ON a.work_order_detail_id = d.id
+          JOIN assets AS s ON s.id = a.asset_id
+          JOIN rooms AS r ON r.id = s.room_id
+          JOIN floors AS f ON f.id = r.floor_id
+          JOIN buildings AS b ON b.id = f.building_id
+          ORDER BY d.trigger_id, d.id) AS x
+    WHERE x.trigger_id = t.id AND t.name IS NULL;
+
+    -- "Ended" plans are the archived ones now.
+    UPDATE maintenance_triggers SET archived_at = updated_at WHERE status_id = 5 AND archived_at IS NULL;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261119084847_MaintenanceTriggersMeeting1811') THEN
+    UPDATE trigger_statuses SET name = 'archived'
+    WHERE id = 5;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261119084847_MaintenanceTriggersMeeting1811') THEN
+    CREATE INDEX ix_maintenance_work_order_details_frequency_type_id ON maintenance_work_order_details (frequency_type_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261119084847_MaintenanceTriggersMeeting1811') THEN
+    ALTER TABLE maintenance_work_order_details ADD CONSTRAINT ck_maintenance_work_order_details_end_date CHECK (end_date IS NULL OR end_date >= start_date);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261119084847_MaintenanceTriggersMeeting1811') THEN
+    ALTER TABLE maintenance_work_order_details ADD CONSTRAINT ck_maintenance_work_order_details_frequency CHECK (frequency > 0);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261119084847_MaintenanceTriggersMeeting1811') THEN
+    ALTER TABLE maintenance_work_order_details ADD CONSTRAINT ck_maintenance_work_order_details_lead_days CHECK (lead_days >= 0);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261119084847_MaintenanceTriggersMeeting1811') THEN
+    ALTER TABLE maintenance_work_order_details ADD CONSTRAINT fk_maintenance_work_order_details_frequency_types_frequency_ty FOREIGN KEY (frequency_type_id) REFERENCES frequency_types (id) ON DELETE RESTRICT;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261119084847_MaintenanceTriggersMeeting1811') THEN
+    INSERT INTO __ef_migrations_history (migration_id, product_version)
+    VALUES ('20261119084847_MaintenanceTriggersMeeting1811', '10.0.13');
+    END IF;
+END $EF$;
+COMMIT;
+
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261119095602_AssetChangeListsMeeting1811') THEN
+    CREATE TABLE asset_change_lists (
+        id bigint GENERATED ALWAYS AS IDENTITY,
+        building_id bigint NOT NULL,
+        title character varying(120) NOT NULL,
+        note character varying(500),
+        status character varying(32) NOT NULL,
+        staff_id bigint NOT NULL,
+        reviewer_id bigint,
+        submitted_at timestamp with time zone,
+        reviewed_at timestamp with time zone,
+        reject_reason character varying(500),
+        created_at timestamp with time zone NOT NULL DEFAULT (now()),
+        updated_at timestamp with time zone NOT NULL DEFAULT (now()),
+        CONSTRAINT pk_asset_change_lists PRIMARY KEY (id),
+        CONSTRAINT ck_asset_change_lists_status CHECK (status IN ('draft', 'pending', 'approved', 'rejected')),
+        CONSTRAINT fk_asset_change_lists_buildings_building_id FOREIGN KEY (building_id) REFERENCES buildings (id) ON DELETE RESTRICT,
+        CONSTRAINT fk_asset_change_lists_managers_reviewer_id FOREIGN KEY (reviewer_id) REFERENCES managers (id) ON DELETE RESTRICT,
+        CONSTRAINT fk_asset_change_lists_staff_staff_id FOREIGN KEY (staff_id) REFERENCES staff (id) ON DELETE RESTRICT
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261119095602_AssetChangeListsMeeting1811') THEN
+    CREATE TABLE asset_change_items (
+        id bigint GENERATED ALWAYS AS IDENTITY,
+        list_id bigint NOT NULL,
+        position integer NOT NULL,
+        kind character varying(32) NOT NULL,
+        key character varying(20) NOT NULL,
+        parent_key character varying(20),
+        floor_id bigint,
+        room_id bigint,
+        asset_id bigint,
+        name character varying(150),
+        type_id bigint,
+        manufacturer_id bigint,
+        has_copyright boolean,
+        warranty_end_date date,
+        target_label character varying(300),
+        created_at timestamp with time zone NOT NULL DEFAULT (now()),
+        updated_at timestamp with time zone NOT NULL DEFAULT (now()),
+        CONSTRAINT pk_asset_change_items PRIMARY KEY (id),
+        CONSTRAINT ck_asset_change_items_kind CHECK (kind IN ('add_floor', 'rename_floor', 'delete_floor', 'add_room', 'rename_room', 'delete_room', 'add_asset', 'edit_asset', 'retire_asset', 'delete_asset')),
+        CONSTRAINT fk_asset_change_items_asset_change_lists_list_id FOREIGN KEY (list_id) REFERENCES asset_change_lists (id) ON DELETE CASCADE,
+        CONSTRAINT fk_asset_change_items_asset_types_type_id FOREIGN KEY (type_id) REFERENCES asset_types (id) ON DELETE RESTRICT,
+        CONSTRAINT fk_asset_change_items_assets_asset_id FOREIGN KEY (asset_id) REFERENCES assets (id) ON DELETE SET NULL,
+        CONSTRAINT fk_asset_change_items_floors_floor_id FOREIGN KEY (floor_id) REFERENCES floors (id) ON DELETE SET NULL,
+        CONSTRAINT fk_asset_change_items_manufacturers_manufacturer_id FOREIGN KEY (manufacturer_id) REFERENCES manufacturers (id) ON DELETE RESTRICT,
+        CONSTRAINT fk_asset_change_items_rooms_room_id FOREIGN KEY (room_id) REFERENCES rooms (id) ON DELETE SET NULL
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261119095602_AssetChangeListsMeeting1811') THEN
+    CREATE INDEX ix_asset_change_items_asset_id ON asset_change_items (asset_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261119095602_AssetChangeListsMeeting1811') THEN
+    CREATE INDEX ix_asset_change_items_floor_id ON asset_change_items (floor_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261119095602_AssetChangeListsMeeting1811') THEN
+    CREATE UNIQUE INDEX ix_asset_change_items_list_id_key ON asset_change_items (list_id, key);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261119095602_AssetChangeListsMeeting1811') THEN
+    CREATE INDEX ix_asset_change_items_manufacturer_id ON asset_change_items (manufacturer_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261119095602_AssetChangeListsMeeting1811') THEN
+    CREATE INDEX ix_asset_change_items_room_id ON asset_change_items (room_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261119095602_AssetChangeListsMeeting1811') THEN
+    CREATE INDEX ix_asset_change_items_type_id ON asset_change_items (type_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261119095602_AssetChangeListsMeeting1811') THEN
+    CREATE INDEX ix_asset_change_lists_building_id_status ON asset_change_lists (building_id, status);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261119095602_AssetChangeListsMeeting1811') THEN
+    CREATE INDEX ix_asset_change_lists_reviewer_id ON asset_change_lists (reviewer_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261119095602_AssetChangeListsMeeting1811') THEN
+    CREATE INDEX ix_asset_change_lists_staff_id ON asset_change_lists (staff_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261119095602_AssetChangeListsMeeting1811') THEN
+    INSERT INTO __ef_migrations_history (migration_id, product_version)
+    VALUES ('20261119095602_AssetChangeListsMeeting1811', '10.0.13');
+    END IF;
+END $EF$;
+COMMIT;
+
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261124092142_AssetTreeChangesMeeting1811') THEN
+    ALTER TABLE asset_change_items DROP CONSTRAINT ck_asset_change_items_kind;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261124092142_AssetTreeChangesMeeting1811') THEN
+    ALTER TABLE rooms ADD deleted_at timestamp with time zone;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261124092142_AssetTreeChangesMeeting1811') THEN
+    ALTER TABLE floors ADD deleted_at timestamp with time zone;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261124092142_AssetTreeChangesMeeting1811') THEN
+    ALTER TABLE buildings ADD deleted_at timestamp with time zone;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261124092142_AssetTreeChangesMeeting1811') THEN
+    ALTER TABLE asset_change_lists ALTER COLUMN building_id DROP NOT NULL;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261124092142_AssetTreeChangesMeeting1811') THEN
+    ALTER TABLE asset_change_items ADD address character varying(200);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261124092142_AssetTreeChangesMeeting1811') THEN
+    ALTER TABLE asset_change_items ADD building_id bigint;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261124092142_AssetTreeChangesMeeting1811') THEN
+    CREATE INDEX ix_asset_change_items_building_id ON asset_change_items (building_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261124092142_AssetTreeChangesMeeting1811') THEN
+    ALTER TABLE asset_change_items ADD CONSTRAINT ck_asset_change_items_kind CHECK (kind IN ('add_building', 'edit_building', 'delete_building', 'add_floor', 'rename_floor', 'delete_floor', 'add_room', 'rename_room', 'delete_room', 'add_asset', 'edit_asset', 'retire_asset', 'delete_asset'));
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261124092142_AssetTreeChangesMeeting1811') THEN
+    ALTER TABLE asset_change_items ADD CONSTRAINT fk_asset_change_items_buildings_building_id FOREIGN KEY (building_id) REFERENCES buildings (id) ON DELETE SET NULL;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261124092142_AssetTreeChangesMeeting1811') THEN
+    INSERT INTO __ef_migrations_history (migration_id, product_version)
+    VALUES ('20261124092142_AssetTreeChangesMeeting1811', '10.0.13');
+    END IF;
+END $EF$;
+COMMIT;
+
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261124094927_CaseReassignClosureMeeting1811') THEN
+    ALTER TABLE cases ADD reassigned_at timestamp with time zone;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261124094927_CaseReassignClosureMeeting1811') THEN
+    UPDATE cases AS c
+    SET reassigned_at = c.closed_at
+    FROM cases AS n
+    WHERE n.previous_case_id = c.id AND c.status_id = 8 AND c.reassigned_at IS NULL;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261124094927_CaseReassignClosureMeeting1811') THEN
+    INSERT INTO task_statuses (id, name)
+    VALUES (5, 'moved');
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261124094927_CaseReassignClosureMeeting1811') THEN
+    INSERT INTO __ef_migrations_history (migration_id, product_version)
+    VALUES ('20261124094927_CaseReassignClosureMeeting1811', '10.0.13');
+    END IF;
+END $EF$;
+COMMIT;
+

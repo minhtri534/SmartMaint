@@ -161,7 +161,10 @@ export function CaseCard({
             />
           </div>
         )}
-        {c.emergency?.mergedInto && (
+        {c.duplicateOf && (
+          <div className="text-muted mt-2 text-xs">Duplicate of {c.duplicateOf.code}</div>
+        )}
+        {c.emergency?.mergedInto && !c.duplicateOf && (
           <div className="text-muted mt-2 text-xs">Merged into {c.emergency.mergedInto.code}</div>
         )}
       </Link>

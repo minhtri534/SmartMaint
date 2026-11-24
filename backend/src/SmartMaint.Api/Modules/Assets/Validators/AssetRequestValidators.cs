@@ -27,12 +27,3 @@ public sealed class AssetListQueryValidator : AbstractValidator<AssetListQuery>
         RuleFor(x => x.Search).MaximumLength(100);
     }
 }
-
-public sealed class ImportAssetsRequestValidator : AbstractValidator<ImportAssetsRequest>
-{
-    /// <summary>About 1 MB of text — far more than 1000 rows need.</summary>
-    public const int MaxLength = 1_000_000;
-
-    public ImportAssetsRequestValidator() =>
-        RuleFor(x => x.Csv).NotEmpty().WithMessage("Choose a CSV file.").MaximumLength(MaxLength).WithMessage("The file is too large.");
-}

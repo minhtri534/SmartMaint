@@ -85,5 +85,6 @@ export interface AuditFilters {
   /** yyyy-MM-dd */
   from?: string
   to?: string
+  oldestFirst?: boolean
   page: number
 }

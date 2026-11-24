@@ -12,37 +12,33 @@ public sealed class AccountValidatorTests
     private readonly CreateAccountRequestValidator _create = new();
 
     private static CreateAccountRequest Valid() =>
-        new("duc", "Pham Minh Duc", "duc@test.local", "+84 901 234 567", UserRole.Technician, null, 80000m, null, null);
+        new("Pham Minh Duc", "duc@test.local", "+84 901 234 567", UserRole.Technician, 80000m, null, null);
 
     [Fact]
     [Trait(TestType.Key, TestType.Normal)]
     public void Create_ValidTechnician_Passes() => Assert.True(_create.Validate(Valid()).IsValid);
 
     [Fact]
-    [Trait(TestType.Key, TestType.Abnormal)]
-    public void Create_CustomerWithoutRoom_Fails()
-    {
-        var result = _create.Validate(Valid() with { Role = UserRole.Customer });
-
-        Assert.Contains(result.Errors, e => e.PropertyName == nameof(CreateAccountRequest.RoomId));
-    }
+    [Trait(TestType.Key, TestType.Boundary)]
+    public void Create_CustomerNeedsNoRoom_Passes() =>
+        Assert.True(_create.Validate(Valid() with { Role = UserRole.Customer }).IsValid);
 
     [Fact]
     [Trait(TestType.Key, TestType.Abnormal)]
-    public void Create_UsernameWithSpaceAndBadEmail_Fails()
+    public void Create_BadEmail_Fails()
     {
-        var result = _create.Validate(Valid() with { Username = "pham duc", Email = "not-an-email" });
+        var result = _create.Validate(Valid() with { Email = "not-an-email" });
 
-        Assert.Contains(result.Errors, e => e.PropertyName == nameof(CreateAccountRequest.Username));
         Assert.Contains(result.Errors, e => e.PropertyName == nameof(CreateAccountRequest.Email));
     }
 
     [Theory]
     [Trait(TestType.Key, TestType.Boundary)]
-    [InlineData("ab", false)]
-    [InlineData("abc", true)]
-    public void Create_UsernameLength_ThreeIsTheMinimum(string username, bool valid) =>
-        Assert.Equal(valid, _create.Validate(Valid() with { Username = username }).IsValid);
+    [InlineData(null, false)]
+    [InlineData("", false)]
+    [InlineData("a@b.c", true)]
+    public void Create_EmailIsRequired(string? email, bool valid) =>
+        Assert.Equal(valid, _create.Validate(Valid() with { Email = email }).IsValid);
 
     [Theory]
     [Trait(TestType.Key, TestType.Boundary)]

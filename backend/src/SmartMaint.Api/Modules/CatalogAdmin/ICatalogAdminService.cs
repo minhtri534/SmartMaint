@@ -13,6 +13,9 @@ public interface ICatalogAdminService
     Task<CaseCategoryAdminResponse> SaveCaseCategoryAsync(long? id, CaseCategoryRequest request, CancellationToken cancellationToken);
     Task DeleteCaseCategoryAsync(long id, CancellationToken cancellationToken);
 
+    /// <summary>Meeting note 18/11: a fault that cases use is archived instead of deleted.</summary>
+    Task<CaseCategoryAdminResponse> SetCaseCategoryArchivedAsync(long id, bool archived, CancellationToken cancellationToken);
+
     Task<IReadOnlyList<AssetCategoryResponse>> ListAssetCategoriesAsync(CancellationToken cancellationToken);
     Task<AssetCategoryResponse> SaveAssetCategoryAsync(long? id, AssetCategoryRequest request, CancellationToken cancellationToken);
     Task DeleteAssetCategoryAsync(long id, CancellationToken cancellationToken);
@@ -28,4 +31,5 @@ public interface ICatalogAdminService
     Task<IReadOnlyList<SpecialtyResponse>> ListSpecialtiesAsync(CancellationToken cancellationToken);
     Task<SpecialtyResponse> SaveSpecialtyAsync(long? id, SpecialtyRequest request, CancellationToken cancellationToken);
     Task DeleteSpecialtyAsync(long id, CancellationToken cancellationToken);
+    Task<SpecialtyResponse> SetSpecialtyArchivedAsync(long id, bool archived, CancellationToken cancellationToken);
 }

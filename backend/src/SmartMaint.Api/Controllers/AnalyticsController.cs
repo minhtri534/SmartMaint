@@ -37,19 +37,27 @@ public sealed class AnalyticsController(IAnalyticsService analytics) : Controlle
     public Task<IReadOnlyList<AttentionItem>> Attention(CancellationToken cancellationToken) =>
         analytics.AttentionAsync(cancellationToken);
 
-    /// <summary>ANA-04: CSV download. The technician report is for managers only.</summary>
-    [HttpGet("export/{report}")]
+    /// <summary>The Charts tab (meeting note 18/11), managers only: it names technicians and staff.</summary>
+    [HttpGet("chart")]
+    [AuthorizeRoles(UserRole.Manager)]
+    public Task<ChartResponse> Chart([FromQuery] ChartQuery query, CancellationToken cancellationToken) =>
+        analytics.ChartAsync(query, cancellationToken);
+
+    /// <summary>ANA-04 (meeting note 18/11): the tab on screen as an .xlsx file. Technicians and charts: managers only.</summary>
+    [HttpGet("export")]
     [AuthorizeRoles(UserRole.Staff, UserRole.Manager)]
-    [Produces("text/csv")]
+    [Produces(ExcelType)]
     public async Task<FileContentResult> Export(
-        ExportReport report, [FromQuery] AnalyticsQuery query, [FromServices] ICurrentUser currentUser, CancellationToken cancellationToken)
+        [FromQuery] ExportQuery query, [FromServices] ICurrentUser currentUser, CancellationToken cancellationToken)
     {
-        if (report == ExportReport.Technicians && currentUser.Role != UserRole.Manager)
+        if (query.Tab is ExportTab.Technicians or ExportTab.Charts && currentUser.Role != UserRole.Manager)
         {
             throw AnalyticsErrors.TechniciansManagerOnly();
         }
 
-        var (fileName, content) = await analytics.ExportAsync(report, query, cancellationToken);
-        return File(content, "text/csv; charset=utf-8", fileName);
+        var (fileName, content) = await analytics.ExportAsync(query, cancellationToken);
+        return File(content, ExcelType, fileName);
     }
+
+    private const string ExcelType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 }

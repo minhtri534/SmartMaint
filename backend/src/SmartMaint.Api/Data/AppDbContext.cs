@@ -36,6 +36,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<Asset> Assets => Set<Asset>();
     public DbSet<StaffBuildingAssignment> StaffBuildingAssignments => Set<StaffBuildingAssignment>();
     public DbSet<ManagerBuildingAssignment> ManagerBuildingAssignments => Set<ManagerBuildingAssignment>();
+    public DbSet<AssetChangeList> AssetChangeLists => Set<AssetChangeList>();
+    public DbSet<AssetChangeItem> AssetChangeItems => Set<AssetChangeItem>();
 
     // Cases (F3, shared by F2 / F4 / F5)
     public DbSet<PriorityLevel> PriorityLevels => Set<PriorityLevel>();

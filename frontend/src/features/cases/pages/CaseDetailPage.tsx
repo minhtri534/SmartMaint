@@ -1,12 +1,13 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
-import { assetDetailPath, caseDetailPath, paths, planDetailPath, resubmitPath } from '@/app/paths'
+import { caseDetailPath, paths, planDetailPath, resubmitPath } from '@/app/paths'
 import type { Role } from '@/shared/types/role'
-import { Alert, Button, Card, CardHeader, Icon, LinkButton, PageHeader } from '@/shared/ui'
+import { Alert, Button, Card, CardHeader, Icon, LinkButton, PageHeader, Tabs } from '@/shared/ui'
 import { formatDateTime, formatVnd } from '@/shared/utils/format'
 import { useAuth } from '@/features/auth'
 import { CaseActions } from '../components/CaseActions'
 import { UrgencyText } from '../components/CaseBadges'
+import { AddCostDialog } from '../components/dialogs/AddCostDialog'
 import { EmergencyCard, IncidentReportCard } from '../components/EmergencyCard'
 import { AssessmentCard, DecisionInfoCard, ThirdPartiesCard } from '../components/OutsideWorkCards'
 import { PhotoGallery, RejectionList, StatusTimeline } from '../components/CaseHistory'
@@ -15,7 +16,7 @@ import { StarsView } from '../components/Stars'
 import { StatusPath } from '../components/StatusPath'
 import { useCase } from '../hooks'
 import { workedHoursNow } from '../work-hours'
-import { FINAL_STATUSES, HOLD_REASON_LABELS } from '../types'
+import { FINAL_STATUSES, HOLD_REASON_LABELS, type Cost } from '../types'
 
 const BACK: Partial<Record<Role, { to: string; label: string }>> = {
   customer: { to: paths.myRequests, label: 'My requests' },
@@ -33,6 +34,8 @@ export function CaseDetailPage() {
   const id = Number(useParams().id)
   const { user } = useAuth()
   const query = useCase(id)
+  const [editingCost, setEditingCost] = useState<Cost | null>(null)
+  const [tab, setTab] = useState<'details' | 'history'>('details')
   const back = user ? BACK[user.role] : undefined
 
   const above = back && (
@@ -63,6 +66,9 @@ export function CaseDetailPage() {
   // people only; the customer follows the status, the photos and the history.
   const seesWork = user?.role !== 'customer'
   const lastChange = c.history.at(-1)
+  // Meeting note 18/11: the customer reads the history in its own tab, so it never pushes the case down.
+  const historyTab = user?.role === 'customer'
+  const showDetails = !historyTab || tab === 'details'
 
   return (
     <div className="flex flex-col gap-5">
@@ -107,7 +113,19 @@ export function CaseDetailPage() {
           .
         </Alert>
       )}
-      {c.emergency?.mergedInto && (
+      {c.duplicateOf && (
+        <Alert tone="info">
+          This request repeats{' '}
+          <Link
+            to={caseDetailPath(c.duplicateOf.id)}
+            className="font-mono underline underline-offset-2"
+          >
+            {c.duplicateOf.code}
+          </Link>
+          . It is kept for reference and is not counted in any figure.
+        </Alert>
+      )}
+      {c.emergency?.mergedInto && !c.duplicateOf && (
         <Alert tone="info">
           Same incident as{' '}
           <Link
@@ -162,26 +180,6 @@ export function CaseDetailPage() {
           Not counted in the KPIs.
         </Alert>
       )}
-      {c.replacement && (
-        <Alert tone="info">
-          The asset was replaced by {c.replacement.model}
-          {c.replacement.serial && ` (serial ${c.replacement.serial})`}.{' '}
-          {c.replacement.requestStatus === 'done' && c.replacement.newAssetId ? (
-            <Link
-              to={assetDetailPath(c.replacement.newAssetId)}
-              className="underline underline-offset-2"
-            >
-              Registered as a new asset.
-            </Link>
-          ) : c.replacement.requestStatus === 'dismissed' ? (
-            'The Administrator did not register it.'
-          ) : c.replacement.requestStatus === 'open' ? (
-            'Waiting for the Administrator to register it.'
-          ) : (
-            'The Administrator is asked to register it when the case closes.'
-          )}
-        </Alert>
-      )}
       {c.notFixed && (
         <Alert tone="notice">
           The customer says it is still not fixed ({formatDateTime(c.notFixed.reportedAt)}): “
@@ -196,119 +194,175 @@ export function CaseDetailPage() {
 
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="flex min-w-0 flex-col gap-6">
-          <Card>
-            <CardHeader
-              title={c.isPreventive ? 'Work order' : 'Problem'}
-              aside={`${c.isPreventive ? 'Made' : 'Reported'} ${formatDateTime(c.submittedAt)}`}
+          {historyTab && (
+            <Tabs
+              items={[
+                { value: 'details', label: 'Details' },
+                { value: 'history', label: 'History', count: c.history.length },
+              ]}
+              value={tab}
+              onChange={setTab}
             />
-            <p className="max-w-[68ch] text-sm leading-6 whitespace-pre-line">{c.description}</p>
-            <dl className="border-rule mt-5 grid gap-4 border-t pt-4 text-sm sm:grid-cols-2">
-              <Field label="Location">
-                {c.location.roomName}
-                <div className="text-muted text-xs">
-                  {c.location.buildingName} · {c.location.floorName}
-                </div>
-              </Field>
-              <Field label="Asset">
-                {c.asset?.name ?? <span className="text-muted">Not specified</span>}
-              </Field>
-            </dl>
-            <div className="mt-5">
-              <PhotoGallery photos={c.photos} />
-            </div>
-          </Card>
-
-          {seesWork && c.assessment && <AssessmentCard assessment={c.assessment} />}
-          {seesWork && c.thirdParties.length > 0 && <ThirdPartiesCard parties={c.thirdParties} />}
-
-          {seesWork && c.repairReport && (
-            <Card>
-              <CardHeader
-                title={c.isPreventive ? 'Maintenance report' : 'Repair record'}
-                aside={c.technician ? `by ${c.technician.fullName}` : undefined}
-              />
-              <dl className="grid gap-4 text-sm sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_96px]">
-                <Field label={c.isPreventive ? 'Note' : 'Cause'}>{c.repairReport.rootCause}</Field>
-                <Field label="Parts used">
-                  {c.repairReport.partsUsed || <span className="text-muted">—</span>}
-                </Field>
-                <Field label="Hours worked">
-                  <span className="tabular-nums">{c.repairReport.laborHours} h</span>
-                </Field>
-              </dl>
-            </Card>
           )}
+          {showDetails && (
+            <>
+              <Card>
+                <CardHeader
+                  title={c.isPreventive ? 'Work order' : 'Problem'}
+                  aside={`${c.isPreventive ? 'Made' : 'Reported'} ${formatDateTime(c.submittedAt)}`}
+                />
+                <p className="max-w-[68ch] text-sm leading-6 whitespace-pre-line">
+                  {c.description}
+                </p>
+                <dl className="border-rule mt-5 grid gap-4 border-t pt-4 text-sm sm:grid-cols-2">
+                  <Field label="Location">
+                    {c.location.roomName}
+                    <div className="text-muted text-xs">
+                      {c.location.buildingName} · {c.location.floorName}
+                    </div>
+                  </Field>
+                  <Field label="Asset">
+                    {c.asset?.name ?? <span className="text-muted">Not specified</span>}
+                  </Field>
+                </dl>
+                <div className="mt-5">
+                  <PhotoGallery photos={c.photos} />
+                </div>
+              </Card>
 
-          {c.costs && c.costs.length > 0 && (
-            <Card>
-              <CardHeader
-                title="Costs"
-                aside={<span className="tabular-nums">{formatVnd(c.totalCost ?? 0)} total</span>}
-              />
-              <ul className="flex flex-col text-sm">
-                {c.costs.map((x) => (
-                  <li
-                    key={x.id}
-                    className="border-rule flex justify-between gap-4 border-b py-2 first:pt-0 last:border-0"
-                  >
-                    <span>
-                      {x.name}
-                      {x.description && <span className="text-muted"> · {x.description}</span>}
-                      {(x.receiptCode || x.receiptUrl) && (
-                        <span className="text-muted block text-xs">
-                          Receipt {x.receiptCode}
-                          {x.receiptUrl && (
-                            <>
-                              {' '}
-                              <a
-                                href={x.receiptUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="underline underline-offset-2"
-                              >
-                                photo
-                              </a>
-                            </>
+              {seesWork && c.assessment && <AssessmentCard assessment={c.assessment} />}
+              {seesWork && c.thirdParties.length > 0 && (
+                <ThirdPartiesCard parties={c.thirdParties} />
+              )}
+
+              {seesWork && c.repairReport && (
+                <Card>
+                  <CardHeader
+                    title={c.isPreventive ? 'Maintenance report' : 'Repair record'}
+                    aside={c.technician ? `by ${c.technician.fullName}` : undefined}
+                  />
+                  <dl className="grid gap-4 text-sm sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_96px]">
+                    <Field label={c.isPreventive ? 'Note' : 'Cause'}>
+                      {c.repairReport.rootCause}
+                    </Field>
+                    <Field label="Parts used">
+                      {c.repairReport.partsUsed || <span className="text-muted">—</span>}
+                    </Field>
+                    <Field label="Hours worked">
+                      <span className="tabular-nums">{c.repairReport.laborHours} h</span>
+                    </Field>
+                  </dl>
+                </Card>
+              )}
+
+              {c.costs && c.costs.length > 0 && (
+                <Card>
+                  <CardHeader
+                    title="Costs"
+                    aside={
+                      <span className="tabular-nums">{formatVnd(c.totalCost ?? 0)} total</span>
+                    }
+                  />
+                  <ul className="flex flex-col text-sm">
+                    {c.costs.map((x) => (
+                      <li
+                        key={x.id}
+                        className="border-rule flex justify-between gap-4 border-b py-2 first:pt-0 last:border-0"
+                      >
+                        <span>
+                          {x.name}
+                          {x.description && <span className="text-muted"> · {x.description}</span>}
+                          {(x.receiptCode || x.receiptUrl) && (
+                            <span className="text-muted block text-xs">
+                              Receipt {x.receiptCode}
+                              {x.receiptUrl && (
+                                <>
+                                  {' '}
+                                  <a
+                                    href={x.receiptUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="underline underline-offset-2"
+                                  >
+                                    photo
+                                  </a>
+                                </>
+                              )}
+                            </span>
                           )}
                         </span>
-                      )}
-                    </span>
-                    <span className="flex-none tabular-nums">{formatVnd(x.amount)}</span>
-                  </li>
-                ))}
-              </ul>
-            </Card>
+                        <span className="flex flex-none items-baseline gap-1 tabular-nums">
+                          {formatVnd(x.amount)}
+                          {c.allowedActions.includes('edit_own_cost') &&
+                            x.addedById === user?.id && (
+                              <Button
+                                variant="ghost"
+                                aria-label={`Edit ${x.name}`}
+                                onClick={() => setEditingCost(x)}
+                              >
+                                Edit
+                              </Button>
+                            )}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  {editingCost && (
+                    <AddCostDialog
+                      caseId={c.id}
+                      cost={editingCost}
+                      open
+                      onClose={() => setEditingCost(null)}
+                    />
+                  )}
+                </Card>
+              )}
+
+              {c.incidentReport && <IncidentReportCard report={c.incidentReport} />}
+
+              {c.rating && (
+                <Card>
+                  <CardHeader title="Customer rating" aside={formatDateTime(c.rating.ratedAt)} />
+                  <div className="flex items-center gap-3">
+                    <StarsView stars={c.rating.stars} />
+                    <span className="text-muted text-sm tabular-nums">{c.rating.stars} / 5</span>
+                  </div>
+                  {c.rating.comment && <p className="mt-2 text-sm">“{c.rating.comment}”</p>}
+                </Card>
+              )}
+            </>
           )}
 
-          {c.incidentReport && <IncidentReportCard report={c.incidentReport} />}
-
-          {c.rating && (
-            <Card>
-              <CardHeader title="Customer rating" aside={formatDateTime(c.rating.ratedAt)} />
-              <div className="flex items-center gap-3">
-                <StarsView stars={c.rating.stars} />
-                <span className="text-muted text-sm tabular-nums">{c.rating.stars} / 5</span>
-              </div>
-              {c.rating.comment && <p className="mt-2 text-sm">“{c.rating.comment}”</p>}
-            </Card>
-          )}
-
-          {/* 16/11: the history is the case's own story, so it reads in the main column (the right rail
+          {historyTab ? (
+            tab === 'history' && (
+              <Card>
+                <CardHeader
+                  title="History"
+                  aside={`${c.history.length} ${c.history.length === 1 ? 'change' : 'changes'}`}
+                />
+                <StatusTimeline history={c.history} />
+              </Card>
+            )
+          ) : (
+            <>
+              {/* 16/11: the history is the case's own story, so it reads in the main column (the right rail
               keeps the deadline and the people); before, the main column ended early beside a long rail. */}
-          <Card>
-            <CardHeader
-              title="History"
-              aside={`${c.history.length} ${c.history.length === 1 ? 'change' : 'changes'}`}
-            />
-            {/* Meeting 07/11: a long history scrolls inside its card instead of stretching the page. */}
-            <div
-              tabIndex={0}
-              aria-label="Status history"
-              className="rounded-control focus-visible:ring-accent/20 -mx-1 max-h-96 overflow-y-auto px-1 focus-visible:ring-2 focus-visible:outline-none"
-            >
-              <StatusTimeline history={c.history} />
-            </div>
-          </Card>
+              <Card>
+                <CardHeader
+                  title="History"
+                  aside={`${c.history.length} ${c.history.length === 1 ? 'change' : 'changes'}`}
+                />
+                {/* Meeting 07/11: a long history scrolls inside its card instead of stretching the page. */}
+                <div
+                  tabIndex={0}
+                  aria-label="Status history"
+                  className="rounded-control focus-visible:ring-accent/20 -mx-1 max-h-96 overflow-y-auto px-1 focus-visible:ring-2 focus-visible:outline-none"
+                >
+                  <StatusTimeline history={c.history} />
+                </div>
+              </Card>
+            </>
+          )}
         </div>
 
         <div className="flex flex-col gap-6">

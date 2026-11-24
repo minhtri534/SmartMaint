@@ -25,6 +25,14 @@ public sealed class AiController(IAiService ai) : ControllerBase
         RequestSuggestionRequest request, CancellationToken cancellationToken) =>
         ai.SuggestRequestAsync(request, cancellationToken);
 
+    /// <summary>Staff: who should take this case. A suggestion only.</summary>
+    [HttpPost("technician-suggestion")]
+    [AuthorizeRoles(UserRole.Staff)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public Task<TechnicianSuggestionResponse> TechnicianSuggestion(
+        TechnicianSuggestionRequest request, CancellationToken cancellationToken) =>
+        ai.SuggestTechnicianAsync(request, cancellationToken);
+
     /// <summary>The caller's latest conversation with the assistant (shown again when the chat opens).</summary>
     [HttpGet("chat")]
     public Task<ChatThreadResponse> LatestChat(CancellationToken cancellationToken) =>

@@ -26,3 +26,12 @@ export function useCatalogDelete(list: CatalogList) {
     onSuccess: () => queryClient.invalidateQueries(),
   })
 }
+
+export function useCatalogArchive(list: CatalogList) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, archived }: { id: number; archived: boolean }) =>
+      catalogApi.setArchived(list, id, archived),
+    onSuccess: () => queryClient.invalidateQueries(),
+  })
+}

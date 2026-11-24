@@ -124,9 +124,7 @@ export function WeekPlanner({ cases, now }: { cases: CaseSummary[]; now: number 
           <span className="bg-pill-negative-bg border-negative/40 size-3 rounded border" /> late
         </span>
         {anytime.length > 0 && (
-          <span className="text-muted ml-auto">
-            {anytime.length} more with no date yet (deadline starts with the work)
-          </span>
+          <span className="text-muted ml-auto">{anytime.length} more with no date yet</span>
         )}
       </div>
     </div>

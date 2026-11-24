@@ -8,8 +8,8 @@ using SmartMaint.Api.Modules.Assets.Dtos;
 namespace SmartMaint.Api.Controllers;
 
 /// <summary>
-/// F1 assets (AST-02..05, AST-07). Staff / Manager read the assets of their buildings, the Administrator all and is the
-/// only one who changes them. The QR target is open to every role (roles are set per action: class + action attributes
+/// F1 assets (AST-02, AST-03, AST-07). Staff / Manager read the assets of their buildings, the Administrator all. Since
+/// the meeting note of 18/11 nobody changes them here: a manager approves a staff change list (AssetChangesController). The QR target is open to every role (roles are set per action: class + action attributes
 /// would both have to pass). (GET /api/assets?roomId= of the report form is in
 /// CatalogController.)
 /// </summary>
@@ -32,33 +32,6 @@ public sealed class AssetsController(IAssetService assets) : ControllerBase
     [AuthorizeRoles(UserRole.Staff, UserRole.Manager, UserRole.Admin)]
     public Task<AssetDetailResponse> Get(long id, CancellationToken cancellationToken) =>
         assets.GetAsync(id, cancellationToken);
-
-    /// <summary>AST-04.</summary>
-    [HttpPost]
-    [AuthorizeRoles(UserRole.Admin)]
-    public Task<AssetDetailResponse> Create(AssetRequest request, CancellationToken cancellationToken) =>
-        assets.CreateAsync(request, cancellationToken);
-
-    [HttpPut("{id:long}")]
-    [AuthorizeRoles(UserRole.Admin)]
-    public Task<AssetDetailResponse> Update(long id, AssetRequest request, CancellationToken cancellationToken) =>
-        assets.UpdateAsync(id, request, cancellationToken);
-
-    [HttpPost("{id:long}/retire")]
-    [AuthorizeRoles(UserRole.Admin)]
-    public Task<AssetDetailResponse> Retire(long id, CancellationToken cancellationToken) =>
-        assets.RetireAsync(id, cancellationToken);
-
-    [HttpDelete("{id:long}")]
-    [AuthorizeRoles(UserRole.Admin)]
-    public Task Delete(long id, CancellationToken cancellationToken) =>
-        assets.DeleteAsync(id, cancellationToken);
-
-    /// <summary>AST-05.</summary>
-    [HttpPost("import")]
-    [AuthorizeRoles(UserRole.Admin)]
-    public Task<ImportAssetsResponse> Import(ImportAssetsRequest request, CancellationToken cancellationToken) =>
-        assets.ImportAsync(request, cancellationToken);
 
     /// <summary>AST-07: every signed-in role.</summary>
     [HttpGet("{id:long}/qr-target")]

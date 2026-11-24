@@ -52,12 +52,12 @@ export function LoginPage() {
         {showGenericError && <Alert>{login.error.message}</Alert>}
 
         <TextField
-          label="Username"
+          label="E-mail or phone number"
           type="text"
           autoComplete="username"
           autoFocus
-          error={errors.username?.message}
-          {...register('username')}
+          error={errors.login?.message}
+          {...register('login')}
         />
         <TextField
           label="Password"

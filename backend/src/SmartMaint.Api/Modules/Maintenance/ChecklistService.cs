@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SmartMaint.Api.Data;
+using SmartMaint.Api.Entities.Cases;
 using SmartMaint.Api.Entities.Maintenance;
 using SmartMaint.Api.Modules.Maintenance.Dtos;
 
@@ -19,16 +20,18 @@ public interface IChecklistService
     Task DeleteAsync(long id, CancellationToken cancellationToken);
 }
 
-internal sealed class ChecklistService(AppDbContext db) : IChecklistService
+internal sealed class ChecklistService(AppDbContext db, TimeProvider clock) : IChecklistService
 {
+    private const string PreventiveGroup = "General";
+    private const string PreventiveName = "Preventive maintenance";
+
     public async Task<IReadOnlyList<ChecklistResponse>> ListAsync(CancellationToken cancellationToken) =>
         (await db.CaseChecklists.AsNoTracking()
-            .Include(c => c.Category)
             .Include(c => c.Tasks)
             .OrderBy(c => c.Name)
             .ToListAsync(cancellationToken))
         .Select(c => new ChecklistResponse(
-            c.Id, c.Name, c.Description, c.CategoryId, $"{c.Category.GroupName} · {c.Category.Name}",
+            c.Id, c.Name, c.Description,
             c.Tasks.OrderBy(t => t.Id).Select(t => new ChecklistItemResponse(t.Id, t.Name, t.Description)).ToList(),
             db.MaintenanceWorkOrderDetails.Count(d => d.ChecklistId == c.Id)))
         .ToList();
@@ -41,11 +44,6 @@ internal sealed class ChecklistService(AppDbContext db) : IChecklistService
             throw MaintenanceErrors.ChecklistNameTaken();
         }
 
-        if (!await db.CaseCategories.AnyAsync(c => c.Id == request.CategoryId, cancellationToken))
-        {
-            throw MaintenanceErrors.UnknownCategory();
-        }
-
         CaseChecklist checklist;
         if (id is { } existing)
         {
@@ -55,19 +53,44 @@ internal sealed class ChecklistService(AppDbContext db) : IChecklistService
         }
         else
         {
-            checklist = new CaseChecklist();
+            checklist = new CaseChecklist { CategoryId = await PreventiveCategoryIdAsync(cancellationToken) };
             db.CaseChecklists.Add(checklist);
         }
 
         checklist.Name = name;
         checklist.Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim();
-        checklist.CategoryId = request.CategoryId;
         checklist.Tasks = request.Tasks
             .Select(t => new ChecklistTask { Name = t.Name.Trim(), Description = string.IsNullOrWhiteSpace(t.Description) ? null : t.Description.Trim() })
             .ToList();
         await db.SaveChangesAsync(cancellationToken);
 
         return (await ListAsync(cancellationToken)).Single(c => c.Id == checklist.Id);
+    }
+
+    /// <summary>
+    /// Meeting note 18/11: a checklist has no service type any more, but every case still needs a category. Its work orders
+    /// share this one; it is archived so nobody can pick it when reporting a problem.
+    /// </summary>
+    private async Task<long> PreventiveCategoryIdAsync(CancellationToken cancellationToken)
+    {
+        var existing = await db.CaseCategories
+            .SingleOrDefaultAsync(c => c.GroupName == PreventiveGroup && c.Name == PreventiveName, cancellationToken);
+        if (existing is not null)
+        {
+            return existing.Id;
+        }
+
+        var normal = await db.PriorityLevels.SingleAsync(p => p.Code == CasePriority.Normal, cancellationToken);
+        var category = new CaseCategory
+        {
+            GroupName = PreventiveGroup,
+            Name = PreventiveName,
+            DefaultPriorityId = normal.Id,
+            ArchivedAt = clock.GetUtcNow(),
+        };
+        db.CaseCategories.Add(category);
+        await db.SaveChangesAsync(cancellationToken);
+        return category.Id;
     }
 
     public async Task DeleteAsync(long id, CancellationToken cancellationToken)

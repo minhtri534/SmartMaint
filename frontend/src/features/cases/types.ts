@@ -102,11 +102,16 @@ export type CaseAction =
   | 'rate'
   /** Meeting 07/11: the staff's one Edit (replaces assign, reassign, change urgency, continue, close, reopen). */
   | 'edit'
+  | 'manage_followers'
+  | 'reassign'
+  | 'edit_own_cost'
   // Part 4: the deadline, the customer's "not fixed" report, cost lines
   | 'extend_due'
   | 'report_not_fixed'
   | 'accept_not_fixed'
   | 'decline_not_fixed'
+  /** Meeting note 18/11: a closed case is read only; reopening is the one action left (never after a reassign). */
+  | 'reopen'
   | 'update_costs'
   // Tasks (every case has tasks, meeting 07/11)
   | 'update_task'
@@ -116,7 +121,6 @@ export type CaseAction =
   // Part 6: emergency (F4)
   | 'acknowledge'
   | 'add_log'
-  | 'mark_safe'
   | 'write_incident_report'
   // Part 7: repair or replace (F5). Meeting 07/11: the hand-over to an outside party is one button.
   | 'request_decision'
@@ -156,30 +160,22 @@ export interface PersonRef {
 }
 
 /**
- * One item of the 2-level service catalogue (N24): group "Water", type "Leaking pipe or tap".
- * ERD: CaseCategories(Name, Description) — one level only.
- * NOT IN ERD v5: groupName, defaultUrgency, isEmergency, photoRequired.
+ * A fault category the customer can choose. ERD: CaseCategories(Name, Description).
+ * NOT IN ERD v5: groupName, assetTypeId (empty = it applies to every asset type).
  */
 export interface ServiceType {
   id: number
   groupName: string
   name: string
-  defaultUrgency: Urgency
-  /** In the emergency list -> goes to F4 as soon as it is created (N26). */
-  isEmergency: boolean
-  /** e.g. leaks need a photo (O05: fewer rejections for missing information). */
-  photoRequired: boolean
+  assetTypeId: number | null
 }
 
 /**
  * ERD: Rooms -> Floors -> Buildings. Room name = Rooms.RoomNumber, floor name = "Floor " + Floors.FloorNumber.
- * A customer only gets their own room + the common areas of their building.
  */
 export interface Room {
   id: number
   name: string
-  /** Lobby, corridor, restroom... NOT IN ERD v5. */
-  isCommonArea: boolean
 }
 export interface Floor {
   id: number
@@ -197,12 +193,42 @@ export interface AssetRef {
   id: number
   name: string
   roomId: number
+  typeId: number
 }
 
-/** An asset found by its code (GET /asset-register/{id}/qr-target). canReport = in the customer's room or a common area. */
+/** The asset a case is about. */
+export interface CaseAsset extends AssetRef {
+  typeName: string
+  categoryName: string
+}
+
+/** A customer in the followers dialog. */
+export interface FollowerOption {
+  id: number
+  fullName: string
+  username: string
+  email: string | null
+}
+
+export interface FollowerOptions {
+  /** Who follows the case now. */
+  current: FollowerOption[]
+  /** The customers the search found. */
+  matches: FollowerOption[]
+}
+
+/** The AI's choice for a case (or the top of the ranked list when the AI is off). Only a suggestion. */
+export interface TechnicianSuggestion {
+  technicianId: number | null
+  reason: string
+  source: 'ai' | 'rules'
+}
+
+/** An asset found by its code (GET /asset-register/{id}/qr-target). */
 export interface AssetLookup {
   id: number
   name: string
+  typeId: number
   location: CaseLocation
   isRetired: boolean
   canReport: boolean
@@ -265,6 +291,13 @@ export interface CaseSummary {
   /** Meeting 07/11: when the staff plans the work to start / be finished. Not the SLA deadline. NOT IN ERD v5. */
   plannedStartAt: string | null
   plannedEndAt: string | null
+  /** Until the work starts: planned start + the urgency's SLA hours. It only informs; dueAt is the real deadline. */
+  expectedDueAt: string | null
+  /** The fault category. ERD: Cases.Category */
+  serviceTypeId: number
+  asset: CaseAsset | null
+  /** Rejected because it repeats this case: it can be opened, but no figure counts it. */
+  duplicateOf: CaseRef | null
 }
 
 // ---------------------------------------------------------------------------
@@ -349,13 +382,6 @@ export interface DecisionInfo {
   reasons: string[]
 }
 
-export interface Replacement {
-  model: string
-  serial: string | null
-  requestStatus: 'open' | 'done' | 'dismissed' | null
-  newAssetId: number | null
-}
-
 /** A link to another case. */
 export interface CaseRef {
   id: number
@@ -364,12 +390,11 @@ export interface CaseRef {
 
 /**
  * F4 milestones. The 24/7 clock started at `startedAt` (the report, or when the case was raised to Emergency);
- * first response = acknowledged, then "made safe", then fixed (completedAt).
+ * first response = acknowledged, then fixed (completedAt).
  */
 export interface EmergencyInfo {
   startedAt: string
   acknowledgedAt: string | null
-  madeSafeAt: string | null
   /** This report was merged into that case (same incident, N5). */
   mergedInto: CaseRef | null
 }
@@ -399,12 +424,14 @@ export const LOG_KIND_LABELS: Record<EmergencyLogKind, string> = {
 }
 
 /** Result of one checklist item. ERD: TaskStatuses. */
-export type TaskStatus = 'pending' | 'pass' | 'fail' | 'not_applicable'
+/** 'moved': not finished when the case went to another technician; it goes on in the new case (meeting note 18/11). */
+export type TaskStatus = 'pending' | 'pass' | 'fail' | 'not_applicable' | 'moved'
 export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
   pending: 'Not done',
   pass: 'Successful',
   fail: 'Fail',
   not_applicable: 'N/A',
+  moved: 'Moved to the new case',
 }
 
 /** What the technician does with a failed item (BR-07). */
@@ -490,7 +517,7 @@ export interface CaseDetail extends CaseSummary {
   /** ERD: Cases.Description */
   description: string
   /** ERD: Cases.Asset (optional: the customer may not know which asset) */
-  asset: AssetRef | null
+  asset: CaseAsset | null
   serviceTypeId: number
   /** Meeting 07/11: the case this one continues after a change of technician. NOT IN ERD v5. */
   previousCase: CaseRef | null
@@ -528,7 +555,6 @@ export interface CaseDetail extends CaseSummary {
   /** F5: the decision board (staff and managers only). */
   decisionInfo: DecisionInfo | null
   /** F5: the new asset an outside party installed. */
-  replacement: Replacement | null
   /** The status changes the staff's Edit form may offer now (empty for everyone else). */
   statusChanges: EditStatusChange[]
   /** What the signed-in user may do right now (state machine + role + data scope, decided by the server). */
@@ -582,15 +608,12 @@ export interface ApproveCaseRequest {
 /** The staff's one Edit (meeting 07/11). */
 export interface EditCaseRequest {
   urgency: Urgency
-  /** A new technician on work the old one already took = a new case continues it. */
-  technicianId: number | null
   serviceTypeId: number
   title: string
   description: string
   plannedStartAt: string | null
   plannedEndAt: string | null
   tasks: TaskLine[]
-  followerIds: number[]
   statusChange: EditStatusChange | null
   /** Required to reopen. */
   reason: string | null
@@ -627,15 +650,8 @@ export interface Cost extends CostLine {
   id: number
   receiptCode: string | null
   receiptUrl: string | null
-}
-
-/**
- * Status → Completed (meeting 07/11: nothing to fill in). Only an asset an outside party replaced (old F5 flow) needs
- * the new model.
- */
-export interface CompleteWorkRequest {
-  replacementModel?: string | null
-  replacementSerial?: string | null
+  /** Who entered the line; a technician may edit only their own. */
+  addedById: number | null
 }
 
 /** Meeting 07/11: the technician types the total work hours. */
@@ -723,6 +739,8 @@ export interface TechnicianOption extends PersonRef {
   openCases: number
   specialties: string[]
   jobs: TechnicianJob[]
+  /** A specialty of theirs names the trade of the case being planned. */
+  fits: boolean
 }
 
 /** AI suggestion while the customer writes the request (F3 section 4). The customer decides. */

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Alert, Button, Dialog, DialogActions, Select, TextField } from '@/shared/ui'
+import { Alert, Button, Dialog, DialogActions, Select } from '@/shared/ui'
 import { formatVnd } from '@/shared/utils/format'
 import { casesApi } from '../api'
 import { useCaseMutation } from '../hooks'
@@ -74,7 +74,7 @@ export function StatusMenu({ caseDetail }: { caseDetail: CaseDetail }) {
 
 /**
  * Completed: nothing to fill in (meeting 07/11). The dialog only shows what was recorded (tasks, hours, costs) so a
- * missing piece can still be added first. An asset an outside party replaced (old F5 flow) needs the new model.
+ * missing piece can still be added first.
  */
 function CompleteDialog({
   caseDetail: c,
@@ -88,9 +88,6 @@ function CompleteDialog({
   onClose: () => void
 }) {
   const complete = useCaseMutation(casesApi.complete)
-  const [model, setModel] = useState('')
-  const [serial, setSerial] = useState('')
-  const needsReplacement = c.thirdParties.some((t) => t.status === 'done' && t.job === 'replace')
   const hours = workedHoursNow(c, now)
   const open_ = c.tasks.filter((t) => t.status === 'pending').length
   const costs = c.costs?.filter((x) => x.name !== 'Labour') ?? []
@@ -118,16 +115,6 @@ function CompleteDialog({
           You can still go back and add them, or complete now.
         </p>
       )}
-      {needsReplacement && (
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <TextField
-            label="New asset model *"
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-          />
-          <TextField label="Serial" value={serial} onChange={(e) => setSerial(e.target.value)} />
-        </div>
-      )}
       {complete.error && (
         <div className="mt-3">
           <Alert>{complete.error.message}</Alert>
@@ -140,12 +127,7 @@ function CompleteDialog({
         <Button
           variant="primary"
           loading={complete.isPending}
-          onClick={() =>
-            complete.mutate(
-              { id: c.id, replacementModel: model || null, replacementSerial: serial || null },
-              { onSuccess: onClose },
-            )
-          }
+          onClick={() => complete.mutate({ id: c.id }, { onSuccess: onClose })}
         >
           Set to Completed
         </Button>

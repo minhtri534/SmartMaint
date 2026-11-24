@@ -2,7 +2,6 @@ using Microsoft.EntityFrameworkCore;
 using SmartMaint.Api.Common.Security;
 using SmartMaint.Api.Data;
 using SmartMaint.Api.Entities.Accounts;
-using SmartMaint.Api.Entities.Buildings;
 using SmartMaint.Api.Entities.Cases;
 using SmartMaint.Api.Modules.Catalog.Dtos;
 
@@ -10,37 +9,21 @@ namespace SmartMaint.Api.Modules.Catalog;
 
 internal sealed class CatalogService(AppDbContext db, ICurrentUser currentUser) : ICatalogService
 {
-    /// <summary>Statuses where a technician named on the case still has the job (Approved = not accepted yet).</summary>
-    private static readonly CaseStatus[] OpenStatuses =
-    [
-        CaseStatus.Approved, CaseStatus.Accepted, CaseStatus.InProgress, CaseStatus.OnHold, CaseStatus.Reopened,
-    ];
-
     public async Task<IReadOnlyList<ServiceTypeResponse>> GetServiceTypesAsync(CancellationToken cancellationToken) =>
         await db.CaseCategories.AsNoTracking()
-            .OrderBy(c => c.GroupName).ThenBy(c => c.Name)
-            .Select(c => new ServiceTypeResponse(
-                c.Id, c.GroupName, c.Name, c.DefaultPriority.Code, c.IsEmergency, c.PhotoRequired))
+            .Where(c => c.ArchivedAt == null)
+            .OrderBy(c => c.Name)
+            .Select(c => new ServiceTypeResponse(c.Id, c.GroupName, c.Name, c.AssetTypeId))
             .ToListAsync(cancellationToken);
 
     public async Task<IReadOnlyList<BuildingResponse>> GetBuildingsAsync(CancellationToken cancellationToken)
     {
+        // Deleted places (meeting note 18/11, soft delete) are no longer offered.
         var buildings = await db.Buildings.AsNoTracking()
-            .Include(b => b.Floors).ThenInclude(f => f.Rooms)
+            .Where(b => b.DeletedAt == null)
+            .Include(b => b.Floors.Where(f => f.DeletedAt == null)).ThenInclude(f => f.Rooms.Where(r => r.DeletedAt == null))
             .OrderBy(b => b.Name)
             .ToListAsync(cancellationToken);
-
-        var isCustomer = currentUser.Role == UserRole.Customer;
-        var home = isCustomer
-            ? await db.Customers.AsNoTracking()
-                .Where(c => c.Id == currentUser.Id)
-                .Select(c => new { c.RoomId, c.Room.Floor.BuildingId })
-                .SingleAsync(cancellationToken)
-            : null;
-
-        // A customer only sees where they may report: their own room + the common areas of their building.
-        bool CanSee(Building b, Room r) =>
-            home is null || r.Id == home.RoomId || (r.IsCommonArea && b.Id == home.BuildingId);
 
         return buildings
             .Select(b => new BuildingResponse(
@@ -51,11 +34,8 @@ internal sealed class CatalogService(AppDbContext db, ICurrentUser currentUser) 
                     .Select(f => new FloorResponse(
                         f.Id,
                         f.DisplayName,
-                        f.Rooms.Where(r => CanSee(b, r)).OrderBy(r => r.Id)
-                            .Select(r => new RoomResponse(r.Id, r.RoomNumber, r.IsCommonArea)).ToList()))
-                    .Where(f => !isCustomer || f.Rooms.Count > 0)
+                        f.Rooms.OrderBy(r => r.Id).Select(r => new RoomResponse(r.Id, r.RoomNumber)).ToList()))
                     .ToList()))
-            .Where(b => !isCustomer || b.Floors.Count > 0)
             .ToList();
     }
 
@@ -63,7 +43,7 @@ internal sealed class CatalogService(AppDbContext db, ICurrentUser currentUser) 
         await db.Assets.AsNoTracking()
             .Where(a => a.RoomId == roomId && a.RetiredAt == null)
             .OrderBy(a => a.Name)
-            .Select(a => new AssetOptionResponse(a.Id, a.Name, a.RoomId))
+            .Select(a => new AssetOptionResponse(a.Id, a.Name, a.RoomId, a.TypeId))
             .ToListAsync(cancellationToken);
 
     public async Task<IReadOnlyList<AssetTypeOptionResponse>> GetAssetTypesAsync(CancellationToken cancellationToken) =>
@@ -72,55 +52,20 @@ internal sealed class CatalogService(AppDbContext db, ICurrentUser currentUser) 
             .Select(t => new AssetTypeOptionResponse(t.Id, t.Name, t.CategoryId, t.Category.CategoryName))
             .ToListAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<ManufacturerOptionResponse>> GetManufacturersAsync(CancellationToken cancellationToken) =>
+        await db.Manufacturers.AsNoTracking()
+            .OrderBy(m => m.Name)
+            .Select(m => new ManufacturerOptionResponse(m.Id, m.Name))
+            .ToListAsync(cancellationToken);
+
     public async Task<IReadOnlyList<SpecialtyOptionResponse>> GetSpecialtiesAsync(CancellationToken cancellationToken) =>
         await db.Specialties.AsNoTracking()
+            .Where(s => s.ArchivedAt == null)
             .OrderBy(s => s.Name)
             .Select(s => new SpecialtyOptionResponse(s.Id, s.Name))
             .ToListAsync(cancellationToken);
 
-    public async Task<IReadOnlyList<TechnicianOptionResponse>> GetTechniciansAsync(CancellationToken cancellationToken)
-    {
-        var technicians = await db.Technicians.AsNoTracking()
-            .Where(t => t.Status == UserStatus.Active)
-            .Select(t => new
-            {
-                t.Id,
-                t.FullName,
-                Specialties = t.Specialties.Select(s => s.Specialty.Name).OrderBy(n => n).ToList(),
-            })
-            .ToListAsync(cancellationToken);
-
-        var myBuildings = await db.StaffBuildingAssignments
-            .Where(a => a.StaffId == currentUser.Id)
-            .Select(a => a.BuildingId)
-            .ToListAsync(cancellationToken);
-        var jobs = await db.Cases.AsNoTracking()
-            .Where(c => c.AssignedTechnicianId != null && OpenStatuses.Contains(c.Status))
-            .Select(c => new
-            {
-                TechnicianId = c.AssignedTechnicianId!.Value,
-                c.Id,
-                c.Title,
-                c.Status,
-                Urgency = c.Priority.Code,
-                c.PlannedStartAt,
-                c.PlannedEndAt,
-                c.DueAt,
-                Mine = myBuildings.Contains(c.Room.Floor.BuildingId),
-            })
-            .ToListAsync(cancellationToken);
-
-        return technicians
-            .Select(t =>
-            {
-                var held = jobs.Where(j => j.TechnicianId == t.Id)
-                    .OrderBy(j => j.PlannedStartAt ?? j.DueAt ?? DateTimeOffset.MaxValue)
-                    .Select(j => new TechnicianJobResponse(
-                        j.Id, Case.CodeOf(j.Id), j.Mine ? j.Title : null, j.Status, j.Urgency, j.PlannedStartAt, j.PlannedEndAt, j.DueAt))
-                    .ToList();
-                return new TechnicianOptionResponse(t.Id, t.FullName, held.Count, t.Specialties, held);
-            })
-            .OrderBy(t => t.OpenCases).ThenBy(t => t.FullName)
-            .ToList();
-    }
+    public async Task<IReadOnlyList<TechnicianOptionResponse>> GetTechniciansAsync(
+        CancellationToken cancellationToken, long? caseId = null) =>
+        await TechnicianOptions.LoadAsync(db, currentUser.Id, caseId, cancellationToken);
 }
