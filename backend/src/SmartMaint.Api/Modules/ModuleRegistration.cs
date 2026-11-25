@@ -29,8 +29,17 @@ internal static class ModuleRegistration
         services.AddScoped<ICatalogService, CatalogService>();
         services.AddScoped<IAuditService, AuditService>();
         services.AddScoped<INotificationService, NotificationService>();
-        services.AddOptions<EmailOptions>().Bind(configuration.GetSection(EmailOptions.SectionName));
-        services.AddScoped<IEmailSender, SmtpEmailSender>();
+        var email = configuration.GetSection(EmailOptions.SectionName);
+        services.AddOptions<EmailOptions>().Bind(email);
+        // Railway's Hobby plan blocks SMTP: with a Brevo key the API sends over HTTPS instead.
+        if (email.Get<EmailOptions>()?.UseBrevo == true)
+        {
+            services.AddHttpClient<IEmailSender, BrevoEmailSender>(c => c.Timeout = TimeSpan.FromSeconds(15));
+        }
+        else
+        {
+            services.AddScoped<IEmailSender, SmtpEmailSender>();
+        }
         services.AddScoped<IAccountService, AccountService>();
         services.AddScoped<IPriorityLevelService, PriorityLevelService>();
         services.AddScoped<IBuildingScope, BuildingScope>();
