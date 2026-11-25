@@ -2540,3 +2540,28 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261125145906_EnableRlsOnAssetChangeLists') THEN
+    ALTER TABLE asset_change_lists ENABLE ROW LEVEL SECURITY;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261125145906_EnableRlsOnAssetChangeLists') THEN
+    ALTER TABLE asset_change_items ENABLE ROW LEVEL SECURITY;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20261125145906_EnableRlsOnAssetChangeLists') THEN
+    INSERT INTO __ef_migrations_history (migration_id, product_version)
+    VALUES ('20261125145906_EnableRlsOnAssetChangeLists', '10.0.13');
+    END IF;
+END $EF$;
+COMMIT;
+
